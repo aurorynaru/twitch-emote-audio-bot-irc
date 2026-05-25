@@ -3,3 +3,4 @@ tokens.json
 data/database.sqlite
 app_sqlite.js
 .env
+data/playsounds
