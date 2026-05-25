@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upload Sound</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #18181b;
+      color: #efeff1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background-color: #1f1f23;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 400px;
+      width: 100%;
+    }
+    h1 {
+      color: #bf94ff;
+      margin-top: 0;
+    }
+    .upload-area {
+      border: 2px dashed #4f4f5a;
+      padding: 20px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      transition: border-color 0.2s;
+    }
+    .upload-area:hover {
+      border-color: #bf94ff;
+    }
+    input[type="file"] {
+      display: none;
+    }
+    .file-label {
+      display: inline-block;
+      background-color: #3a3a44;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background-color 0.2s;
+    }
+    .file-label:hover {
+      background-color: #4f4f5a;
+    }
+    #fileName {
+      margin-top: 15px;
+      font-size: 0.9em;
+      color: #adadb8;
+      word-break: break-all;
+    }
+    button {
+      background-color: #9146ff;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 4px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      width: 100%;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background-color: #772ce8;
+    }
+    button:disabled {
+      background-color: #3a3a44;
+      color: #adadb8;
+      cursor: not-allowed;
+    }
+    #status {
+      margin-top: 20px;
+      font-weight: bold;
+      min-height: 24px;
+    }
+    .success { color: #00ff7f; }
+    .error { color: #ff4a4a; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Add Playsound</h1>
+  <p>Upload a new sound effect (.ogg or .mp3).</p>
+  
+  <div class="upload-area">
+    <label class="file-label" for="soundFile">Choose File</label>
+    <input type="file" id="soundFile" accept=".ogg,.mp3" multiple>
+    <div id="fileName">No files chosen</div>
+  </div>
+
+  <button id="uploadBtn" disabled>Upload Sound</button>
+
+  <div id="status"></div>
+</div>
+
+<script>
+  const fileInput = document.getElementById('soundFile');
+  const fileNameDisplay = document.getElementById('fileName');
+  const uploadBtn = document.getElementById('uploadBtn');
+  const statusDiv = document.getElementById('status');
+
+  fileInput.addEventListener('change', () => {
+    statusDiv.textContent = '';
+    if (fileInput.files.length > 0) {
+      let valid = true;
+      const names = [];
+      for (let i = 0; i < fileInput.files.length; i++) {
+        const file = fileInput.files[i];
+        names.push(file.name);
+        if (!file.name.toLowerCase().endsWith('.ogg') && !file.name.toLowerCase().endsWith('.mp3')) {
+          valid = false;
+        }
+      }
+      fileNameDisplay.textContent = names.length > 3 ? `${names.length} files chosen` : names.join(', ');
+      
+      if (!valid) {
+        statusDiv.textContent = 'Error: All files must be .ogg or .mp3!';
+        statusDiv.className = 'error';
+        uploadBtn.disabled = true;
+      } else {
+        uploadBtn.disabled = false;
+      }
+    } else {
+      fileNameDisplay.textContent = 'No files chosen';
+      uploadBtn.disabled = true;
+    }
+  });
+
+  uploadBtn.addEventListener('click', async () => {
+    if (fileInput.files.length === 0) return;
+
+    const formData = new FormData();
+    for (let i = 0; i < fileInput.files.length; i++) {
+      formData.append('soundFiles', fileInput.files[i]);
+    }
+
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Uploading...';
+    statusDiv.textContent = '';
+
+    try {
+      const response = await fetch('/api/upload-sound', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        statusDiv.textContent = `Success! Added ${result.filenames.length} file(s).`;
+        statusDiv.className = 'success';
+        fileInput.value = '';
+        fileNameDisplay.textContent = 'No files chosen';
+      } else {
+        statusDiv.textContent = 'Error: ' + result.error;
+        statusDiv.className = 'error';
+        uploadBtn.disabled = false;
+      }
+    } catch (err) {
+      statusDiv.textContent = 'Error: Connection failed.';
+      statusDiv.className = 'error';
+      uploadBtn.disabled = false;
+    }
+
+    uploadBtn.textContent = 'Upload Sound';
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,5 @@
+node_modules/
+tokens.json
+data/database.sqlite
+app_sqlite.js
+.env
