@@ -1747,6 +1747,76 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         const allCommands = [...builtIn, ...custom].sort();
         await sendChatMessage(`Commands: ${allCommands.join(', ')}`);
       }
+    },
+    '!disable': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+        if (!isMod) {
+          await sendChatMessage(`@${chatterName}, you do not have permission to disable commands!`);
+          return;
+        }
+
+        if (args.length < 1) {
+          await sendChatMessage(`@${chatterName}, invalid format! Use: !disable <!command> [time]`);
+          return;
+        }
+
+        const cmdName = args[0].toLowerCase();
+        if (!cmdName.startsWith('!')) {
+          await sendChatMessage(`@${chatterName}, the command must start with a ! (e.g. !mycmd)`);
+          return;
+        }
+        
+        if (cmdName === '!enable' || cmdName === '!disable') {
+          await sendChatMessage(`@${chatterName}, you cannot disable ${cmdName}!`);
+          return;
+        }
+        
+        let disabledValue = 'forever';
+        if (args.length > 1) {
+          const parsedTime = parseFlexibleTime(args[1]);
+          if (isNaN(parsedTime) || parsedTime <= 0) {
+            await sendChatMessage(`@${chatterName}, invalid time format! Use ms (10000), or 10s, 10m, 10h.`);
+            return;
+          }
+          disabledValue = (Date.now() + parsedTime).toString();
+        }
+
+        const configKey = `cmd_${cmdName}_disabled_until`;
+        await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, disabledValue, disabledValue]);
+        globalConfig[configKey] = disabledValue;
+
+        const timeMsg = disabledValue === 'forever' ? 'forever' : `for ${args[1]}`;
+        await sendChatMessage(`Successfully disabled ${cmdName} ${timeMsg}!`);
+      }
+    },
+    '!enable': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+        if (!isMod) {
+          await sendChatMessage(`@${chatterName}, you do not have permission to enable commands!`);
+          return;
+        }
+
+        if (args.length < 1) {
+          await sendChatMessage(`@${chatterName}, invalid format! Use: !enable <!command>`);
+          return;
+        }
+
+        const cmdName = args[0].toLowerCase();
+        if (!cmdName.startsWith('!')) {
+          await sendChatMessage(`@${chatterName}, the command must start with a ! (e.g. !mycmd)`);
+          return;
+        }
+        
+        const configKey = `cmd_${cmdName}_disabled_until`;
+        await db.run('DELETE FROM app_config WHERE key = ?', configKey);
+        delete globalConfig[configKey];
+        
+        await sendChatMessage(`Successfully enabled ${cmdName}!`);
+      }
     }
   };
 
@@ -1979,6 +2049,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           let commandName = args.shift().toLowerCase();
           
           if (customAliasesMap.has(commandName)) {
+            const disabledUntilRaw = globalConfig[`cmd_${commandName}_disabled_until`];
+            if (disabledUntilRaw) {
+              if (disabledUntilRaw === 'forever' || Date.now() < parseInt(disabledUntilRaw, 10)) {
+                return;
+              }
+            }
+
             const alias = customAliasesMap.get(commandName);
             if (alias.cost > 0) {
               const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
@@ -2010,6 +2087,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           }
        
           if (customCommands[commandName]) {
+            const disabledUntilRaw = globalConfig[`cmd_${commandName}_disabled_until`];
+            if (disabledUntilRaw) {
+              if (disabledUntilRaw === 'forever' || Date.now() < parseInt(disabledUntilRaw, 10)) {
+                return;
+              }
+            }
+
             const command = customCommands[commandName];
             
             const dynamicCostRaw = globalConfig[`cmd_${commandName}_cost`];
