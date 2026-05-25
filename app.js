@@ -329,7 +329,11 @@ app.get('/api/dashboard-data', (req, res) => {
     const soundsDir = path.join(__dirname, 'data', 'playsounds');
     let sounds = [];
     if (fs.existsSync(soundsDir)) {
-      sounds = fs.readdirSync(soundsDir).filter(f => f.endsWith('.mp3') || f.endsWith('.ogg'));
+      const files = fs.readdirSync(soundsDir).filter(f => f.endsWith('.mp3') || f.endsWith('.ogg'));
+      sounds = files.map(f => {
+        const stats = fs.statSync(path.join(soundsDir, f));
+        return { filename: f, uploadedAt: stats.mtimeMs };
+      });
     }
 
     res.json({
