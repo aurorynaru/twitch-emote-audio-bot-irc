@@ -53,7 +53,12 @@ const commandConfigSchema = {
   '!global': ['cooldown'],
   '!duel': ['cooldown'],
   '!acceptduel': ['cooldown'],
-  '!declineduel': ['cooldown']
+  '!declineduel': ['cooldown'],
+  '!disable': ['cooldown'],
+  '!enable':['cooldown'],
+  '!raffle': ['cooldown'],
+  '!multiraffle': ['cooldown'],
+  '!join': ['cooldown']
 };
 
 const activeDuels = new Map();
@@ -1288,6 +1293,11 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           return;
         }
 
+        if (activeBets.has('default')) {
+          await sendChatMessage(`@${chatterName}, there is already an active or unresolved bet! Use !betstop or !betcancel first.`);
+          return;
+        }
+
         const rawArgs = args.join(' ');
         
         let description, choicesRaw, durationStr;
@@ -1817,6 +1827,159 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         
         await sendChatMessage(`Successfully enabled ${cmdName}!`);
       }
+    },
+    '!raffle': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+        if (!isMod) {
+          await sendChatMessage(`@${chatterName}, you do not have permission to start raffles!`);
+          return;
+        }
+
+        if (activeRaffle) {
+          await sendChatMessage(`@${chatterName}, there is already an active raffle!`);
+          return;
+        }
+
+        if (args.length < 2) {
+          await sendChatMessage(`@${chatterName}, invalid format! Use: !raffle <amount> <time>`);
+          return;
+        }
+
+        const amount = parseAmount(args[0]);
+        if (isNaN(amount) || amount <= 0) {
+          await sendChatMessage(`@${chatterName}, invalid amount!`);
+          return;
+        }
+
+        const durationMs = parseFlexibleTime(args[1]);
+        if (isNaN(durationMs) || durationMs <= 0) {
+          await sendChatMessage(`@${chatterName}, invalid time!`);
+          return;
+        }
+
+        activeRaffle = {
+          type: 'single',
+          amount,
+          durationStr: args[1],
+          endTime: Date.now() + durationMs,
+          users: new Set(),
+          timeoutId: null
+        };
+
+        await sendChatMessage(`🎉 A RAFFLE for ${amount} points has started! Type !join to enter. You have ${args[1]}!`);
+
+        activeRaffle.timeoutId = setTimeout(async () => {
+          if (!activeRaffle) return;
+          const r = activeRaffle;
+          activeRaffle = null;
+
+          if (r.users.size === 0) {
+            await sendChatMessage(`The raffle has ended, but nobody joined! 😔`);
+            return;
+          }
+
+          const participants = Array.from(r.users);
+          const winner = participants[Math.floor(Math.random() * participants.length)];
+
+          await db.run('UPDATE users SET points = points + ? WHERE username = ?', [r.amount, winner]);
+          await sendChatMessage(`🎉 The raffle has ended! Congratulations @${winner}, you won ${r.amount} points!`);
+        }, durationMs);
+      }
+    },
+    '!multiraffle': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+        if (!isMod) {
+          await sendChatMessage(`@${chatterName}, you do not have permission to start raffles!`);
+          return;
+        }
+
+        if (activeRaffle) {
+          await sendChatMessage(`@${chatterName}, there is already an active raffle!`);
+          return;
+        }
+
+        if (args.length < 3) {
+          await sendChatMessage(`@${chatterName}, invalid format! Use: !multiraffle <amount> <time> <winners>`);
+          return;
+        }
+
+        const amount = parseAmount(args[0]);
+        if (isNaN(amount) || amount <= 0) {
+          await sendChatMessage(`@${chatterName}, invalid amount!`);
+          return;
+        }
+
+        const durationMs = parseFlexibleTime(args[1]);
+        if (isNaN(durationMs) || durationMs <= 0) {
+          await sendChatMessage(`@${chatterName}, invalid time!`);
+          return;
+        }
+
+        const numWinners = parseInt(args[2], 10);
+        if (isNaN(numWinners) || numWinners <= 0) {
+          await sendChatMessage(`@${chatterName}, invalid number of winners!`);
+          return;
+        }
+
+        activeRaffle = {
+          type: 'multi',
+          amount,
+          numWinners,
+          durationStr: args[1],
+          endTime: Date.now() + durationMs,
+          users: new Set(),
+          timeoutId: null
+        };
+
+        await sendChatMessage(`🎉 A MULTI-RAFFLE for ${amount} points (split among ${numWinners} winners) has started! Type !join to enter. You have ${args[1]}!`);
+
+        activeRaffle.timeoutId = setTimeout(async () => {
+          if (!activeRaffle) return;
+          const r = activeRaffle;
+          activeRaffle = null;
+
+          if (r.users.size === 0) {
+            await sendChatMessage(`The multi-raffle has ended, but nobody joined! 😔`);
+            return;
+          }
+
+          const participants = Array.from(r.users);
+          
+          for (let i = participants.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [participants[i], participants[j]] = [participants[j], participants[i]];
+          }
+
+          const actualWinnersCount = Math.min(r.numWinners, participants.length);
+          const winners = participants.slice(0, actualWinnersCount);
+          const splitAmount = Math.floor(r.amount / actualWinnersCount);
+
+          for (const w of winners) {
+            await db.run('UPDATE users SET points = points + ? WHERE username = ?', [splitAmount, w]);
+          }
+
+          const winnersText = winners.map(w => `@${w}`).join(', ');
+          await sendChatMessage(`🎉 The multi-raffle has ended! Congratulations to our ${actualWinnersCount} winners: ${winnersText}. You each won ${splitAmount} points!`);
+        }, durationMs);
+      }
+    },
+    '!join': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        if (!activeRaffle) {
+          return;
+        }
+        
+        if (activeRaffle.users.has(chatterName)) {
+          return;
+        }
+
+        activeRaffle.users.add(chatterName);
+      }
     }
   };
 
@@ -1919,6 +2082,75 @@ for (const [user, data] of Object.entries(war.userVotes)) {
   const commandCooldowns = new Map();
   const activeBets = new Map();
   let activeChatWar = null;
+  let activeRaffle = null;
+
+  async function triggerRandomRaffle(triggerName) {
+    if (activeRaffle) return; 
+
+    const isMulti = Math.random() < 0.5;
+    const amount = Math.floor(Math.random() * (25000 - 1500 + 1)) + 1500;
+    
+    const durationMinutes = Math.floor(Math.random() * 3) + 1;
+    const durationMs = durationMinutes * 60000;
+    const durationStr = `${durationMinutes}m`;
+
+    if (isMulti) {
+      const numWinners = Math.floor(Math.random() * (12 - 3 + 1)) + 3;
+      activeRaffle = {
+        type: 'multi',
+        amount,
+        numWinners,
+        durationStr,
+        endTime: Date.now() + durationMs,
+        users: new Set(),
+        timeoutId: null
+      };
+      await sendChatMessage(`🎉 A random MULTI-RAFFLE was triggered by a ${triggerName}! ${amount} points will be split among ${numWinners} winners! Type !join to enter. You have ${durationStr}!`);
+    } else {
+      activeRaffle = {
+        type: 'single',
+        amount,
+        durationStr,
+        endTime: Date.now() + durationMs,
+        users: new Set(),
+        timeoutId: null
+      };
+      await sendChatMessage(`🎉 A random RAFFLE was triggered by a ${triggerName}! 1 winner will get ${amount} points! Type !join to enter. You have ${durationStr}!`);
+    }
+
+    activeRaffle.timeoutId = setTimeout(async () => {
+      if (!activeRaffle) return;
+      const r = activeRaffle;
+      activeRaffle = null;
+
+      if (r.users.size === 0) {
+        await sendChatMessage(`The random ${r.type === 'multi' ? 'multi-raffle' : 'raffle'} ended, but nobody joined! 😔`);
+        return;
+      }
+
+      const participants = Array.from(r.users);
+      
+      if (r.type === 'multi') {
+        for (let i = participants.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [participants[i], participants[j]] = [participants[j], participants[i]];
+        }
+        const actualWinnersCount = Math.min(r.numWinners, participants.length);
+        const winners = participants.slice(0, actualWinnersCount);
+        const splitAmount = Math.floor(r.amount / actualWinnersCount);
+
+        for (const w of winners) {
+          await db.run('UPDATE users SET points = points + ? WHERE username = ?', [splitAmount, w]);
+        }
+        const winnersText = winners.map(w => `@${w}`).join(', ');
+        await sendChatMessage(`🎉 The random multi-raffle has ended! Congratulations to our ${actualWinnersCount} winners: ${winnersText}. You each won ${splitAmount} points!`);
+      } else {
+        const winner = participants[Math.floor(Math.random() * participants.length)];
+        await db.run('UPDATE users SET points = points + ? WHERE username = ?', [r.amount, winner]);
+        await sendChatMessage(`🎉 The random raffle has ended! Congratulations @${winner}, you won ${r.amount} points!`);
+      }
+    }, durationMs);
+  }
 
   function connectTwitch() {
     const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
@@ -1975,6 +2207,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             if (db && chatterName) {
               await db.run('INSERT INTO users (username, points) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET points = points + ?', [chatterName, pointsToAward, pointsToAward]);
               console.log(`* [POINTS] Awarded ${pointsToAward} points to ${chatterName} for cheering ${bits} bits!`);
+              await triggerRandomRaffle('bit cheer');
             }
           }
 
@@ -2260,11 +2493,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               if (db && chatterName) {
                 await db.run('INSERT INTO users (username, points) VALUES (?, 5000) ON CONFLICT(username) DO UPDATE SET points = points + 5000', [chatterName]);
                 console.log(`* [POINTS] Awarded 5000 points to ${chatterName} for subscribing!`);
+                await triggerRandomRaffle('subscription');
               }
             } else if (msgId === 'subgift') {
               if (db && chatterName) {
                 await db.run('INSERT INTO users (username, points) VALUES (?, 5000) ON CONFLICT(username) DO UPDATE SET points = points + 5000', [chatterName]);
                 console.log(`* [POINTS] Awarded 5000 points to ${chatterName} for gifting sub(s)!`);
+                await triggerRandomRaffle('gift sub');
               }
             }
           }
