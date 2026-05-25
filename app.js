@@ -9,7 +9,7 @@ import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import cors from 'cors';
 import { ZipArchive } from 'archiver';
-dotenv.config({override:true});
+dotenv.config();
 
 
 const __filename = fileURLToPath(import.meta.url);
