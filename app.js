@@ -445,7 +445,7 @@ async function start() {
     '!playsound': {
       cost: 1,
       execute: async (args, chatterName, event, hasPermission) => {
-         if (!await isStreamerLive()) return;
+        //  if (!await isStreamerLive()) return;
         args = [args[0]]
         const dynamicCostRaw = globalConfig['cmd_!playsound_cost'];
         const activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
@@ -2006,8 +2006,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           if (db) {
             const now = Date.now();
             const user = await db.get('SELECT * FROM users WHERE username = ?', chatterName);
-             const isLive = await isStreamerLive();
-
+            //  const isLive = await isStreamerLive();
+            const   isLive  = true
 
             if (!user) {
               await db.run('INSERT INTO users (username, points, last_message_time, true_last_chat_time) VALUES (?, ?, ?, ?)', [chatterName, isLive ? pointReward : 0, now, now]);
@@ -2178,7 +2178,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
  
           if (chatText.toLowerCase().startsWith('!showemote ')) {
-             if (!await isStreamerLive()) return;
+            //  if (!await isStreamerLive()) return;
 
             const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'vip'].includes(b.set_id));
             const isMod = hasPermission || chatterName === TARGET_CHANNEL;
