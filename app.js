@@ -445,7 +445,7 @@ async function start() {
     '!playsound': {
       cost: 1,
       execute: async (args, chatterName, event, hasPermission) => {
-        //  if (!await isStreamerLive()) return;
+        if (!await isStreamerLive()) return;
         args = [args[0]]
         const dynamicCostRaw = globalConfig['cmd_!playsound_cost'];
         const activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
@@ -625,28 +625,32 @@ async function start() {
     '!masspointsadd': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        if (chatterName !== TARGET_CHANNEL || hasPermission) {
+        if (chatterName !== TARGET_CHANNEL) {
           await sendChatMessage(`@${chatterName}, you do not have permission to mass add points!`);
           return;
         }
 
-        if (args.length < 1) {
-          await sendChatMessage(`@${chatterName}, invalid command! Try !masspointsadd 1000 10m`);
-          return;
+        if(chatterName == TARGET_CHANNEL && hasPermission) {
+          if (args.length < 1) {
+            await sendChatMessage(`@${chatterName}, invalid command! Try !masspointsadd 1000 10m`);
+            return;
+          }
+  
+          const amount = parseAmount(args[0]);
+          if (isNaN(amount) || amount <= 0) {
+            await sendChatMessage(`@${chatterName}, invalid amount!`);
+            return;
+          }
+  
+          const timeStr = args[1] ? args[1].toLowerCase() : '5m';
+          const durationMs = parseTime(timeStr);
+          const threshold = Date.now() - durationMs;
+  
+          await db.run('UPDATE users SET points = points + ? WHERE true_last_chat_time >= ?', [amount, threshold]);
+          await sendChatMessage(`${TARGET_CHANNEL} mass added ${amount} points to everyone who chatted in the last ${timeStr}!`);
+        
         }
 
-        const amount = parseAmount(args[0]);
-        if (isNaN(amount) || amount <= 0) {
-          await sendChatMessage(`@${chatterName}, invalid amount!`);
-          return;
-        }
-
-        const timeStr = args[1] ? args[1].toLowerCase() : '5m';
-        const durationMs = parseTime(timeStr);
-        const threshold = Date.now() - durationMs;
-
-        await db.run('UPDATE users SET points = points + ? WHERE true_last_chat_time >= ?', [amount, threshold]);
-        await sendChatMessage(`${TARGET_CHANNEL} mass added ${amount} points to everyone who chatted in the last ${timeStr}!`);
       }
     },
     '!masspointssub': {
@@ -657,23 +661,27 @@ async function start() {
           return;
         }
 
-        if (args.length < 1) {
-          await sendChatMessage(`@${chatterName}, invalid command! Try !masspointssub 1000 10m`);
-          return;
+        if (chatterName == TARGET_CHANNEL && hasPermission) { 
+
+          
+                  if (args.length < 1) {
+                    await sendChatMessage(`@${chatterName}, invalid command! Try !masspointssub 1000 10m`);
+                    return;
+                  }
+          
+                  const amount = parseAmount(args[0]);
+                  if (isNaN(amount) || amount <= 0) {
+                    await sendChatMessage(`@${chatterName}, invalid amount!`);
+                    return;
+                  }
+          
+                  const timeStr = args[1] ? args[1].toLowerCase() : '5m';
+                  const durationMs = parseTime(timeStr);
+                  const threshold = Date.now() - durationMs;
+          
+                  await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE true_last_chat_time >= ?', [amount, threshold]);
+                  await sendChatMessage(`${TARGET_CHANNEL} mass removed ${amount} points from everyone who chatted in the last ${timeStr}!`);
         }
-
-        const amount = parseAmount(args[0]);
-        if (isNaN(amount) || amount <= 0) {
-          await sendChatMessage(`@${chatterName}, invalid amount!`);
-          return;
-        }
-
-        const timeStr = args[1] ? args[1].toLowerCase() : '5m';
-        const durationMs = parseTime(timeStr);
-        const threshold = Date.now() - durationMs;
-
-        await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE true_last_chat_time >= ?', [amount, threshold]);
-        await sendChatMessage(`${TARGET_CHANNEL} mass removed ${amount} points from everyone who chatted in the last ${timeStr}!`);
       }
     },
     '!emoteduration': {
@@ -2006,13 +2014,12 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           if (db) {
             const now = Date.now();
             const user = await db.get('SELECT * FROM users WHERE username = ?', chatterName);
-            //  const isLive = await isStreamerLive();
-            const   isLive  = true
+             const isLive = await isStreamerLive();
 
             if (!user) {
               await db.run('INSERT INTO users (username, points, last_message_time, true_last_chat_time) VALUES (?, ?, ?, ?)', [chatterName, isLive ? pointReward : 0, now, now]);
             } else {
-              if (now - user.last_message_time >= 5 * 60 * 1000) {
+              if (now - user.last_message_time >= 10 * 60 * 1000) {
                 if (isLive) {
                   await db.run('UPDATE users SET points = points + ?, last_message_time = ?, true_last_chat_time = ? WHERE username = ?', [pointReward, now, now, chatterName]);
                 } else {
@@ -2178,7 +2185,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
  
           if (chatText.toLowerCase().startsWith('!showemote ')) {
-            //  if (!await isStreamerLive()) return;
+            if (!await isStreamerLive()) return;
 
             const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'vip'].includes(b.set_id));
             const isMod = hasPermission || chatterName === TARGET_CHANNEL;
