@@ -35,6 +35,7 @@ if (!fs.existsSync(path.join(__dirname, 'data', 'playsounds'))) {
 
 const globalConfig = {};
 const customAliasesMap = new Map();
+const ignoredBots = ['nightbot', 'streamelements', 'streamlabs', 'moobot', 'dotabod', 'wizebot', 'fossabot', 'kofibot', 'soundalerts'];
 
 const commandConfigSchema = {
   '!playsound': ['cost', 'cooldown'],
@@ -645,8 +646,9 @@ async function start() {
           const timeStr = args[1] ? args[1].toLowerCase() : '5m';
           const durationMs = parseTime(timeStr);
           const threshold = Date.now() - durationMs;
+          const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
   
-          await db.run('UPDATE users SET points = points + ? WHERE true_last_chat_time >= ?', [amount, threshold]);
+          await db.run(`UPDATE users SET points = points + ? WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [amount, threshold]);
           await sendChatMessage(`${TARGET_CHANNEL} mass added ${amount} points to everyone who chatted in the last ${timeStr}!`);
         
         }
@@ -678,8 +680,9 @@ async function start() {
                   const timeStr = args[1] ? args[1].toLowerCase() : '5m';
                   const durationMs = parseTime(timeStr);
                   const threshold = Date.now() - durationMs;
+                  const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
           
-                  await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE true_last_chat_time >= ?', [amount, threshold]);
+                  await db.run(`UPDATE users SET points = MAX(0, points - ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [amount, threshold]);
                   await sendChatMessage(`${TARGET_CHANNEL} mass removed ${amount} points from everyone who chatted in the last ${timeStr}!`);
         }
       }
@@ -2002,16 +2005,16 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           const pointReward = isSub ? 750 : 500;
           const bits = parseInt(tags['bits']) || 0;
 
-          if (bits > 0) {
+          if (bits > 0 && chatterName && !ignoredBots.includes(chatterName)) {
             const pointsToAward = bits * 10;
-            if (db && chatterName) {
+            if (db) {
               await db.run('INSERT INTO users (username, points) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET points = points + ?', [chatterName, pointsToAward, pointsToAward]);
               console.log(`* [POINTS] Awarded ${pointsToAward} points to ${chatterName} for cheering ${bits} bits!`);
               await triggerRandomRaffle('bit cheer');
             }
           }
 
-          if (db) {
+          if (db && chatterName && !ignoredBots.includes(chatterName)) {
             const now = Date.now();
             const user = await db.get('SELECT * FROM users WHERE username = ?', chatterName);
              const isLive = await isStreamerLive();
