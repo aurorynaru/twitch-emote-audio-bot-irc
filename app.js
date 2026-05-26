@@ -63,7 +63,11 @@ const commandConfigSchema = {
   '!enable':['cooldown'],
   '!raffle': ['cooldown'],
   '!multiraffle': ['cooldown'],
-  '!join': ['cooldown']
+  '!join': ['cooldown'],
+  '!masspointsadd': ['cooldown'],
+  '!masspointssub': ['cooldown'],
+  '!editpoints': ['cooldown'],
+  '!toppoints':['cooldown']
 };
 
 const activeDuels = new Map();
