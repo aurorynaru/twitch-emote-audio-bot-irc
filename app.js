@@ -625,7 +625,7 @@ async function start() {
     '!masspointsadd': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        if (chatterName !== TARGET_CHANNEL) {
+        if (chatterName !== TARGET_CHANNEL || hasPermission) {
           await sendChatMessage(`@${chatterName}, you do not have permission to mass add points!`);
           return;
         }
