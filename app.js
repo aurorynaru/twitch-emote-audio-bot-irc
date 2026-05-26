@@ -2303,7 +2303,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           let chatText = event.message.text.trim();
 
           // --- COMMAND LOGIC START ---
-          const ignoredBots = ['admiralclanker', 'moobot', 'streamelements'];
+          const ignoredBots = ['admiralclanker', 'moobot', 'streamelements','dotabod'];
           if (ignoredBots.includes(chatterName.toLowerCase())) {
             return;
           }
