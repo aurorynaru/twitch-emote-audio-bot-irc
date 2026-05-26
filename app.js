@@ -42,6 +42,7 @@ const commandConfigSchema = {
   '!showemote': ['cost', 'duration', 'size', 'cooldown'],
   '!betstart': ['cost', 'cooldown'],
   '!betstop': ['cost', 'cooldown'],
+  '!givepoints':['cooldown'],
   '!betstatus': ['cost', 'cooldown'],
   '!points': ['cost', 'cooldown'],
   '!toppoints': ['cost', 'cooldown'],
