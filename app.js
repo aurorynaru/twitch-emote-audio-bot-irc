@@ -631,7 +631,7 @@ async function start() {
           return;
         }
 
-        if(chatterName == TARGET_CHANNEL && hasPermission) {
+        if(chatterName == TARGET_CHANNEL || hasPermission) {
           if (args.length < 1) {
             await sendChatMessage(`@${chatterName}, invalid command! Try !masspointsadd 1000 10m`);
             return;
@@ -663,7 +663,7 @@ async function start() {
           return;
         }
 
-        if (chatterName == TARGET_CHANNEL && hasPermission) { 
+        if (chatterName == TARGET_CHANNEL || hasPermission) { 
 
           
                   if (args.length < 1) {
