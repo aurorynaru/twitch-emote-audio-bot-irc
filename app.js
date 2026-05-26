@@ -42,6 +42,7 @@ const commandConfigSchema = {
   '!betstop': ['cost', 'cooldown'],
   '!betstatus': ['cost', 'cooldown'],
   '!points': ['cost', 'cooldown'],
+  '!toppoints': ['cost', 'cooldown'],
   '!editcommand': ['cost', 'cooldown'],
   '!gamble': ['cost', 'cooldown'],
   '!refreshemotes': ['cost', 'cooldown'],
@@ -655,6 +656,27 @@ async function start() {
         } else {
           await sendChatMessage(`${targetUser} has ${points} points!`);
         }
+      }
+    },
+    '!toppoints': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        let amount = 5;
+        if (args.length > 0) {
+          const parsed = parseInt(args[0], 10);
+          if (!isNaN(parsed) && parsed > 0) {
+            amount = Math.min(parsed, 15);
+          }
+        }
+        
+        const topUsers = await db.all('SELECT username, points FROM users ORDER BY points DESC LIMIT ?', [amount]);
+        if (!topUsers || topUsers.length === 0) {
+          await sendChatMessage(`No users found!`);
+          return;
+        }
+
+        const leaderboard = topUsers.map((u, i) => `${i + 1}. ${u.username} (${u.points})`).join(', ');
+        await sendChatMessage(`🏆 Top Points: ${leaderboard}`);
       }
     },
     '!playsound': {
