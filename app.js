@@ -1031,7 +1031,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             const delay = durationMs - r.time;
             const tid = setTimeout(async () => {
               if (activeChatWar) {
-                await sendChatMessage(`Reminder: Chat War (${emote1} vs ${emote2}) closes in ${r.msg}! Spam your emote to fight! (Cost: ${cost} pts per vote)`);
+                await sendChatMessage(`Reminder: Chat War ( ${emote1} vs ${emote2} ) closes in ${r.msg}! Spam your emote to fight! (Cost: ${cost} pts per vote)`);
               }
             }, delay);
             activeChatWar.reminderTimeouts.push(tid);
@@ -2219,18 +2219,6 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               lastChatWideCommandTime = now;
             }
 
-            const dynamicShowEmoteCost = parseInt(globalConfig['cmd_!showemote_cost'], 10) || 0;
-            if (dynamicShowEmoteCost > 0) {
-              const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
-              if (!user || user.points < dynamicShowEmoteCost) {
-                console.log(`[COMMAND] ${chatterName} tried to use !showemote but lacks points.`);
-                return;
-              }
-              await db.run('UPDATE users SET points = points - ? WHERE username = ?', [dynamicShowEmoteCost, chatterName]);
-            }
-
-            let parsedMessageParts = [];
-  
             const tokens = [];
             event.message.fragments.forEach(fragment => {
               if (fragment.type === 'emote') {
@@ -2250,6 +2238,21 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 tokens.push({ type: 'text', text: `@${fragment.mention.user_name}`, original: `@${fragment.mention.user_name}` });
               }
             });
+
+            const hasAnyEmote = tokens.some(t => t.type === 'emote');
+            if (!hasAnyEmote) {
+              return;
+            }
+
+            const dynamicShowEmoteCost = parseInt(globalConfig['cmd_!showemote_cost'], 10) || 0;
+            if (dynamicShowEmoteCost > 0) {
+              const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+              if (!user || user.points < dynamicShowEmoteCost) {
+                console.log(`[COMMAND] ${chatterName} tried to use !showemote but lacks points.`);
+                return;
+              }
+              await db.run('UPDATE users SET points = points - ? WHERE username = ?', [dynamicShowEmoteCost, chatterName]);
+            }
   
             let hasBaseEmote = false;
   
@@ -2266,12 +2269,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                     customX = parseInt(match[1], 10);
                     customY = parseInt(match[2], 10);
                     i++;
-                    parsedMessageParts.push(`{${current.original} AT ${customX}%,${customY}%}`);
-                  } else {
-                    parsedMessageParts.push(`{${current.original}}`);
                   }
-                } else {
-                  parsedMessageParts.push(`{${current.original}}`);
                 }
   
                 let shouldBroadcast = true;
@@ -2286,13 +2284,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 if (shouldBroadcast) {
                   broadcastEmote(current.url, current.isZeroWidth, event.message_id, customX, customY);
                 }
-  
-              } else if (current.type === 'text') {
-                parsedMessageParts.push(current.original);
               }
-            }
-            if (!hasBaseEmote && parsedMessageParts.length > 0) {
-              broadcastEmote(parsedMessageParts[0], true, event.message_id);
             }
           
             // --- COMMAND LOGIC END ---
