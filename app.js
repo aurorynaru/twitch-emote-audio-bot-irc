@@ -2031,7 +2031,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             if (!user) {
               await db.run('INSERT INTO users (username, points, last_message_time, true_last_chat_time) VALUES (?, ?, ?, ?)', [chatterName, isLive ? pointReward : 0, now, now]);
             } else {
-              if (now - user.last_message_time >= 10 * 60 * 1000) {
+              if (now - user.last_message_time >= 25 * 60 * 1000) {
                 if (isLive) {
                   await db.run('UPDATE users SET points = points + ?, last_message_time = ?, true_last_chat_time = ? WHERE username = ?', [pointReward, now, now, chatterName]);
                 } else {
