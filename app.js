@@ -367,7 +367,7 @@ async function start() {
         const points = user.points;
 
         if (targetUser === chatterName) {
-          await sendChatMessage(`${chatterName}, you have ${points} points!`);
+          await sendChatMessage(`${chatterName} , you have ${points} points!`);
         } else {
           await sendChatMessage(`${targetUser} has ${points} points!`);
         }
@@ -2151,7 +2151,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               await db.run('UPDATE users SET points = points - ? WHERE username = ?', [activeCost, chatterName]);
             }
 
-            const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'vip'].includes(b.set_id));
+            const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'vip'].includes(b.set_id)) || chatterName == "aurory_naru";
             const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName == "aurory_naru";
 
             if (!isMod) {
