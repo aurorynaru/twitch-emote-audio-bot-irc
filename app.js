@@ -43,6 +43,7 @@ const commandConfigSchema = {
   '!betstatus': ['cost', 'cooldown'],
   '!points': ['cost', 'cooldown'],
   '!toppoints': ['cost', 'cooldown'],
+  '!editpoints': ['cooldown'],
   '!editcommand': ['cost', 'cooldown'],
   '!gamble': ['cost', 'cooldown'],
   '!refreshemotes': ['cost', 'cooldown'],
@@ -677,6 +678,32 @@ async function start() {
 
         const leaderboard = topUsers.map((u, i) => `${i + 1}. ${u.username} (${u.points})`).join(', ');
         await sendChatMessage(`🏆 Top Points: ${leaderboard}`);
+      }
+    },
+    '!editpoints': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurory_naru';
+        if (!isMod) {
+          await sendChatMessage(`@${chatterName}, you do not have permission to edit points!`);
+          return;
+        }
+
+        if (args.length < 2) {
+          await sendChatMessage(`@${chatterName}, invalid format! Use: !editpoints <username> <amount>`);
+          return;
+        }
+
+        const targetUser = args[0].replace('@', '').toLowerCase();
+        const amount = parseAmount(args[1]);
+
+        if (isNaN(amount) || amount < 0) {
+          await sendChatMessage(`@${chatterName}, invalid amount!`);
+          return;
+        }
+
+        await db.run('INSERT INTO users (username, points) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET points = ?', [targetUser, amount, amount]);
+        await sendChatMessage(`Successfully set ${targetUser}'s points to ${amount}!`);
       }
     },
     '!playsound': {
@@ -2370,7 +2397,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             }
 
             const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'vip'].includes(b.set_id));
-            const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+            const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName == "aurory_naru";
 
             if (!isMod) {
               const now = Date.now();
