@@ -626,11 +626,7 @@ async function start() {
     '!masspointsadd': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        if (chatterName !== TARGET_CHANNEL) {
-          await sendChatMessage(`@${chatterName}, you do not have permission to mass add points!`);
-          return;
-        }
-
+       
         if(chatterName == TARGET_CHANNEL || hasPermission) {
           if (args.length < 1) {
             await sendChatMessage(`@${chatterName}, invalid command! Try !masspointsadd 1000 10m`);
@@ -653,15 +649,18 @@ async function start() {
         
         }
 
+         if (chatterName !== TARGET_CHANNEL) {
+          await sendChatMessage(`@${chatterName}, you do not have permission to mass add points!`);
+          return;
+        }
+
+
       }
     },
     '!masspointssub': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        if (chatterName !== TARGET_CHANNEL) {
-          await sendChatMessage(`@${chatterName}, you do not have permission to mass sub points!`);
-          return;
-        }
+       
 
         if (chatterName == TARGET_CHANNEL || hasPermission) { 
 
@@ -684,6 +683,11 @@ async function start() {
           
                   await db.run(`UPDATE users SET points = MAX(0, points - ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [amount, threshold]);
                   await sendChatMessage(`${TARGET_CHANNEL} mass removed ${amount} points from everyone who chatted in the last ${timeStr}!`);
+        }
+
+         if (chatterName !== TARGET_CHANNEL) {
+          await sendChatMessage(`@${chatterName}, you do not have permission to mass sub points!`);
+          return;
         }
       }
     },
