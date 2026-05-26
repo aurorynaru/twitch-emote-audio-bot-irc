@@ -4,12 +4,13 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import multer from 'multer';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import cors from 'cors';
-import { ZipArchive } from 'archiver';
 dotenv.config();
+
+import { parseFlexibleTime, parseAmount, parseTime } from './utils.js';
+import { setupRoutes, broadcastEmote, broadcastAudio, broadcastConfig, broadcastBetState, clearBetState, broadcastChatWarState, clearChatWarState } from './routes.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -53,6 +54,7 @@ const commandConfigSchema = {
   '!chatwar': ['cost', 'cooldown'],
   '!chatwarcancel': ['cost', 'cooldown'],
   '!global': ['cooldown'],
+  '!chatcooldown': ['cooldown'],
   '!duel': ['cooldown'],
   '!acceptduel': ['cooldown'],
   '!declineduel': ['cooldown'],
@@ -215,176 +217,14 @@ const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, path.join(__dirname, 'data', 'playsounds'))
-  },
-  filename: function (req, file, cb) {
-
-    const originalExt = path.extname(file.originalname).toLowerCase();
-    const baseName = path.basename(file.originalname, originalExt).toLowerCase().replace(/[^a-z0-9_-]/g, '');
-    cb(null, baseName + originalExt);
-  }
-});
-const upload = multer({
-  storage: storage,
-  fileFilter: (req, file, cb) => {
-    const name = file.originalname.toLowerCase();
-    if (!name.endsWith('.ogg') && !name.endsWith('.mp3')) {
-      return cb(null, false);
-    }
-    cb(null, true);
-  }
-});
-
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/playsounds', express.static(path.join(__dirname, 'data', 'playsounds')));
 
-
-function adminAuth(req, res, next) {
-  const password = process.env.ADMIN_PASSWORD;
-   const user = process.env.ADMIN_USER
-  if (!password) {
-    return res.status(401).send('Admin access disabled. Please set ADMIN_PASSWORD in your environment variables.');
-  }
-
-  const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
-  const [login, pwd] = Buffer.from(b64auth, 'base64').toString().split(':');
-
-  if (login === user && pwd === password) {
-    return next();
-  }
-
-  res.set('WWW-Authenticate', 'Basic realm="Admin Panel"');
-  res.status(401).send('Authentication required.');
-}
-
-app.get('/addsound', adminAuth, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'addsound.html'));
-});
-
-app.post('/api/upload-sound', adminAuth, upload.array('soundFiles', 50), (req, res) => {
-  if (!req.files || req.files.length === 0) {
-    return res.status(400).json({ error: 'No files uploaded or files were not .ogg or .mp3!' });
-  }
-  res.json({ success: true, filenames: req.files.map(f => f.filename) });
-});
-
-app.get('/api/config', (req, res) => {
-  res.json({
-    durationMs: parseInt(globalConfig['cmd_!showemote_duration']) || parseInt(process.env.EMOTE_DURATION_MS) || 5000,
-    sizePx: parseInt(globalConfig['cmd_!showemote_size']) || parseInt(process.env.EMOTE_SIZE_PX) || 150
-  });
-});
-
-let sseClients = [];
-
-app.get('/api/stream-emotes', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
-  sseClients.push(res);
-  req.on('close', () => {
-    sseClients = sseClients.filter(client => client !== res);
-  });
-});
-
-app.get('/overlay', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-
-app.get('/api/dashboard-data', (req, res) => {
-  try {
-    const defaultSettingsFallback = {
-      '!showemote': { cost: 0, duration: parseInt(process.env.EMOTE_DURATION_MS) || 5000, size: parseInt(process.env.EMOTE_SIZE_PX) || 150, cooldown: 0 },
-      '!playsound': { cost: parseInt(process.env.DEFAULT_PLAYSOUND_COST) || 0, cooldown: 0 },
-      '!global': { cooldown: parseInt(process.env.COMMAND_COOLDOWN) || 1000 }
-    };
-
-    // 1. Default Commands
-    const defaultCommands = Object.keys(commandConfigSchema).map(cmd => {
-      return {
-        command: cmd,
-        settings: commandConfigSchema[cmd].reduce((acc, setting) => {
-           let val = globalConfig[`cmd_${cmd}_${setting}`];
-           if (val === undefined) {
-             if (defaultSettingsFallback[cmd] && defaultSettingsFallback[cmd][setting] !== undefined) {
-               val = defaultSettingsFallback[cmd][setting];
-             } else {
-               val = 0;
-             }
-           }
-           acc[setting] = val;
-           return acc;
-        }, {})
-      };
-    });
-
-
-    const customCommands = [];
-    customAliasesMap.forEach((data, cmd) => {
-      customCommands.push({
-        command: cmd,
-        action: data.action,
-        cost: data.cost
-      });
-    });
-
-
-    const soundsDir = path.join(__dirname, 'data', 'playsounds');
-    let sounds = [];
-    if (fs.existsSync(soundsDir)) {
-      const files = fs.readdirSync(soundsDir).filter(f => f.endsWith('.mp3') || f.endsWith('.ogg'));
-      sounds = files.map(f => {
-        const stats = fs.statSync(path.join(soundsDir, f));
-        return { filename: f, uploadedAt: stats.mtimeMs };
-      });
-    }
-
-    res.json({
-      success: true,
-      defaultCommands,
-      customCommands,
-      sounds
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-
-app.get('/export-database', adminAuth, (req, res) => {
-  const dbPath = path.join(__dirname, 'data', 'database.sqlite');
-  if (fs.existsSync(dbPath)) {
-
-    res.download(dbPath, `database_backup_${Date.now()}.sqlite`);
-  } else {
-    res.status(404).send('Database not found!');
-  }
-});
-
-app.get('/export-playsounds', adminAuth, (req, res) => {
-  const soundsDir = path.join(__dirname, 'data', 'playsounds');
-  if (!fs.existsSync(soundsDir)) {
-    return res.status(404).send('Playsounds directory not found!');
-  }
-
-  res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Content-Disposition', `attachment; filename=playsounds_backup_${Date.now()}.zip`);
-
-  const archive = new ZipArchive({
-    zlib: { level: 9 }
-  });
-
-  archive.on('error', function(err) {
-    res.status(500).send({ error: err.message });
-  });
-
-  archive.pipe(res);
-  archive.directory(soundsDir, false);
-  archive.finalize();
+setupRoutes(app, {
+  db,
+  globalConfig,
+  customAliasesMap,
+  commandConfigSchema
 });
 
 app.listen(PORT, () => {
@@ -393,96 +233,6 @@ app.listen(PORT, () => {
   console.log(`* OBS Users: Add Browser Source: http://localhost:${PORT}/overlay`);
   console.log(`==================================================\n`);
 });
-
-function broadcastEmote(url, isZeroWidth = false, messageId = null, customX = null, customY = null) {
-  const payload = `data: ${JSON.stringify({ type: 'emote', url, isZeroWidth, messageId, customX, customY })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
-}
-
-function broadcastAudio(filename) {
-  const payload = `data: ${JSON.stringify({ type: 'audio', file: filename })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
-}
-
-function broadcastConfig() {
-  const duration = parseInt(globalConfig['cmd_!showemote_duration']) || parseInt(process.env.EMOTE_DURATION_MS) || 5000;
-  const size = parseInt(globalConfig['cmd_!showemote_size']) || parseInt(process.env.EMOTE_SIZE_PX) || 150;
-  const payload = `data: ${JSON.stringify({ type: 'config_update', durationMs: duration, sizePx: size })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
-}
-
-function broadcastBetState(bet) {
-  if (!bet) return;
-  const payloadData = {
-    description: bet.description,
-    isOpen: bet.isOpen,
-    totalPool: bet.totalPool,
-    endTime: bet.endTime || null,
-    durationMs: bet.durationMs || null,
-    choices: []
-  };
-
-  bet.choices.forEach(choice => {
-    const pool = bet.pools[choice] || 0;
-    const odds = pool > 0 ? (bet.totalPool / pool).toFixed(2) : '?';
-    
-    let usersCount = 0;
-    let topBettorName = 'N/A';
-    let topBetAmount = 0;
-    
-    for (const [user, userBet] of Object.entries(bet.userBets)) {
-      if (userBet.choice === choice) {
-        usersCount++;
-        if (userBet.amount > topBetAmount) {
-          topBetAmount = userBet.amount;
-          topBettorName = user;
-        }
-      }
-    }
-
-    const percentage = bet.totalPool > 0 ? Math.round((pool / bet.totalPool) * 100) : 50;
-
-    payloadData.choices.push({
-      name: choice,
-      totalPoints: pool,
-      ratio: odds,
-      usersCount,
-      topBetAmount,
-      topBettorName,
-      percentage
-    });
-  });
-
-  const payload = `data: ${JSON.stringify({ type: 'bet_update', bet: payloadData })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
-}
-
-function clearBetState(resultData = null) {
-  const payload = `data: ${JSON.stringify({ type: 'bet_clear', result: resultData })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
-}
-
-function broadcastChatWarState(war) {
-  if (!war) return;
-  const payloadData = {
-    emote1: war.emote1,
-    emote2: war.emote2,
-    emoteUrl1: war.emoteUrl1,
-    emoteUrl2: war.emoteUrl2,
-    cost: war.cost,
-    score1: war.score1,
-    score2: war.score2,
-    endTime: war.endTime || null,
-    durationMs: war.durationMs || null
-  };
-  const payload = `data: ${JSON.stringify({ type: 'chatwar_update', war: payloadData })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
-}
-
-function clearChatWarState(winnerData = null) {
-  const payload = `data: ${JSON.stringify({ type: 'chatwar_clear', winner: winnerData })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
-}
 
 
 
@@ -593,47 +343,6 @@ async function start() {
 
   await loadThirdPartyEmotes(BROADCASTER_USER_ID);
 
-  const parseTime = (timeStr) => {
-    if (!timeStr) return 5 * 60 * 1000; 
-    const match = timeStr.match(/^(\d+)([smh])$/);
-    if (!match) return 5 * 60 * 1000;
-    const val = parseInt(match[1], 10);
-    const unit = match[2];
-    if (unit === 's') return val * 1000;
-    if (unit === 'm') return val * 60 * 1000;
-    if (unit === 'h') return val * 60 * 60 * 1000;
-    return 5 * 60 * 1000;
-  };
-
-  const parseFlexibleTime = (timeStr) => {
-    if (/^\d+$/.test(timeStr)) return parseInt(timeStr, 10);
-    const match = timeStr.match(/^(\d+)([smh])$/i);
-    if (!match) return NaN;
-    const val = parseInt(match[1], 10);
-    const unit = match[2].toLowerCase();
-    if (unit === 's') return val * 1000;
-    if (unit === 'm') return val * 60 * 1000;
-    if (unit === 'h') return val * 60 * 60 * 1000;
-    return NaN;
-  };
-
-  const parseAmount = (amountStr) => {
-    if (!amountStr) return NaN;
-    amountStr = amountStr.toLowerCase();
-    
-    let multiplier = 1;
-    if (amountStr.endsWith('k')) multiplier = 1000;
-    else if (amountStr.endsWith('m')) multiplier = 1000000;
-    else if (amountStr.endsWith('b')) multiplier = 1000000000;
-
-    if (multiplier !== 1) {
-      amountStr = amountStr.slice(0, -1);
-    }
-    
-    const val = parseFloat(amountStr);
-    return isNaN(val) ? NaN : Math.floor(val * multiplier);
-  };
-
   // --- COMMANDS LIST ---
   const customCommands = {
     '!points': {
@@ -706,10 +415,37 @@ async function start() {
         await sendChatMessage(`Successfully set ${targetUser}'s points to ${amount}!`);
       }
     },
+    '!chatcooldown': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurory_naru';
+        if (!isMod) {
+          await sendChatMessage(`@${chatterName}, you do not have permission to edit the chat cooldown!`);
+          return;
+        }
+
+        if (args.length < 1) {
+          await sendChatMessage(`@${chatterName}, invalid format! Use: !chatcooldown <time>`);
+          return;
+        }
+
+        const cdVal = parseFlexibleTime(args[0]);
+        if (isNaN(cdVal) || cdVal < 0) {
+          await sendChatMessage(`@${chatterName}, invalid time! Use ms (1000), or 10s, 5m.`);
+          return;
+        }
+
+        const configKey = 'chat_wide_cooldown';
+        await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, cdVal, cdVal]);
+        globalConfig[configKey] = cdVal;
+        
+        await sendChatMessage(`Successfully updated chat-wide global cooldown to ${cdVal} ms!`);
+      }
+    },
     '!playsound': {
       cost: 1,
       execute: async (args, chatterName, event, hasPermission) => {
-        // if (!await isStreamerLive()) return;
+         if (!await isStreamerLive()) return;
         args = [args[0]]
         const dynamicCostRaw = globalConfig['cmd_!playsound_cost'];
         const activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
@@ -1726,7 +1462,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         globalConfig[configKey] = finalValue;
 
         if (targetCmd === '!showemote' && (setting === 'duration' || setting === 'size')) {
-          broadcastConfig();
+          broadcastConfig(globalConfig);
         }
 
         await sendChatMessage(`Successfully updated ${targetCmd} ${setting} to ${finalValue}!`);
@@ -2132,6 +1868,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
   const activeBets = new Map();
   let activeChatWar = null;
   let activeRaffle = null;
+  let lastChatWideCommandTime = 0;
 
   async function triggerRandomRaffle(triggerName) {
     if (activeRaffle) return; 
@@ -2269,8 +2006,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           if (db) {
             const now = Date.now();
             const user = await db.get('SELECT * FROM users WHERE username = ?', chatterName);
-            // const isLive = await isStreamerLive();
-            const isLive = true
+             const isLive = await isStreamerLive();
+
 
             if (!user) {
               await db.run('INSERT INTO users (username, points, last_message_time, true_last_chat_time) VALUES (?, ?, ?, ?)', [chatterName, isLive ? pointReward : 0, now, now]);
@@ -2402,6 +2139,14 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             if (!isMod) {
               const now = Date.now();
               
+              const chatWideCdRaw = globalConfig['chat_wide_cooldown'];
+              const chatWideCd = chatWideCdRaw !== undefined ? parseInt(chatWideCdRaw, 10) : 1500;
+              
+              if (now - lastChatWideCommandTime < chatWideCd) {
+                console.log(`[RATE LIMIT] Chat-wide cooldown active. Ignoring command from ${chatterName}.`);
+                return;
+              }
+
               const globalCdRaw = globalConfig['cmd_!global_cooldown'];
               const globalCd = globalCdRaw !== undefined ? parseInt(globalCdRaw, 10) : COMMAND_COOLDOWN;
               const lastGlobalTime = userCooldowns.get(chatterName) || 0;
@@ -2424,6 +2169,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               }
 
               userCooldowns.set(chatterName, now);
+              lastChatWideCommandTime = now;
             }
             
             await command.execute(args, chatterName, event, hasPermission);
@@ -2432,13 +2178,22 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
  
           if (chatText.toLowerCase().startsWith('!showemote ')) {
-            // if (!await isStreamerLive()) return;
+             if (!await isStreamerLive()) return;
 
             const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'vip'].includes(b.set_id));
             const isMod = hasPermission || chatterName === TARGET_CHANNEL;
 
             if (!isMod) {
               const now = Date.now();
+              
+              const chatWideCdRaw = globalConfig['chat_wide_cooldown'];
+              const chatWideCd = chatWideCdRaw !== undefined ? parseInt(chatWideCdRaw, 10) : 1500;
+              
+              if (now - lastChatWideCommandTime < chatWideCd) {
+                console.log(`[RATE LIMIT] Chat-wide cooldown active. Ignoring !showemote from ${chatterName}.`);
+                return;
+              }
+
               const globalCdRaw = globalConfig['cmd_!global_cooldown'];
               const globalCd = globalCdRaw !== undefined ? parseInt(globalCdRaw, 10) : COMMAND_COOLDOWN;
               const lastGlobalTime = userCooldowns.get(chatterName) || 0;
@@ -2461,6 +2216,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               }
 
               userCooldowns.set(chatterName, now);
+              lastChatWideCommandTime = now;
             }
 
             const dynamicShowEmoteCost = parseInt(globalConfig['cmd_!showemote_cost'], 10) || 0;
