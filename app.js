@@ -2152,7 +2152,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     }, durationMs);
   }
 
-  function connectTwitch() {
+  async function connectTwitch() {
+    try {
+      USER_ACCESS_TOKEN = await getValidAccessToken();
+    } catch (err) {
+      console.error('! Failed to refresh token before reconnecting:', err);
+    }
+
     const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
     let isReconnecting = false;
 
