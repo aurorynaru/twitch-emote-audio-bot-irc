@@ -430,22 +430,39 @@ async function start() {
           return;
         }
 
-        if (args.length < 1) {
-          await sendChatMessage(`@${chatterName}, invalid format! Use: !chatcooldown <time>`);
-          return;
-        }
+        if (args.length === 1) {
+          const cdVal = parseFlexibleTime(args[0]);
+          if (isNaN(cdVal) || cdVal < 0) {
+            await sendChatMessage(`@${chatterName}, invalid time! Use ms (1000), or 10s, 5m.`);
+            return;
+          }
 
-        const cdVal = parseFlexibleTime(args[0]);
-        if (isNaN(cdVal) || cdVal < 0) {
-          await sendChatMessage(`@${chatterName}, invalid time! Use ms (1000), or 10s, 5m.`);
-          return;
-        }
+          const configKey = 'chat_wide_cooldown';
+          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, cdVal, cdVal]);
+          globalConfig[configKey] = cdVal;
+          
+          await sendChatMessage(`Successfully updated chat-wide global cooldown to ${cdVal} ms!`);
+        } else if (args.length === 2) {
+          const targetCmd = args[0].toLowerCase();
+          if (!targetCmd.startsWith('!')) {
+            await sendChatMessage(`@${chatterName}, invalid command! Use: !chatcooldown !command <time>`);
+            return;
+          }
+          
+          const cdVal = parseFlexibleTime(args[1]);
+          if (isNaN(cdVal) || cdVal < 0) {
+            await sendChatMessage(`@${chatterName}, invalid time! Use ms (1000), or 10s, 5m.`);
+            return;
+          }
 
-        const configKey = 'chat_wide_cooldown';
-        await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, cdVal, cdVal]);
-        globalConfig[configKey] = cdVal;
-        
-        await sendChatMessage(`Successfully updated chat-wide global cooldown to ${cdVal} ms!`);
+          const configKey = `cmd_${targetCmd}_global_chat_cooldown`;
+          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, cdVal, cdVal]);
+          globalConfig[configKey] = cdVal;
+          
+          await sendChatMessage(`Successfully updated GLOBAL chat cooldown for ${targetCmd} to ${cdVal} ms!`);
+        } else {
+          await sendChatMessage(`@${chatterName}, invalid format! Use: !chatcooldown <time> OR !chatcooldown <!command> <time>`);
+        }
       }
     },
     '!playsound': {
@@ -2187,6 +2204,18 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 commandCooldowns.set(`${chatterName}_${commandName}`, now);
               }
 
+              const globalCmdCdRaw = globalConfig[`cmd_${commandName}_global_chat_cooldown`];
+              const globalCmdCd = globalCmdCdRaw !== undefined ? parseInt(globalCmdCdRaw, 10) : 0;
+              
+              if (globalCmdCd > 0) {
+                const lastGlobalCmdTime = commandCooldowns.get(`GLOBAL_${commandName}`) || 0;
+                if (now - lastGlobalCmdTime < globalCmdCd) {
+                  console.log(`[RATE LIMIT] ${commandName} is on global chat cooldown.`);
+                  return;
+                }
+                commandCooldowns.set(`GLOBAL_${commandName}`, now);
+              }
+
               userCooldowns.set(chatterName, now);
               lastChatWideCommandTime = now;
             }
@@ -2232,6 +2261,18 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                   return;
                 }
                 commandCooldowns.set(`${chatterName}_!showemote`, now);
+              }
+
+              const globalCmdCdRaw = globalConfig[`cmd_!showemote_global_chat_cooldown`];
+              const globalCmdCd = globalCmdCdRaw !== undefined ? parseInt(globalCmdCdRaw, 10) : 0;
+              
+              if (globalCmdCd > 0) {
+                const lastGlobalCmdTime = commandCooldowns.get(`GLOBAL_!showemote`) || 0;
+                if (now - lastGlobalCmdTime < globalCmdCd) {
+                  console.log(`[RATE LIMIT] !showemote is on global chat cooldown.`);
+                  return;
+                }
+                commandCooldowns.set(`GLOBAL_!showemote`, now);
               }
 
               userCooldowns.set(chatterName, now);
