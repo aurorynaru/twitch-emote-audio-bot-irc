@@ -113,6 +113,11 @@ async function initDb() {
   }
 
   await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_users_points ON users (points DESC);
+    CREATE INDEX IF NOT EXISTS idx_users_true_last_chat_time ON users (true_last_chat_time);
+  `);
+
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS app_config (
       key TEXT PRIMARY KEY,
       value TEXT
@@ -360,10 +365,10 @@ async function start() {
           targetUser = args[0].replace('@', '').toLowerCase();
         }
 
-        const user = await db.get('SELECT points FROM users WHERE username = ?', targetUser);
+        let user = await db.get('SELECT points FROM users WHERE username = ?', targetUser);
         if (!user) {
-          await sendChatMessage(`${targetUser} has not typed yet in this chat!`);
-          return;
+          await db.run('INSERT OR IGNORE INTO users (username, points) VALUES (?, 0)', [targetUser]);
+          user = { points: 0 };
         }
 
         const points = user.points;
