@@ -78,7 +78,11 @@ const duelWinMessages = [
   "{winner} absolutely destroyed {loser} and took their {amount} points!",
   "{winner} styled on {loser} and walked away with {amount} points!",
   "{loser} tripped on a rock, giving {winner} an easy {amount} points victory!",
-  "It was a close battle, but {winner} came out on top against {loser} for {amount} points!"
+  "It was a close battle, but {winner} came out on top against {loser} for {amount} points!",
+  "{winner} just sent {loser} to the shadow realm and claimed {amount} points!",
+  "EZ Clap for {winner}! {loser} stood no chance. (+{amount} points)",
+  "{winner} outsmarted {loser} in combat and secured {amount} points!",
+  "Flawless victory for {winner} over {loser}! Here's {amount} points!"
 ];
 
 const duelTimeoutMessages = [
@@ -823,10 +827,6 @@ async function start() {
               // Refund
               await db.run('UPDATE users SET points = points + ? WHERE username = ?', [betAmount, chatterName]);
               activeDuels.delete(target);
-              const msg = duelTimeoutMessages[Math.floor(Math.random() * duelTimeoutMessages.length)]
-                .replace('{target}', `@${target}`)
-                .replace('{challenger}', `${chatterName}`);
-              await sendChatMessage(msg);
             }
           }
         }, 60000);
@@ -838,14 +838,14 @@ async function start() {
           timeoutId: timeoutId
         });
 
-        await sendChatMessage(`${target} you have been challenged to a duel by ${chatterName} for ${betAmount} points! Type !acceptduel within 60s to accept!`);
+        await sendChatMessage(`⚔️ ${chatterName} challenged ${target} for ${betAmount} pts! Type !acceptduel in 60s!`);
       }
     },
     '!acceptduel': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (!activeDuels.has(chatterName)) {
-          await sendChatMessage(`${chatterName} you have no pending duel requests!`);
+        //  await sendChatMessage(`${chatterName} you have no pending duel requests!`);
           return;
         }
 
@@ -887,7 +887,7 @@ async function start() {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (!activeDuels.has(chatterName)) {
-          await sendChatMessage(`${chatterName} you have no pending duel requests to decline!`);
+          //await sendChatMessage(`${chatterName} you have no pending duel requests to decline!`);
           return;
         }
 
