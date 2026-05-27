@@ -222,6 +222,11 @@ function startTimerAnimation(endTime, durationMs) {
 function updateBetUI(bet) {
   if (!bet || !bet.choices || bet.choices.length < 2) return;
   
+  if (!bet.isOpen) {
+    document.getElementById('bet-container').classList.remove('visible');
+    return;
+  }
+  
   const container = document.getElementById('bet-container');
   container.classList.add('visible');
 

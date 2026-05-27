@@ -366,7 +366,10 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         let targetUser = chatterName;
         if (args.length > 0) {
-          targetUser = args[0].replace('@', '').toLowerCase();
+          const rawTarget = args[0].replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
+          if (rawTarget.length > 0) {
+            targetUser = rawTarget;
+          }
         }
 
         let user = await db.get('SELECT points FROM users WHERE username = ?', targetUser);
@@ -582,7 +585,7 @@ async function start() {
         }
 
         const amountInput = args[0].toLowerCase();
-        const targetUsers = args.slice(1).map(u => u.replace('@', '').toLowerCase());
+        const targetUsers = args.slice(1).map(u => u.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()).filter(u => u.length > 0);
 
         for (const target of targetUsers) {
           const tUser = await db.get('SELECT points FROM users WHERE username = ?', target);
@@ -661,7 +664,7 @@ async function start() {
         }
 
         const amountInput = args[0].toLowerCase();
-        const targetUsers = args.slice(1).map(u => u.replace('@', '').toLowerCase());
+        const targetUsers = args.slice(1).map(u => u.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()).filter(u => u.length > 0);
         
         const amountToDeduct = parseAmount(amountInput);
         if (isNaN(amountToDeduct) || amountToDeduct <= 0) {
@@ -779,8 +782,11 @@ async function start() {
           return;
         }
 
-        const targetRaw = args[0];
-        const target = targetRaw.startsWith('@') ? targetRaw.slice(1).toLowerCase() : targetRaw.toLowerCase();
+        const target = args[0].replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
+        if (!target) {
+          await sendChatMessage(`${chatterName} invalid user provided!`);
+          return;
+        }
 
         if (target === chatterName) {
           await sendChatMessage(`${chatterName} you cannot duel yourself!`);
@@ -1464,7 +1470,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
         const ratioTexts = bet.choices.map(choice => {
           const pool = bet.pools[choice];
-          const odds = pool > 0 ? (bet.totalPool / pool).toFixed(2) : '?';
+          const odds = pool > 0 ? (bet.totalPool / pool).toFixed(2) : 0;
           return `${choice}: ${odds}x`;
         });
 
@@ -2136,19 +2142,23 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             if (isVote1 || isVote2) {
               const choice = isVote1 ? activeChatWar.emote1 : activeChatWar.emote2;
               const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
-              if (user && user.points >= activeChatWar.cost) {
+              
+              if (activeChatWar && user && user.points >= activeChatWar.cost) {
                 if (!activeChatWar.userVotes[chatterName]) {
                   activeChatWar.userVotes[chatterName] = { choice, spent: 0 };
                 }
                    
                 if (activeChatWar.userVotes[chatterName].choice === choice) {
                   await db.run('UPDATE users SET points = points - ? WHERE username = ?', [activeChatWar.cost, chatterName]);
-                  activeChatWar.userVotes[chatterName].spent += activeChatWar.cost;
-                  activeChatWar.totalPool += activeChatWar.cost;
-                  if (choice === activeChatWar.emote1) activeChatWar.score1++;
-                  else activeChatWar.score2++;
-                      
-                  broadcastChatWarState(activeChatWar);
+                  
+                  if (activeChatWar) {
+                    activeChatWar.userVotes[chatterName].spent += activeChatWar.cost;
+                    activeChatWar.totalPool += activeChatWar.cost;
+                    if (choice === activeChatWar.emote1) activeChatWar.score1++;
+                    else activeChatWar.score2++;
+                        
+                    broadcastChatWarState(activeChatWar);
+                  }
                 }
               }
             }
