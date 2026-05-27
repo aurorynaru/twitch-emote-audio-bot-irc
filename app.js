@@ -684,7 +684,7 @@ async function start() {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
        
-        if( hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurory_naru') {
+        if( chatterName === 'aurory_naru' || hasPermission || chatterName === TARGET_CHANNEL  ) {
           if (args.length < 1) {
             await sendChatMessage(`${chatterName} invalid command! Try !masspointsadd 1000 10m`);
             return;
@@ -717,7 +717,7 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
        
 
-        if (  hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurory_naru') { 
+        if ( chatterName === 'aurory_naru' ||  hasPermission || chatterName === TARGET_CHANNEL) { 
 
           
                   if (args.length < 1) {
