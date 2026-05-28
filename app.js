@@ -22,7 +22,7 @@ const AUTH_CODE = process.env.AUTH_CODE
 const TARGET_CHANNEL = process.env.TARGET_CHANNEL;
 let USER_ACCESS_TOKEN = '';
 let BOT_USERNAME = ''
-const TOKEN_FILE = path.join(__dirname, 'tokens.json');
+const TOKEN_FILE = path.join(__dirname, 'data', 'tokens.json');
 let COMMAND_COOLDOWN=process.env.COMMAND_COOLDOWN || 1000
 
 const DB_PATH = path.join(__dirname, 'data', 'database.sqlite');
@@ -82,7 +82,12 @@ const duelWinMessages = [
   "{winner} just sent {loser} to the shadow realm and claimed {amount} points!",
   "EZ Clap for {winner}! {loser} stood no chance. (+{amount} points)",
   "{winner} outsmarted {loser} in combat and secured {amount} points!",
-  "Flawless victory for {winner} over {loser}! Here's {amount} points!"
+  "Flawless victory for {winner} over {loser}! Here's {amount} points!",
+  "{winner} hit {loser} with a folding chair! {amount} points secured!",
+  "{loser} thought they had a chance, but {winner} took their {amount} points anyway!",
+  "A swift kick to the shins by {winner} leaves {loser} crying without their {amount} points!",
+  "{winner} parried {loser}'s attack and counter-struck for {amount} points!",
+  "{winner} 360-no-scoped {loser} for an easy {amount} points!"
 ];
 
 const duelTimeoutMessages = [
@@ -714,7 +719,7 @@ async function start() {
           const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
   
           await db.run(`UPDATE users SET points = points + ? WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [amount, threshold]);
-          await sendChatMessage(`${TARGET_CHANNEL} mass added ${amount} points to everyone who chatted in the last ${timeStr}!`);
+          await sendChatMessage(`${chatterName} mass added ${amount} points to everyone who chatted in the last ${timeStr}!`);
         
         } else {
           await sendChatMessage(`${chatterName} you do not have permission to mass add points!`);
@@ -749,7 +754,7 @@ async function start() {
                   const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
           
                   await db.run(`UPDATE users SET points = MAX(0, points - ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [amount, threshold]);
-                  await sendChatMessage(`${TARGET_CHANNEL} mass removed ${amount} points from everyone who chatted in the last ${timeStr}!`);
+                  await sendChatMessage(`${chatterName} mass removed ${amount} points from everyone who chatted in the last ${timeStr}!`);
         } else {
           
            await sendChatMessage(`${chatterName} you do not have permission to mass sub points!`);
@@ -1874,6 +1879,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       if (data && data.data) {
         isStreamLiveCached = data.data.length > 0;
         lastStreamCheckTime = Date.now();
+      } else {
+        console.error('! Twitch API Error during isStreamerLive:', data);
       }
     } catch (e) {
       console.error('! Failed to check stream status:', e);
@@ -2227,7 +2234,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               await db.run('UPDATE users SET points = points - ? WHERE username = ?', [activeCost, chatterName]);
             }
 
-            const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'vip'].includes(b.set_id)) || chatterName == "aurory_naru";
+            const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator'].includes(b.set_id)) || chatterName == "aurory_naru";
             const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName == "aurory_naru";
 
             if (!isMod) {
