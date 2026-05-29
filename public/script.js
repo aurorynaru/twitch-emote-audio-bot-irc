@@ -34,6 +34,8 @@ fetch('/api/config')
         const customY = parsedData.customY !== undefined ? parsedData.customY : null;
 
         displayEmote(emoteUrl, isZeroWidth, messageId, customX, customY);
+      } else if (parsedData.type === 'clear_emotes') {
+        document.querySelectorAll('.emote-img').forEach(img => img.remove());
       }
     };
   })

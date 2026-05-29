@@ -10,7 +10,7 @@ import cors from 'cors';
 dotenv.config();
 
 import { parseFlexibleTime, parseAmount, parseTime } from './utils.js';
-import { setupRoutes, broadcastEmote, broadcastAudio, broadcastConfig, broadcastBetState, clearBetState, broadcastChatWarState, clearChatWarState } from './routes.js';
+import { setupRoutes, broadcastEmote, broadcastAudio, broadcastConfig, broadcastBetState, clearBetState, broadcastChatWarState, clearChatWarState, clearEmotes } from './routes.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -58,6 +58,7 @@ const commandConfigSchema = {
   '!chatwarcancel': ['cost', 'cooldown'],
   '!global': ['cooldown'],
   '!chatcooldown': ['cooldown'],
+  '!clearoverlay': ['cooldown'],
   '!duel': ['cooldown'],
   '!acceptduel': ['cooldown'],
   '!declineduel': ['cooldown'],
@@ -1160,6 +1161,39 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         await sendChatMessage(`CHAT WAR CANCELLED: All points (${refunded} total) have been refunded!`);
       }
     },
+    '!clearoverlay': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurory_naru';
+        if (!isMod) {
+          await sendChatMessage(`${chatterName} you do not have permission to clear the overlay!`);
+          return;
+        }
+
+        let cleared = false;
+        
+        if (activeBets.has('default')) {
+          const bet = activeBets.get('default');
+          bet.isHidden = true;
+          clearBetState(null);
+          cleared = true;
+        }
+        
+        if (activeChatWar) {
+          activeChatWar.isHidden = true;
+          clearChatWarState(null);
+          cleared = true;
+        }
+
+        clearEmotes();
+
+        if (cleared) {
+          await sendChatMessage(`Overlay cleared by ${chatterName}! (Bets and Chatwars will still continue in the background)`);
+        } else {
+          await sendChatMessage(`Overlay emotes cleared!`);
+        }
+      }
+    },
     '!betstart': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
@@ -1872,9 +1906,18 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       return isStreamLiveCached;
     }
     try {
-      const res = await fetch(`https://api.twitch.tv/helix/streams?user_id=${BROADCASTER_USER_ID}`, {
+      let res = await fetch(`https://api.twitch.tv/helix/streams?user_id=${BROADCASTER_USER_ID}`, {
         headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
       });
+      
+      if (res.status === 401) {
+        console.log('* Twitch token expired during runtime. Attempting to refresh...');
+        USER_ACCESS_TOKEN = await getValidAccessToken();
+        res = await fetch(`https://api.twitch.tv/helix/streams?user_id=${BROADCASTER_USER_ID}`, {
+          headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
+        });
+      }
+
       const data = await res.json();
       if (data && data.data) {
         isStreamLiveCached = data.data.length > 0;

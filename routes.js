@@ -180,7 +180,7 @@ export function broadcastConfig(globalConfig) {
 }
 
 export function broadcastBetState(bet) {
-  if (!bet) return;
+  if (!bet || bet.isHidden) return;
   const payloadData = {
     description: bet.description,
     isOpen: bet.isOpen,
@@ -231,7 +231,7 @@ export function clearBetState(resultData = null) {
 }
 
 export function broadcastChatWarState(war) {
-  if (!war) return;
+  if (!war || war.isHidden) return;
   const payloadData = {
     emote1: war.emote1,
     emote2: war.emote2,
@@ -249,5 +249,10 @@ export function broadcastChatWarState(war) {
 
 export function clearChatWarState(winnerData = null) {
   const payload = `data: ${JSON.stringify({ type: 'chatwar_clear', winner: winnerData })}\n\n`;
+  sseClients.forEach(client => client.write(payload));
+}
+
+export function clearEmotes() {
+  const payload = `data: ${JSON.stringify({ type: 'clear_emotes' })}\n\n`;
   sseClients.forEach(client => client.write(payload));
 }
