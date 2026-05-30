@@ -61,6 +61,7 @@ const builtInAliases = {
   '!cmdlist': '!commandlist',
   '!roulette': '!gamble',
   '!roll': '!gamble',
+  '!setrewards': '!editrewards'
 };
 
 const commandConfigSchema = {
@@ -96,7 +97,8 @@ const commandConfigSchema = {
   '!masspointsadd': ['cooldown'],
   '!masspointssub': ['cooldown'],
   '!editpoints': ['cooldown'],
-  '!toppoints':['cooldown']
+  '!toppoints': ['cooldown'],
+  '!editrewards': ['cooldown']
 };
 
 const activeDuels = new Map();
@@ -1764,6 +1766,51 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         await sendChatMessage(`Successfully enabled ${cmdName}!`);
       }
     },
+    '!editrewards': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+        if (!isMod) {
+          await sendChatMessage(`${chatterName} you do not have permission to edit rewards!`);
+          return;
+        }
+
+        if (args.length < 2) {
+          await sendChatMessage(`Usage: !editrewards <type> <val1> [val2]. Types: sub, giftsub, watchstreak, raffle, multiraffle`);
+          return;
+        }
+
+        const type = args[0].toLowerCase();
+        const val1 = parseInt(args[1], 10);
+        const val2 = args.length > 2 ? parseInt(args[2], 10) : null;
+
+        if (isNaN(val1)) {
+          await sendChatMessage(`Invalid value: ${args[1]}`);
+          return;
+        }
+
+        if (type === 'sub' || type === 'giftsub' || type === 'watchstreak') {
+          const key = `reward_${type}`;
+          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [key, val1, val1]);
+          globalConfig[key] = val1.toString();
+          await sendChatMessage(`Reward for ${type} updated to ${val1}.`);
+        } else if (type === 'raffle' || type === 'multiraffle') {
+          if (val2 === null || isNaN(val2)) {
+            await sendChatMessage(`Usage for ${type}: !editrewards ${type} <min> <max>`);
+            return;
+          }
+          const keyMin = `reward_${type}_min`;
+          const keyMax = `reward_${type}_max`;
+          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [keyMin, val1, val1]);
+          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [keyMax, val2, val2]);
+          globalConfig[keyMin] = val1.toString();
+          globalConfig[keyMax] = val2.toString();
+          await sendChatMessage(`Reward range for ${type} updated to ${val1} - ${val2}.`);
+        } else {
+          await sendChatMessage(`Unknown reward type: ${type}. Valid types: sub, giftsub, watchstreak, raffle, multiraffle`);
+        }
+      }
+    },
     '!raffle': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
@@ -2041,14 +2088,19 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     if (activeRaffle) return; 
 
     const isMulti = Math.random() < 0.5;
-    const amount = Math.floor(Math.random() * (25000 - 1500 + 1)) + 1500;
+    
+    const minPoints = parseInt(globalConfig['reward_raffle_min'] || '1500', 10);
+    const maxPoints = parseInt(globalConfig['reward_raffle_max'] || '25000', 10);
+    const amount = Math.floor(Math.random() * (maxPoints - minPoints + 1)) + minPoints;
     
     const durationMinutes = Math.floor(Math.random() * 3) + 1;
     const durationMs = durationMinutes * 60000;
     const durationStr = `${durationMinutes}m`;
 
     if (isMulti) {
-      const numWinners = Math.floor(Math.random() * (12 - 3 + 1)) + 3;
+      const minWinnersRaffle = parseInt(globalConfig['reward_multiraffle_min'] || '3', 10);
+      const maxWinnersRaffle = parseInt(globalConfig['reward_multiraffle_max'] || '12', 10);
+      const numWinners = Math.floor(Math.random() * (maxWinnersRaffle - minWinnersRaffle + 1)) + minWinnersRaffle;
       activeRaffle = {
         type: 'multi',
         amount,
@@ -2508,15 +2560,27 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           
             if (msgId === 'sub' || msgId === 'resub') {
               if (db && chatterName) {
-                await db.run('INSERT INTO users (username, points) VALUES (?, 5000) ON CONFLICT(username) DO UPDATE SET points = points + 5000', [chatterName]);
-                console.log(`* [POINTS] Awarded 5000 points to ${chatterName} for subscribing!`);
+                const subReward = parseInt(globalConfig['reward_sub'] || '5000', 10);
+                await db.run('INSERT INTO users (username, points) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET points = points + ?', [chatterName, subReward, subReward]);
+                console.log(`* [POINTS] Awarded ${subReward} points to ${chatterName} for subscribing!`);
                 await triggerRandomRaffle('subscription');
               }
             } else if (msgId === 'subgift') {
               if (db && chatterName) {
-                await db.run('INSERT INTO users (username, points) VALUES (?, 5000) ON CONFLICT(username) DO UPDATE SET points = points + 5000', [chatterName]);
-                console.log(`* [POINTS] Awarded 5000 points to ${chatterName} for gifting sub(s)!`);
+                const giftReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
+                await db.run('INSERT INTO users (username, points) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET points = points + ?', [chatterName, giftReward, giftReward]);
+                console.log(`* [POINTS] Awarded ${giftReward} points to ${chatterName} for gifting sub(s)!`);
                 await triggerRandomRaffle('gift sub');
+              }
+            } else if (msgId === 'viewermilestone') {
+              if (tags['msg-param-category'] === 'watch-streak') {
+                const streak = parseInt(tags['msg-param-value'], 10) || 0;
+                if (streak > 0 && db && chatterName) {
+                  const streakMult = parseInt(globalConfig['reward_watchstreak'] || '1000', 10);
+                  const reward = streak * streakMult;
+                  await db.run('INSERT INTO users (username, points) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET points = points + ?', [chatterName, reward, reward]);
+                  console.log(`* [POINTS] Awarded ${reward} points to ${chatterName} for a ${streak} watch streak!`);
+                }
               }
             }
           } else if (command === 'CAP') {

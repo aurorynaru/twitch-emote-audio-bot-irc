@@ -123,7 +123,16 @@ export function setupRoutes(app, {
         success: true,
         defaultCommands,
         customCommands,
-        sounds
+        sounds,
+        rewards: {
+          sub: parseInt(globalConfig['reward_sub'] || '5000', 10),
+          giftsub: parseInt(globalConfig['reward_giftsub'] || '5000', 10),
+          watchstreak: parseInt(globalConfig['reward_watchstreak'] || '1000', 10),
+          raffle_min: parseInt(globalConfig['reward_raffle_min'] || '1500', 10),
+          raffle_max: parseInt(globalConfig['reward_raffle_max'] || '25000', 10),
+          multiraffle_min: parseInt(globalConfig['reward_multiraffle_min'] || '3', 10),
+          multiraffle_max: parseInt(globalConfig['reward_multiraffle_max'] || '12', 10)
+        }
       });
     } catch (error) {
       res.status(500).json({ success: false, error: error.message });
