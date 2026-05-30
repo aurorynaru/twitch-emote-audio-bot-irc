@@ -2160,6 +2160,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           const isSub = tags['subscriber'] === '1' || (tags['badges'] && tags['badges'].includes('founder'));
           const pointReward = isSub ? 750 : 500;
           const bits = parseInt(tags['bits']) || 0;
+          if (bits > 0) {
+            console.log(`[BITS EVENT DETECTED] Raw tags:`, JSON.stringify(tags));
+          }
 
           if (bits > 0 && chatterName && !ignoredBots.includes(chatterName)) {
             const pointsToAward = bits * 10;
@@ -2490,6 +2493,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           } else if (command === 'USERNOTICE') {
             const chatterName = tags['display-name'] ? tags['display-name'].toLowerCase() : (tags['login'] || '').toLowerCase();
             const msgId = tags['msg-id'];
+            
+            console.log(`[USERNOTICE DETECTED] MsgId: ${msgId}, Chatter: ${chatterName}, Raw Tags:`, JSON.stringify(tags));
           
             if (msgId === 'sub' || msgId === 'resub') {
               if (db && chatterName) {
