@@ -344,7 +344,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/playsounds', express.static(path.join(__dirname, 'data', 'playsounds')));
 
 setupRoutes(app, {
-  db,
+  getDb: () => db,
   globalConfig,
   customAliasesMap,
   commandConfigSchema

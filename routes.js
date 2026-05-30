@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 export let sseClients = [];
 
 export function setupRoutes(app, {
-  db,
+  getDb,
   globalConfig,
   customAliasesMap,
   commandConfigSchema
@@ -152,6 +152,8 @@ export function setupRoutes(app, {
 
   app.get('/api/dashboard/stats', async (req, res) => {
     try {
+      const db = getDb();
+      if (!db) return res.status(503).json({ success: false, error: 'Database not ready' });
       const userStats = await db.all('SELECT * FROM user_stats');
       const emoteStats = await db.all('SELECT * FROM emote_stats');
       res.json({ success: true, userStats, emoteStats });
