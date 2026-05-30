@@ -447,7 +447,7 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurory_naru';
         if (!isMod) {
-          await sendChatMessage(`@${chatterName}, you do not have permission to edit points!`);
+        //  await sendChatMessage(`@${chatterName}, you do not have permission to edit points!`);
           return;
         }
 
@@ -473,7 +473,7 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurory_naru';
         if (!isMod) {
-          await sendChatMessage(`@${chatterName}, you do not have permission to edit the chat cooldown!`);
+        //  await sendChatMessage(`@${chatterName}, you do not have permission to edit the chat cooldown!`);
           return;
         }
 
@@ -551,7 +551,7 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurory_naru';
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to delete playsounds!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to delete playsounds!`);
           return;
         }
 
@@ -688,7 +688,7 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-          await sendChatMessage(`@${chatterName}, you do not have permission to remove points!`);
+        //  await sendChatMessage(`@${chatterName}, you do not have permission to remove points!`);
           return;
         }
 
@@ -751,7 +751,7 @@ async function start() {
           await sendChatMessage(`${chatterName} mass added ${amount} points to everyone who chatted in the last ${timeStr}!`);
         
         } else {
-          await sendChatMessage(`${chatterName} you do not have permission to mass add points!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to mass add points!`);
           return;
         }
 
@@ -786,7 +786,7 @@ async function start() {
                   await sendChatMessage(`${chatterName} mass removed ${amount} points from everyone who chatted in the last ${timeStr}!`);
         } else {
           
-           await sendChatMessage(`${chatterName} you do not have permission to mass sub points!`);
+         //  await sendChatMessage(`${chatterName} you do not have permission to mass sub points!`);
            return;
       
         }
@@ -988,7 +988,7 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to start chat wars!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to start chat wars!`);
           return;
         }
 
@@ -1166,7 +1166,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to cancel chat war!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to cancel chat war!`);
           return;
         }
 
@@ -1194,7 +1194,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurory_naru';
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to clear the overlay!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to clear the overlay!`);
           return;
         }
 
@@ -1227,7 +1227,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to start bets!`);
+         // await sendChatMessage(`${chatterName} you do not have permission to start bets!`);
           return;
         }
 
@@ -1342,7 +1342,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to stop bets!`);
+         //  await sendChatMessage(`${chatterName} you do not have permission to stop bets!`);
           return;
         }
 
@@ -1437,7 +1437,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to cancel bets!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to cancel bets!`);
           return;
         }
 
@@ -1549,7 +1549,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to edit commands!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to edit commands!`);
           return;
         }
 
@@ -1626,7 +1626,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to add commands!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to add commands!`);
           return;
         }
 
@@ -1665,7 +1665,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to delete commands!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to delete commands!`);
           return;
         }
 
@@ -1701,7 +1701,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to disable commands!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to disable commands!`);
           return;
         }
 
@@ -1744,7 +1744,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to enable commands!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to enable commands!`);
           return;
         }
 
@@ -1771,7 +1771,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to edit rewards!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to edit rewards!`);
           return;
         }
 
@@ -1816,7 +1816,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to start raffles!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to start raffles!`);
           return;
         }
 
@@ -1876,7 +1876,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-          await sendChatMessage(`${chatterName} you do not have permission to start raffles!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to start raffles!`);
           return;
         }
 
@@ -2093,9 +2093,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     const maxPoints = parseInt(globalConfig['reward_raffle_max'] || '25000', 10);
     const amount = Math.floor(Math.random() * (maxPoints - minPoints + 1)) + minPoints;
     
-    const durationMinutes = Math.floor(Math.random() * 3) + 1;
+    const durationMinutes = 1;
     const durationMs = durationMinutes * 60000;
-    const durationStr = `${durationMinutes}m`;
+    const durationStr = `1 minute`;
 
     if (isMulti) {
       const minWinnersRaffle = parseInt(globalConfig['reward_multiraffle_min'] || '3', 10);
@@ -2498,7 +2498,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                   }
                 });
               } else if (fragment.type === 'mention') {
-                tokens.push({ type: 'text', text: `@${fragment.mention.user_name}`, original: `@${fragment.mention.user_name}` });
+                tokens.push({ type: 'text', text: `${fragment.mention.user_name}` , original: `@${fragment.mention.user_name}` });
               }
             });
 
