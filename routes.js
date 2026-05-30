@@ -73,7 +73,7 @@ export function setupRoutes(app, {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
   });
 
-  app.get('/api/dashboard-data', (req, res) => {
+  app.get('/api/dashboard/commands', (req, res) => {
     try {
       const defaultSettingsFallback = {
         '!showemote': { cost: 0, duration: parseInt(process.env.EMOTE_DURATION_MS) || 5000, size: parseInt(process.env.EMOTE_SIZE_PX) || 150, cooldown: 0 },
@@ -81,7 +81,6 @@ export function setupRoutes(app, {
         '!global': { cooldown: parseInt(process.env.COMMAND_COOLDOWN) || 1000 }
       };
 
-      // 1. Default Commands
       const defaultCommands = Object.keys(commandConfigSchema).map(cmd => {
         return {
           command: cmd,
@@ -109,6 +108,14 @@ export function setupRoutes(app, {
         });
       });
 
+      res.json({ success: true, defaultCommands, customCommands });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/api/dashboard/sounds', (req, res) => {
+    try {
       const soundsDir = path.join(__dirname, 'data', 'playsounds');
       let sounds = [];
       if (fs.existsSync(soundsDir)) {
@@ -118,12 +125,16 @@ export function setupRoutes(app, {
           return { filename: f, uploadedAt: stats.mtimeMs };
         });
       }
+      res.json({ success: true, sounds });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
 
+  app.get('/api/dashboard/config', (req, res) => {
+    try {
       res.json({
         success: true,
-        defaultCommands,
-        customCommands,
-        sounds,
         rewards: {
           sub: parseInt(globalConfig['reward_sub'] || '5000', 10),
           giftsub: parseInt(globalConfig['reward_giftsub'] || '5000', 10),
@@ -134,6 +145,16 @@ export function setupRoutes(app, {
           multiraffle_max: parseInt(globalConfig['reward_multiraffle_max'] || '12', 10)
         }
       });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/api/dashboard/stats', async (req, res) => {
+    try {
+      const userStats = await db.all('SELECT * FROM user_stats');
+      const emoteStats = await db.all('SELECT * FROM emote_stats');
+      res.json({ success: true, userStats, emoteStats });
     } catch (error) {
       res.status(500).json({ success: false, error: error.message });
     }

@@ -163,6 +163,45 @@ async function initDb() {
   `);
 
   await db.exec(`
+    CREATE TABLE IF NOT EXISTS user_stats (
+      username TEXT PRIMARY KEY,
+      duels_played INTEGER DEFAULT 0,
+      duels_won INTEGER DEFAULT 0,
+      duels_lost INTEGER DEFAULT 0,
+      duels_points_won INTEGER DEFAULT 0,
+      duels_points_lost INTEGER DEFAULT 0,
+      raffles_joined INTEGER DEFAULT 0,
+      raffles_won INTEGER DEFAULT 0,
+      raffles_points_won INTEGER DEFAULT 0,
+      gamble_played INTEGER DEFAULT 0,
+      gamble_won INTEGER DEFAULT 0,
+      gamble_lost INTEGER DEFAULT 0,
+      gamble_points_won INTEGER DEFAULT 0,
+      gamble_points_lost INTEGER DEFAULT 0,
+      bets_played INTEGER DEFAULT 0,
+      bets_won INTEGER DEFAULT 0,
+      bets_lost INTEGER DEFAULT 0,
+      bets_points_bet INTEGER DEFAULT 0,
+      bets_points_won INTEGER DEFAULT 0,
+      bets_points_lost INTEGER DEFAULT 0,
+      chatwar_spent INTEGER DEFAULT 0,
+      chatwar_lost INTEGER DEFAULT 0
+    )
+  `);
+
+  try {
+    await db.exec('ALTER TABLE user_stats ADD COLUMN chatwar_lost INTEGER DEFAULT 0');
+  } catch (err) { }
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS emote_stats (
+      emote TEXT PRIMARY KEY,
+      chatwar_battles INTEGER DEFAULT 0,
+      chatwar_wins INTEGER DEFAULT 0
+    )
+  `);
+
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS custom_aliases (
       command TEXT PRIMARY KEY,
       cost INTEGER,
@@ -181,7 +220,41 @@ async function initDb() {
   }
 }
 
+async function updateUserStat(username, field, amount) {
+  if (!db || !username || !field) return;
+  try {
+    await db.run(
+      `INSERT INTO user_stats (username, ${field}) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET ${field} = ${field} + ?`,
+      [username, amount, amount]
+    );
+  } catch (err) {
+    console.error(`Error updating user_stats for ${username} on field ${field}:`, err);
+  }
+}
 
+async function updateEmoteStat(emote, isWinner) {
+  if (!db || !emote) return;
+  try {
+    const winsVal = isWinner ? 1 : 0;
+    await db.run(
+      `INSERT INTO emote_stats (emote, chatwar_battles, chatwar_wins) VALUES (?, 1, ?) ON CONFLICT(emote) DO UPDATE SET chatwar_battles = chatwar_battles + 1, chatwar_wins = chatwar_wins + ?`,
+      [emote, winsVal, winsVal]
+    );
+  } catch (err) {
+    console.error(`Error updating emote_stats for ${emote}:`, err);
+  }
+}
+
+async function updateRaffleStats(participants, winnersArray, pointsWonPerWinner) {
+  if (!participants || participants.length === 0) return;
+  for (const user of participants) {
+    await updateUserStat(user, 'raffles_joined', 1);
+  }
+  for (const winner of winnersArray) {
+    await updateUserStat(winner, 'raffles_won', 1);
+    await updateUserStat(winner, 'raffles_points_won', pointsWonPerWinner);
+  }
+}
 
 async function loadTokens() {
   if (fs.existsSync(TOKEN_FILE)) {
@@ -937,6 +1010,13 @@ async function start() {
 
         await db.run('UPDATE users SET points = points + ? WHERE username = ?', [reward, winner]);
 
+        await updateUserStat(winner, 'duels_played', 1);
+        await updateUserStat(loser, 'duels_played', 1);
+        await updateUserStat(winner, 'duels_won', 1);
+        await updateUserStat(loser, 'duels_lost', 1);
+        await updateUserStat(winner, 'duels_points_won', duel.amount);
+        await updateUserStat(loser, 'duels_points_lost', duel.amount);
+
         const msg = duelWinMessages[Math.floor(Math.random() * duelWinMessages.length)]
           .replace(/{winner}/g, `${winner}`)
           .replace(/{loser}/g, `${loser}`)
@@ -997,10 +1077,16 @@ async function start() {
         if (isWin) {
           await db.run('UPDATE users SET points = points + ? WHERE username = ?', [betAmount, chatterName]);
           const newPoints = user.points + betAmount;
+          await updateUserStat(chatterName, 'gamble_played', 1);
+          await updateUserStat(chatterName, 'gamble_won', 1);
+          await updateUserStat(chatterName, 'gamble_points_won', betAmount);
           await sendChatMessage(`${chatterName} won ${betAmount} points in a gamble! You now have ${newPoints} points.`);
         } else {
           await db.run('UPDATE users SET points = points - ? WHERE username = ?', [betAmount, chatterName]);
           const newPoints = user.points - betAmount;
+          await updateUserStat(chatterName, 'gamble_played', 1);
+          await updateUserStat(chatterName, 'gamble_lost', 1);
+          await updateUserStat(chatterName, 'gamble_points_lost', betAmount);
           await sendChatMessage(`${chatterName} lost ${betAmount} points in a gamble... You now have ${newPoints} points.`);
         }
       }
@@ -1117,6 +1203,7 @@ const winners = [];
 const losers = [];
 
 for (const [user, data] of Object.entries(war.userVotes)) {
+  await updateUserStat(user, 'chatwar_spent', data.spent);
   if (data.choice === winningEmote) {
     const payout = Math.floor((data.spent / winningPool) * totalPool);
     const profit = payout - data.spent;
@@ -1130,8 +1217,12 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     winners.push({ user, won: profit });
   } else {
     losers.push({ user, lost: data.spent });
+    await updateUserStat(user, 'chatwar_lost', data.spent);
   }
 }
+
+        await updateEmoteStat(winningEmote, true);
+        await updateEmoteStat(losingEmote, false);
 
         winners.sort((a, b) => b.won - a.won);
         losers.sort((a, b) => b.lost - a.lost);
@@ -1393,6 +1484,12 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         const winningPool = bet.pools[winningChoice];
 
         if (winningPool === 0) {
+          for (const [user, userBet] of Object.entries(bet.userBets)) {
+             await updateUserStat(user, 'bets_played', 1);
+             await updateUserStat(user, 'bets_points_bet', userBet.amount);
+             await updateUserStat(user, 'bets_lost', 1);
+             await updateUserStat(user, 'bets_points_lost', userBet.amount);
+          }
           await sendChatMessage(`BET RESOLVED: "${bet.description}" won by ${winningChoice}. Nobody voted for the winner! House takes the pool (${totalPool} pts)`);
           activeBets.delete('default');
           clearBetState(null);
@@ -1402,13 +1499,23 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           const losers = [];
           
           for (const [user, userBet] of Object.entries(bet.userBets)) {
+            await updateUserStat(user, 'bets_played', 1);
+            await updateUserStat(user, 'bets_points_bet', userBet.amount);
+
             if (userBet.choice === winningChoice) {
               const payout = Math.floor((userBet.amount / winningPool) * totalPool);
               const profit = payout - userBet.amount;
               await db.run('UPDATE users SET points = points + ? WHERE username = ?', [payout, user]);
+              
+              await updateUserStat(user, 'bets_won', 1);
+              await updateUserStat(user, 'bets_points_won', profit);
+
               winnersCount++;
               winners.push({ user, amount: userBet.amount, won: profit });
             } else {
+              await updateUserStat(user, 'bets_lost', 1);
+              await updateUserStat(user, 'bets_points_lost', userBet.amount);
+              
               losers.push({ user, amount: userBet.amount, lost: userBet.amount });
             }
           }
@@ -1889,6 +1996,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           const winner = participants[Math.floor(Math.random() * participants.length)];
 
           await db.run('UPDATE users SET points = points + ? WHERE username = ?', [r.amount, winner]);
+          await updateRaffleStats(participants, [winner], r.amount);
           await sendChatMessage(`🎉 The raffle has ended! Congratulations ${winner} you won ${r.amount} points!`);
         }, durationMs);
       }
@@ -1966,6 +2074,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           for (const w of allWinners) {
             await db.run('UPDATE users SET points = points + ? WHERE username = ?', [splitAmount, w]);
           }
+
+          await updateRaffleStats(participants, allWinners, splitAmount);
 
           const displayWinners = allWinners.slice(0, 5);
           let winnersText = displayWinners.map(w => `${w}`).join(', ');
@@ -2169,11 +2279,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         for (const w of winners) {
           await db.run('UPDATE users SET points = points + ? WHERE username = ?', [splitAmount, w]);
         }
+        await updateRaffleStats(participants, winners, splitAmount);
         const winnersText = winners.map(w => `${w}`).join(', ');
         await sendChatMessage(`🎉 The random multi-raffle has ended! Congratulations to our ${actualWinnersCount} winners: ${winnersText}. You each won ${splitAmount} points!`);
       } else {
         const winner = participants[Math.floor(Math.random() * participants.length)];
         await db.run('UPDATE users SET points = points + ? WHERE username = ?', [r.amount, winner]);
+        await updateRaffleStats(participants, [winner], r.amount);
         await sendChatMessage(`🎉 The random raffle has ended! Congratulations ${winner} you won ${r.amount} points!`);
       }
     }, durationMs);
@@ -2197,7 +2309,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       ws.send('CAP REQ :twitch.tv/membership twitch.tv/tags twitch.tv/commands');
       ws.send(`PASS oauth:${USER_ACCESS_TOKEN}`);
       ws.send(`NICK ${BOT_USERNAME}`);
-      // DO NOT send JOIN here. Wait for 376 or 001.
+
     });
 
     ws.on('message', async (data) => {
