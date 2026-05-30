@@ -2499,7 +2499,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             }
           
             // --- COMMAND LOGIC END ---
-          } else if (command === 'USERNOTICE') {
+          }
+        } else if (command === 'USERNOTICE') {
             const chatterName = tags['display-name'] ? tags['display-name'].toLowerCase() : (tags['login'] || '').toLowerCase();
             const msgId = tags['msg-id'];
             
@@ -2523,7 +2524,6 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           } else if (command !== 'PONG' && command !== '353' && command !== '366' && command !== '001' && command !== '002' && command !== '003' && command !== '004' && command !== '375' && command !== '372' && command !== '376' && command !== 'JOIN' && command !== 'PART' && command !== 'ROOMSTATE' && command !== 'USERSTATE' && command !== 'GLOBALUSERSTATE') {
             console.log(`[UNHANDLED IRC COMMAND] Command: ${command}, Line: ${line}`);
           }
-        }
       }
     });
 
