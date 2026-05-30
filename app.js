@@ -37,6 +37,32 @@ const globalConfig = {};
 const customAliasesMap = new Map();
 const ignoredBots = ['nightbot', 'streamelements', 'streamlabs', 'moobot', 'dotabod', 'wizebot', 'fossabot', 'kofibot', 'soundalerts'];
 
+const builtInAliases = {
+  '!point': '!points',
+  '!pts': '!points',
+  '!givepoint': '!givepoints',
+  '!givept': '!givepoints',
+  '!givepts': '!givepoints',
+  '!bet': '!betstart',
+  '!startbet': '!betstart',
+  '!stopbet': '!betstop',
+  '!checkbet': '!betstatus',
+  '!statusbet': '!betstatus',
+  '!editpoint': '!editpoints',
+  '!toppoint': '!toppoints',
+  '!top': '!toppoints',
+  '!leaderboard': '!toppoints',
+  '!addpoint': '!masspointsadd',
+  '!subpoint': '!masspointssub',
+  '!delcommand': '!removecommand',
+  '!deletecommand': '!removecommand',
+  '!commands': '!commandlist',
+  '!cmds': '!commandlist',
+  '!cmdlist': '!commandlist',
+  '!roulette': '!gamble',
+  '!roll': '!gamble',
+};
+
 const commandConfigSchema = {
   '!playsound': ['cost', 'cooldown'],
   '!showemote': ['cost', 'duration', 'size', 'cooldown'],
@@ -1758,7 +1784,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         }
 
         const amount = parseAmount(args[0]);
-        if (isNaN(amount) || amount <= 0) {
+        if (isNaN(amount) || amount === 0) {
           await sendChatMessage(`${chatterName} invalid amount!`);
           return;
         }
@@ -1818,7 +1844,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         }
 
         const amount = parseAmount(args[0]);
-        if (isNaN(amount) || amount <= 0) {
+        if (isNaN(amount) || amount === 0) {
           await sendChatMessage(`${chatterName} invalid amount!`);
           return;
         }
@@ -2214,8 +2240,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             }
           }
 
-          let args = chatText.split(' ');
+          let args = chatText.split(' ').filter(arg => arg.trim() !== '');
+          if (args.length === 0) return;
           let commandName = args.shift().toLowerCase();
+          
+          if (builtInAliases[commandName]) {
+            commandName = builtInAliases[commandName];
+          }
           
           if (customAliasesMap.has(commandName)) {
             const disabledUntilRaw = globalConfig[`cmd_${commandName}_disabled_until`];
