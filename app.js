@@ -612,7 +612,7 @@ async function start() {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (args.length < 2) {
-          await sendChatMessage(`@${chatterName}, invalid command! Try !givepoints 50 username or !givepoints 50 username1 username2`);
+          await sendChatMessage(`${chatterName} invalid command! Try !givepoints 50 username or !givepoints 50 username1 username2`);
           return;
         }
 
@@ -2370,7 +2370,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           if (chatText.toLowerCase().startsWith('!showemote ')) {
             if (!await isStreamerLive()) return;
 
-            const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'vip'].includes(b.set_id));
+            const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator'].includes(b.set_id));
             const isMod = hasPermission || chatterName === TARGET_CHANNEL;
 
             if (!isMod) {
