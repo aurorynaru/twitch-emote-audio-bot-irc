@@ -452,7 +452,7 @@ async function start() {
         }
 
         if (args.length < 2) {
-          await sendChatMessage(`@${chatterName}, invalid format! Use: !editpoints <username> <amount>`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !editpoints <username> <amount>`);
           return;
         }
 
@@ -460,7 +460,7 @@ async function start() {
         const amount = parseAmount(args[1]);
 
         if (isNaN(amount) || amount < 0) {
-          await sendChatMessage(`@${chatterName}, invalid amount!`);
+          await sendChatMessage(`${chatterName} invalid amount!`);
           return;
         }
 
@@ -480,7 +480,7 @@ async function start() {
         if (args.length === 1) {
           const cdVal = parseFlexibleTime(args[0]);
           if (isNaN(cdVal) || cdVal < 0) {
-            await sendChatMessage(`@${chatterName}, invalid time! Use ms (1000), or 10s, 5m.`);
+            await sendChatMessage(`${chatterName} invalid time! Use ms (1000), or 10s, 5m.`);
             return;
           }
 
@@ -492,13 +492,13 @@ async function start() {
         } else if (args.length === 2) {
           const targetCmd = args[0].toLowerCase();
           if (!targetCmd.startsWith('!')) {
-            await sendChatMessage(`@${chatterName}, invalid command! Use: !chatcooldown !command <time>`);
+            await sendChatMessage(`${chatterName} invalid command! Use: !chatcooldown !command <time>`);
             return;
           }
           
           const cdVal = parseFlexibleTime(args[1]);
           if (isNaN(cdVal) || cdVal < 0) {
-            await sendChatMessage(`@${chatterName}, invalid time! Use ms (1000), or 10s, 5m.`);
+            await sendChatMessage(`${chatterName} invalid time! Use ms (1000), or 10s, 5m.`);
             return;
           }
 
@@ -508,7 +508,7 @@ async function start() {
           
           await sendChatMessage(`Successfully updated GLOBAL chat cooldown for ${targetCmd} to ${cdVal} ms!`);
         } else {
-          await sendChatMessage(`@${chatterName}, invalid format! Use: !chatcooldown <time> OR !chatcooldown <!command> <time>`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !chatcooldown <time> OR !chatcooldown <!command> <time>`);
         }
       }
     },
@@ -637,7 +637,7 @@ async function start() {
         if (!isMod) {
           const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
           if (!user || user.points <= 0) {
-            await sendChatMessage(`@${chatterName}, you don't have any points!`);
+            await sendChatMessage(`${chatterName} you don't have any points!`);
             return;
           }
 
@@ -653,13 +653,13 @@ async function start() {
           }
 
           if (isNaN(totalAmountToDeduct) || totalAmountToDeduct <= 0 || totalAmountToDeduct > user.points) {
-            await sendChatMessage(`@${chatterName}, invalid amount!`);
+            await sendChatMessage(`${chatterName} invalid amount!`);
             return;
           }
 
           amountPerUser = Math.floor(totalAmountToDeduct / targetUsers.length);
           if (amountPerUser <= 0) {
-            await sendChatMessage(`@${chatterName}, the amount is too small to split!`);
+            await sendChatMessage(`${chatterName} the amount is too small to split!`);
             return;
           }
           
@@ -667,10 +667,32 @@ async function start() {
           await db.run('UPDATE users SET points = points - ? WHERE username = ?', [actualDeduction, chatterName]);
 
         } else {
+          if (amountInput === 'all' || amountInput.endsWith('%')) {
+            const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+            const userPoints = user ? user.points : 0;
+            if (userPoints <= 0) {
+              await sendChatMessage(`${chatterName} you don't have any points!`);
+              return;
+            }
+            if (amountInput === 'all') {
+              totalAmountToDeduct = userPoints;
+            } else {
+              const percent = parseFloat(amountInput.replace('%', ''));
+              if (!isNaN(percent) && percent > 0 && percent <= 100) {
+                totalAmountToDeduct = Math.floor(userPoints * (percent / 100));
+              } else {
+                totalAmountToDeduct = 0;
+              }
+            }
+            // For mods, we'll actually deduct it from them if they use 'all' or '%', 
+            // so they can play fairly with their own points when they choose to!
+            await db.run('UPDATE users SET points = points - ? WHERE username = ?', [totalAmountToDeduct, chatterName]);
+          } else {
+            totalAmountToDeduct = parseAmount(amountInput);
+          }
 
-          totalAmountToDeduct = parseAmount(amountInput);
           if (isNaN(totalAmountToDeduct) || totalAmountToDeduct <= 0) {
-            await sendChatMessage(`@${chatterName}, invalid amount!`);
+            await sendChatMessage(`${chatterName} invalid amount!`);
             return;
           }
           amountPerUser = totalAmountToDeduct; 
@@ -680,7 +702,7 @@ async function start() {
           await db.run('UPDATE users SET points = points + ? WHERE username = ?', [amountPerUser, target]);
         }
 
-        await sendChatMessage(`@${chatterName} gave ${amountPerUser} points to: ${targetUsers.join(', ')}`);
+        await sendChatMessage(`${chatterName} gave ${amountPerUser} points to: ${targetUsers.join(', ')}`);
       }
     },
     '!removepoints': {
@@ -693,7 +715,7 @@ async function start() {
         }
 
         if (args.length < 2) {
-          await sendChatMessage(`@${chatterName}, invalid command! Try !removepoints 50 username`);
+          await sendChatMessage(`${chatterName} invalid command! Try !removepoints 50 username`);
           return;
         }
 
@@ -702,7 +724,7 @@ async function start() {
         
         const amountToDeduct = parseAmount(amountInput);
         if (isNaN(amountToDeduct) || amountToDeduct <= 0) {
-          await sendChatMessage(`@${chatterName}, invalid amount!`);
+          await sendChatMessage(`${chatterName} invalid amount!`);
           return;
         }
 
@@ -723,7 +745,7 @@ async function start() {
           }
         }
 
-        await sendChatMessage(`@${chatterName} removed ${amountToDeduct} points from: ${targetUsers.join(', ')}`);
+        await sendChatMessage(`${chatterName} removed ${amountToDeduct} points from: ${targetUsers.join(', ')}`);
       }
     },
     '!masspointsadd': {
@@ -812,7 +834,7 @@ async function start() {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (args.length < 2) {
-          await sendChatMessage(`@${chatterName}, invalid format! Use: !duel <@user> <amount>`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !duel <@user> <amount>`);
           return;
         }
 
@@ -1568,7 +1590,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             if (setting === 'cost') {
               const costVal = parseInt(value, 10);
               if (isNaN(costVal) || costVal < 0) {
-                await sendChatMessage(`@${chatterName}, invalid cost! It must be a number >= 0.`);
+                await sendChatMessage(`${chatterName} invalid cost! It must be a number >= 0.`);
                 return;
               }
               await db.run('UPDATE custom_aliases SET cost = ? WHERE command = ?', [costVal, targetCmd]);
@@ -1589,7 +1611,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               return;
             }
           }
-          await sendChatMessage(`@${chatterName}, unknown command: ${targetCmd}`);
+          await sendChatMessage(`${chatterName} unknown command: ${targetCmd}`);
           return;
         }
 
@@ -2147,12 +2169,12 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         for (const w of winners) {
           await db.run('UPDATE users SET points = points + ? WHERE username = ?', [splitAmount, w]);
         }
-        const winnersText = winners.map(w => `@${w}`).join(', ');
+        const winnersText = winners.map(w => `${w}`).join(', ');
         await sendChatMessage(`🎉 The random multi-raffle has ended! Congratulations to our ${actualWinnersCount} winners: ${winnersText}. You each won ${splitAmount} points!`);
       } else {
         const winner = participants[Math.floor(Math.random() * participants.length)];
         await db.run('UPDATE users SET points = points + ? WHERE username = ?', [r.amount, winner]);
-        await sendChatMessage(`🎉 The random raffle has ended! Congratulations @${winner}, you won ${r.amount} points!`);
+        await sendChatMessage(`🎉 The random raffle has ended! Congratulations ${winner} you won ${r.amount} points!`);
       }
     }, durationMs);
   }
