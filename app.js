@@ -2116,11 +2116,14 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     let isReconnecting = false;
 
     ws.on('open', () => {
+      isReconnecting = false;
       console.log(`* Connected to Twitch IRC at ${TARGET_CHANNEL}...`);
-      ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+      
+      // Request all capabilities
+      ws.send('CAP REQ :twitch.tv/membership twitch.tv/tags twitch.tv/commands');
       ws.send(`PASS oauth:${USER_ACCESS_TOKEN}`);
       ws.send(`NICK ${BOT_USERNAME}`);
-      ws.send(`JOIN #${TARGET_CHANNEL.toLowerCase()}`);
+      // DO NOT send JOIN here. Wait for 376 or 001.
     });
 
     ws.on('message', async (data) => {
@@ -2153,6 +2156,12 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         const source = parts[0];
         const command = parts[1];
         const channel = parts[2];
+
+        // Join channel only after successfully authenticating
+        if (command === '001' || command === '376') {
+          ws.send(`JOIN #${TARGET_CHANNEL.toLowerCase()}`);
+          console.log(`* Authentication successful! Joining #${TARGET_CHANNEL}...`);
+        }
 
         if (command === 'PRIVMSG') {
           const messageText = parts.slice(3).join(' ').substring(1);
