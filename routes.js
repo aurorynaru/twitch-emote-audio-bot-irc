@@ -16,7 +16,9 @@ export function setupRoutes(app, {
   getDb,
   globalConfig,
   customAliasesMap,
-  commandConfigSchema
+  commandConfigSchema,
+  FISHING_ITEMS,
+  FISHING_RARITIES
 }) {
   const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -154,9 +156,33 @@ export function setupRoutes(app, {
     try {
       const db = getDb();
       if (!db) return res.status(503).json({ success: false, error: 'Database not ready' });
-      const userStats = await db.all('SELECT * FROM user_stats');
+      const userStatsRaw = await db.all('SELECT s.*, u.xp FROM user_stats s LEFT JOIN users u ON s.username = u.username');
+      const levelBase = parseInt(globalConfig['level_base_cost'] || '200', 10);
+      const userStats = userStatsRaw.map(u => {
+        u.level = Math.floor(Math.sqrt((u.xp || 0) / levelBase)) + 1;
+        return u;
+      });
       const emoteStats = await db.all('SELECT * FROM emote_stats');
       res.json({ success: true, userStats, emoteStats });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/api/dashboard/items', (req, res) => {
+    try {
+      res.json({ success: true, items: FISHING_ITEMS, rarities: FISHING_RARITIES });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/api/dashboard/inventory', async (req, res) => {
+    try {
+      const db = getDb();
+      if (!db) return res.status(503).json({ success: false, error: 'Database not ready' });
+      const inventory = await db.all('SELECT * FROM user_inventory WHERE quantity > 0');
+      res.json({ success: true, inventory });
     } catch (error) {
       res.status(500).json({ success: false, error: error.message });
     }

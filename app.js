@@ -130,6 +130,20 @@ const duelBrokeMessages = [
   "The duel is canceled because {target} doesn't have {amount} points!"
 ];
 
+const FISHING_ITEMS = {
+  common: [{ name: "gold coin", rarity: "Common" }],
+  uncommon: [{ name: "gold pouch", rarity: "Uncommon" }],
+  rare: [{ name: "fishing ticket", rarity: "Rare" }],
+  legendary: [{ name: "knife", rarity: "Legendary" }]
+};
+
+const FISHING_RARITIES = [
+  { rarity: 'legendary', threshold: 0.7 },
+  { rarity: 'rare', threshold: 10.7 },
+  { rarity: 'uncommon', threshold: 45.7 },
+  { rarity: 'common', threshold: 100.0 }
+];
+
 let db;
 async function initDb() {
   db = await open({
@@ -146,9 +160,11 @@ async function initDb() {
   
   try {
     await db.exec('ALTER TABLE users ADD COLUMN true_last_chat_time INTEGER DEFAULT 0');
-  } catch (err) {
-    // ignore
-  }
+  } catch (err) {}
+
+  try {
+    await db.exec('ALTER TABLE users ADD COLUMN xp INTEGER DEFAULT 0');
+  } catch (err) {}
 
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_users_points ON users (points DESC);
@@ -189,17 +205,46 @@ async function initDb() {
     )
   `);
 
-  try {
-    await db.exec('ALTER TABLE user_stats ADD COLUMN chatwar_lost INTEGER DEFAULT 0');
-  } catch (err) { }
-
   await db.exec(`
     CREATE TABLE IF NOT EXISTS emote_stats (
       emote TEXT PRIMARY KEY,
       chatwar_battles INTEGER DEFAULT 0,
-      chatwar_wins INTEGER DEFAULT 0
+      chatwar_wins INTEGER DEFAULT 0,
+      chatwar_points_spent INTEGER DEFAULT 0
     )
   `);
+
+  try {
+    await db.exec('ALTER TABLE emote_stats ADD COLUMN chatwar_points_spent INTEGER DEFAULT 0');
+  } catch (err) { }
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS user_inventory (
+      username TEXT,
+      item_name TEXT,
+      quantity INTEGER DEFAULT 0,
+      PRIMARY KEY (username, item_name)
+    )
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS pending_fish (
+      username TEXT PRIMARY KEY,
+      catch_time INTEGER,
+      is_free INTEGER DEFAULT 0
+    )
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS user_modifiers (
+      username TEXT,
+      modifier TEXT,
+      value INTEGER DEFAULT 0,
+      PRIMARY KEY (username, modifier)
+    )
+  `);
+
+  console.log('* Ensuring app_config defaults...');
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS custom_aliases (
@@ -347,7 +392,9 @@ setupRoutes(app, {
   getDb: () => db,
   globalConfig,
   customAliasesMap,
-  commandConfigSchema
+  commandConfigSchema,
+  FISHING_ITEMS,
+  FISHING_RARITIES
 });
 
 app.listen(PORT, () => {
@@ -452,8 +499,35 @@ async function start() {
   console.log(`* Target channel: ${TARGET_CHANNEL} (Broadcaster ID: ${BROADCASTER_USER_ID})`);
 
 
-  async function sendChatMessage(messageText) {
+  const getLevelBase = () => parseInt(globalConfig['level_base_cost'] || '200', 10);
+  const getLvl = (xp) => Math.floor(Math.sqrt((xp || 0) / getLevelBase())) + 1;
+  const getXpForLvl = (lvl) => getLevelBase() * Math.pow(lvl - 1, 2);
+  
+  async function addPointsWithBonus(username, amount) {
+    const userRow = await db.get('SELECT xp FROM users WHERE username = ?', [username]);
+    const xp = userRow ? userRow.xp : 0;
+    const lvl = getLvl(xp);
+    const bonus = Math.round(amount * (lvl * 0.001));
+    const finalAmount = amount + bonus;
+    await db.run('INSERT INTO users (username, points, xp) VALUES (?, ?, 0) ON CONFLICT(username) DO UPDATE SET points = points + ?', [username, finalAmount, finalAmount]);
+    return finalAmount;
+  }
+
+  async function sendChatMessage(messageText, author = null) {
     try {
+      if (author) {
+        const userRow = await db.get('SELECT xp FROM users WHERE username = ?', [author]);
+        const xp = userRow ? userRow.xp : 0;
+        const lvl = getLvl(xp);
+        
+        // Find the author's name in the message (with optional @) and insert the level before it
+        const nameRegex = new RegExp(`(@?${author})`, 'i');
+        if (nameRegex.test(messageText)) {
+          messageText = messageText.replace(nameRegex, `[${lvl}]$1`);
+        } else {
+          messageText = `[${lvl}]` + messageText;
+        }
+      }
       if (activeWs && activeWs.readyState === WebSocket.OPEN) {
         activeWs.send(`PRIVMSG #${TARGET_CHANNEL.toLowerCase()} :${messageText}`);
       } else {
@@ -466,8 +540,114 @@ async function start() {
 
   await loadThirdPartyEmotes(BROADCASTER_USER_ID);
 
+  setInterval(async () => {
+    try {
+      const now = Date.now();
+      const readyFishes = await db.all('SELECT * FROM pending_fish WHERE catch_time <= ?', [now]);
+      
+      for (const fish of readyFishes) {
+        const userRow = await db.get('SELECT xp FROM users WHERE username = ?', [fish.username]);
+        const lvl = getLvl(userRow ? userRow.xp : 0);
+        const legBonus = lvl * 0.01;
+        const rareBonus = lvl * 0.05;
+
+        const customRarities = [
+          { rarity: 'legendary', threshold: FISHING_RARITIES[0].threshold + legBonus },
+          { rarity: 'rare', threshold: FISHING_RARITIES[1].threshold + legBonus + rareBonus },
+          { rarity: 'uncommon', threshold: FISHING_RARITIES[2].threshold + legBonus + rareBonus },
+          { rarity: 'common', threshold: 100.0 }
+        ];
+
+        // Roll for rarity
+        const roll = Math.random() * 100;
+        let rarityTier = 'common';
+        for (const tier of customRarities) {
+          if (roll <= tier.threshold) {
+            rarityTier = tier.rarity;
+            break;
+          }
+        }
+        
+        // Pick random item from rarity
+        const itemPool = FISHING_ITEMS[rarityTier];
+        const item = itemPool[Math.floor(Math.random() * itemPool.length)];
+        
+        // Give item
+        await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, 1) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + 1', [fish.username, item.name]);
+        
+        // Delete pending
+        await db.run('DELETE FROM pending_fish WHERE username = ?', [fish.username]);
+        
+        // Announce
+        const prefix = rarityTier !== 'common' ? `[${item.rarity}] ` : '';
+        await sendChatMessage(`🎣 ${fish.username} reeled in a ${prefix}${item.name}!`, fish.username);
+      }
+    } catch (err) {
+      console.error('Error resolving fishes:', err);
+    }
+  }, 10000);
+
   // --- COMMANDS LIST ---
   const customCommands = {
+    '!lvlup': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        let user = await db.get('SELECT points, xp FROM users WHERE username = ?', chatterName);
+        if (!user) {
+          await db.run('INSERT OR IGNORE INTO users (username, points, xp) VALUES (?, 0, 0)', [chatterName]);
+          user = { points: 0, xp: 0 };
+        }
+
+        const currentLvl = getLvl(user.xp);
+        const nextLvlXp = getXpForLvl(currentLvl + 1);
+        const xpNeeded = nextLvlXp - user.xp;
+
+        if (args.length === 0) {
+          await sendChatMessage(`${chatterName} you are Level ${currentLvl}! You need ${xpNeeded} more XP (points) for Level ${currentLvl + 1}.`, chatterName);
+          return;
+        }
+
+        let spendAmount = 0;
+        const arg = args[0].toLowerCase();
+        
+        if (arg === 'all') {
+          spendAmount = user.points;
+        } else if (arg.endsWith('%')) {
+          const pct = parseFloat(arg.replace('%', ''));
+          if (!isNaN(pct) && pct > 0 && pct <= 100) {
+            spendAmount = Math.floor(user.points * (pct / 100));
+          }
+        } else {
+          const parsed = parseInt(arg, 10);
+          if (!isNaN(parsed) && parsed > 0) {
+            spendAmount = parsed;
+          }
+        }
+
+        if (spendAmount <= 0) {
+          await sendChatMessage(`${chatterName} invalid amount! Use !lvlup <amount> or !lvlup 30% or !lvlup all`, chatterName);
+          return;
+        }
+
+        if (user.points < spendAmount) {
+          await sendChatMessage(`${chatterName} you don't have enough points!`, chatterName);
+          return;
+        }
+
+        const newXp = user.xp + spendAmount;
+        const newLvl = getLvl(newXp);
+        const levelsGained = newLvl - currentLvl;
+
+        await db.run('UPDATE users SET points = points - ?, xp = xp + ? WHERE username = ?', [spendAmount, spendAmount, chatterName]);
+
+        if (levelsGained > 0) {
+          await sendChatMessage(`${chatterName} spent ${spendAmount} points and gained ${levelsGained} level(s)! You are now Level ${newLvl}!`, chatterName);
+        } else {
+          const xpStillNeeded = getXpForLvl(newLvl + 1) - newXp;
+          await sendChatMessage(`${chatterName} spent ${spendAmount} points! You need ${xpStillNeeded} more for Level ${newLvl + 1}.`, chatterName);
+        }
+      }
+    },
     '!points': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
@@ -488,9 +668,9 @@ async function start() {
         const points = user.points;
 
         if (targetUser === chatterName) {
-          await sendChatMessage(`${chatterName} you have ${points} points!`);
+          await sendChatMessage(`${chatterName} you have ${points} points!`, chatterName);
         } else {
-          await sendChatMessage(`${targetUser} has ${points} points!`);
+          await sendChatMessage(`${targetUser} has ${points} points!`, targetUser);
         }
       }
     },
@@ -520,12 +700,12 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'auroryNaru';
         if (!isMod) {
-        //  await sendChatMessage(`@${chatterName}, you do not have permission to edit points!`);
+        //  await sendChatMessage(`@${chatterName}, you do not have permission to edit points!`, chatterName);
           return;
         }
 
         if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !editpoints <username> <amount>`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !editpoints <username> <amount>`, chatterName);
           return;
         }
 
@@ -533,12 +713,12 @@ async function start() {
         const amount = parseAmount(args[1]);
 
         if (isNaN(amount) || amount < 0) {
-          await sendChatMessage(`${chatterName} invalid amount!`);
+          await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
           return;
         }
 
         await db.run('INSERT INTO users (username, points) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET points = ?', [targetUser, amount, amount]);
-        await sendChatMessage(`Successfully set ${targetUser}'s points to ${amount}!`);
+        await sendChatMessage(`Successfully set ${targetUser}'s points to ${amount}!`, targetUser);
       }
     },
     '!chatcooldown': {
@@ -546,14 +726,14 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'auroryNaru';
         if (!isMod) {
-        //  await sendChatMessage(`@${chatterName}, you do not have permission to edit the chat cooldown!`);
+        //  await sendChatMessage(`@${chatterName}, you do not have permission to edit the chat cooldown!`, chatterName);
           return;
         }
 
         if (args.length === 1) {
           const cdVal = parseFlexibleTime(args[0]);
           if (isNaN(cdVal) || cdVal < 0) {
-            await sendChatMessage(`${chatterName} invalid time! Use ms (1000), or 10s, 5m.`);
+            await sendChatMessage(`${chatterName} invalid time! Use ms (1000), or 10s, 5m.`, chatterName);
             return;
           }
 
@@ -565,13 +745,13 @@ async function start() {
         } else if (args.length === 2) {
           const targetCmd = args[0].toLowerCase();
           if (!targetCmd.startsWith('!')) {
-            await sendChatMessage(`${chatterName} invalid command! Use: !chatcooldown !command <time>`);
+            await sendChatMessage(`${chatterName} invalid command! Use: !chatcooldown !command <time>`, chatterName);
             return;
           }
           
           const cdVal = parseFlexibleTime(args[1]);
           if (isNaN(cdVal) || cdVal < 0) {
-            await sendChatMessage(`${chatterName} invalid time! Use ms (1000), or 10s, 5m.`);
+            await sendChatMessage(`${chatterName} invalid time! Use ms (1000), or 10s, 5m.`, chatterName);
             return;
           }
 
@@ -581,7 +761,7 @@ async function start() {
           
           await sendChatMessage(`Successfully updated GLOBAL chat cooldown for ${targetCmd} to ${cdVal} ms!`);
         } else {
-          await sendChatMessage(`${chatterName} invalid format! Use: !chatcooldown <time> OR !chatcooldown <!command> <time>`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !chatcooldown <time> OR !chatcooldown <!command> <time>`, chatterName);
         }
       }
     },
@@ -624,18 +804,18 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'auroryNaru';
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to delete playsounds!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to delete playsounds!`, chatterName);
           return;
         }
 
         if (args.length < 1) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !deleteplaysound <soundname>`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !deleteplaysound <soundname>`, chatterName);
           return;
         }
 
         const filename = args.join('').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
         if (!filename) {
-          await sendChatMessage(`${chatterName} invalid sound name!`);
+          await sendChatMessage(`${chatterName} invalid sound name!`, chatterName);
           return;
         }
 
@@ -649,7 +829,7 @@ async function start() {
         if (deleted) {
           await sendChatMessage(`Successfully deleted playsound: ${filename}`);
         } else {
-          await sendChatMessage(`${chatterName} could not find a playsound named: ${filename}`);
+          await sendChatMessage(`${chatterName} could not find a playsound named: ${filename}`, chatterName);
         }
       }
     },
@@ -675,7 +855,7 @@ async function start() {
           if (newSize && !isNaN(Number(newSize))) {
             currentEmoteSizePx = Number(newSize);
             console.log(`\n${chatterName} set emote size to ${newSize}.`);
-            await sendChatMessage(`${chatterName} set emote size to ${newSize}.`);
+            await sendChatMessage(`${chatterName} set emote size to ${newSize}.`, chatterName);
           } else {
             console.log(`\n${chatterName} invalid value: ${newSize}. ex. !emotesize 150`);
             await sendChatMessage(`Invalid value. Ex: !emotesize 150`);
@@ -687,7 +867,7 @@ async function start() {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid command! Try !givepoints 50 username or !givepoints 50 username1 username2`);
+          await sendChatMessage(`${chatterName} invalid command! Try !givepoints 50 username or !givepoints 50 username1 username2`, chatterName);
           return;
         }
 
@@ -697,7 +877,7 @@ async function start() {
         for (const target of targetUsers) {
           const tUser = await db.get('SELECT points FROM users WHERE username = ?', target);
           if (!tUser) {
-            await sendChatMessage(`${target} has not typed yet in this chat!`);
+            await sendChatMessage(`${target} has not typed yet in this chat!`, target);
             return;
           }
         }
@@ -710,7 +890,7 @@ async function start() {
         if (!isMod) {
           const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
           if (!user || user.points <= 0) {
-            await sendChatMessage(`${chatterName} you don't have any points!`);
+            await sendChatMessage(`${chatterName} you don't have any points!`, chatterName);
             return;
           }
 
@@ -726,13 +906,13 @@ async function start() {
           }
 
           if (isNaN(totalAmountToDeduct) || totalAmountToDeduct <= 0 || totalAmountToDeduct > user.points) {
-            await sendChatMessage(`${chatterName} invalid amount!`);
+            await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
             return;
           }
 
           amountPerUser = Math.floor(totalAmountToDeduct / targetUsers.length);
           if (amountPerUser <= 0) {
-            await sendChatMessage(`${chatterName} the amount is too small to split!`);
+            await sendChatMessage(`${chatterName} the amount is too small to split!`, chatterName);
             return;
           }
           
@@ -744,7 +924,7 @@ async function start() {
             const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
             const userPoints = user ? user.points : 0;
             if (userPoints <= 0) {
-              await sendChatMessage(`${chatterName} you don't have any points!`);
+              await sendChatMessage(`${chatterName} you don't have any points!`, chatterName);
               return;
             }
             if (amountInput === 'all') {
@@ -765,7 +945,7 @@ async function start() {
           }
 
           if (isNaN(totalAmountToDeduct) || totalAmountToDeduct <= 0) {
-            await sendChatMessage(`${chatterName} invalid amount!`);
+            await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
             return;
           }
           amountPerUser = totalAmountToDeduct; 
@@ -775,7 +955,7 @@ async function start() {
           await db.run('UPDATE users SET points = points + ? WHERE username = ?', [amountPerUser, target]);
         }
 
-        await sendChatMessage(`${chatterName} gave ${amountPerUser} points to: ${targetUsers.join(', ')}`);
+        await sendChatMessage(`${chatterName} gave ${amountPerUser} points to: ${targetUsers.join(', ')}`, chatterName);
       }
     },
     '!removepoints': {
@@ -783,12 +963,12 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`@${chatterName}, you do not have permission to remove points!`);
+        //  await sendChatMessage(`@${chatterName}, you do not have permission to remove points!`, chatterName);
           return;
         }
 
         if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid command! Try !removepoints 50 username`);
+          await sendChatMessage(`${chatterName} invalid command! Try !removepoints 50 username`, chatterName);
           return;
         }
 
@@ -797,14 +977,14 @@ async function start() {
         
         const amountToDeduct = parseAmount(amountInput);
         if (isNaN(amountToDeduct) || amountToDeduct <= 0) {
-          await sendChatMessage(`${chatterName} invalid amount!`);
+          await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
           return;
         }
 
         for (const target of targetUsers) {
           const tUser = await db.get('SELECT points FROM users WHERE username = ?', target);
           if (!tUser) {
-            await sendChatMessage(`${target} has not typed yet in this chat!`);
+            await sendChatMessage(`${target} has not typed yet in this chat!`, target);
             return;
           }
         }
@@ -818,7 +998,7 @@ async function start() {
           }
         }
 
-        await sendChatMessage(`${chatterName} removed ${amountToDeduct} points from: ${targetUsers.join(', ')}`);
+        await sendChatMessage(`${chatterName} removed ${amountToDeduct} points from: ${targetUsers.join(', ')}`, chatterName);
       }
     },
     '!masspointsadd': {
@@ -827,13 +1007,13 @@ async function start() {
        
         if( chatterName === 'auroryNaru' || hasPermission || chatterName === TARGET_CHANNEL  ) {
           if (args.length < 1) {
-            await sendChatMessage(`${chatterName} invalid command! Try !masspointsadd 1000 10m`);
+            await sendChatMessage(`${chatterName} invalid command! Try !masspointsadd 1000 10m`, chatterName);
             return;
           }
   
           const amount = parseAmount(args[0]);
           if (isNaN(amount) || amount <= 0) {
-            await sendChatMessage(`${chatterName} invalid amount!`);
+            await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
             return;
           }
   
@@ -843,10 +1023,10 @@ async function start() {
           const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
   
           await db.run(`UPDATE users SET points = points + ? WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [amount, threshold]);
-          await sendChatMessage(`${chatterName} mass added ${amount} points to everyone who chatted in the last ${timeStr}!`);
+          await sendChatMessage(`${chatterName} mass added ${amount} points to everyone who chatted in the last ${timeStr}!`, chatterName);
         
         } else {
-        //  await sendChatMessage(`${chatterName} you do not have permission to mass add points!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to mass add points!`, chatterName);
           return;
         }
 
@@ -862,13 +1042,13 @@ async function start() {
 
           
                   if (args.length < 1) {
-                    await sendChatMessage(`${chatterName} invalid command! Try !masspointssub 1000 10m`);
+                    await sendChatMessage(`${chatterName} invalid command! Try !masspointssub 1000 10m`, chatterName);
                     return;
                   }
           
                   const amount = parseAmount(args[0]);
                   if (isNaN(amount) || amount <= 0) {
-                    await sendChatMessage(`${chatterName} invalid amount!`);
+                    await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
                     return;
                   }
           
@@ -878,10 +1058,10 @@ async function start() {
                   const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
           
                   await db.run(`UPDATE users SET points = MAX(0, points - ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [amount, threshold]);
-                  await sendChatMessage(`${chatterName} mass removed ${amount} points from everyone who chatted in the last ${timeStr}!`);
+                  await sendChatMessage(`${chatterName} mass removed ${amount} points from everyone who chatted in the last ${timeStr}!`, chatterName);
         } else {
           
-         //  await sendChatMessage(`${chatterName} you do not have permission to mass sub points!`);
+         //  await sendChatMessage(`${chatterName} you do not have permission to mass sub points!`, chatterName);
            return;
       
         }
@@ -895,7 +1075,7 @@ async function start() {
           if (newDuration && !isNaN(Number(newDuration))) {
             currentEmoteDurationMs = Number(newDuration) * 1000;
             console.log(`\n${chatterName} set emote duration to ${newDuration} seconds.`);
-            await sendChatMessage(`${chatterName} set emote duration to ${newDuration} seconds.`);
+            await sendChatMessage(`${chatterName} set emote duration to ${newDuration} seconds.`, chatterName);
           } else {
             console.log(`\n${chatterName} invalid value: ${newDuration}. ex. !emoteduration 10`);
             await sendChatMessage(`Invalid value. Ex: !emoteduration 10`);
@@ -907,18 +1087,18 @@ async function start() {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !duel <@user> <amount>`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !duel <@user> <amount>`, chatterName);
           return;
         }
 
         const target = args[0].replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
         if (!target) {
-          await sendChatMessage(`${chatterName} invalid user provided!`);
+          await sendChatMessage(`${chatterName} invalid user provided!`, chatterName);
           return;
         }
 
         if (target === chatterName) {
-          await sendChatMessage(`${chatterName} you cannot duel yourself!`);
+          await sendChatMessage(`${chatterName} you cannot duel yourself!`, chatterName);
           return;
         }
 
@@ -927,7 +1107,7 @@ async function start() {
 
         const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
         if (!user || user.points <= 0) {
-          await sendChatMessage(`${chatterName} you don't have enough points to duel!`);
+          await sendChatMessage(`${chatterName} you don't have enough points to duel!`, chatterName);
           return;
         }
 
@@ -943,12 +1123,46 @@ async function start() {
         }
 
         if (isNaN(betAmount) || betAmount <= 0 || betAmount > user.points) {
-          await sendChatMessage(`${chatterName} invalid amount!`);
+          await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
+          return;
+        }
+
+        const knifeMod = await db.get('SELECT * FROM user_modifiers WHERE username = ? AND modifier = ?', [chatterName, 'auto_duel']);
+        if (knifeMod && knifeMod.value > 0) {
+          const targetUserObj = await db.get('SELECT points FROM users WHERE username = ?', target);
+          if (!targetUserObj || targetUserObj.points <= 0) {
+            await sendChatMessage(`@${chatterName} you tried to assassinate ${target}, but they have no points!`, chatterName);
+            return;
+          }
+          
+          let actualBet = betAmount;
+          if (actualBet > 2500) actualBet = 2500;
+          if (actualBet > targetUserObj.points) actualBet = targetUserObj.points;
+          
+          await db.run('UPDATE user_modifiers SET value = value - 1 WHERE username = ? AND modifier = ?', [chatterName, 'auto_duel']);
+          await db.run('UPDATE users SET points = points - ? WHERE username = ?', [actualBet, chatterName]);
+          await db.run('UPDATE users SET points = points - ? WHERE username = ?', [actualBet, target]);
+
+          const challengerWins = Math.random() < 0.5;
+          const winner = challengerWins ? chatterName : target;
+          const loser = challengerWins ? target : chatterName;
+          const reward = actualBet * 2;
+
+          await db.run('UPDATE users SET points = points + ? WHERE username = ?', [reward, winner]);
+
+          await updateUserStat(winner, 'duels_played', 1);
+          await updateUserStat(loser, 'duels_played', 1);
+          await updateUserStat(winner, 'duels_won', 1);
+          await updateUserStat(loser, 'duels_lost', 1);
+          await updateUserStat(winner, 'duels_points_won', actualBet);
+          await updateUserStat(loser, 'duels_points_lost', actualBet);
+
+          await sendChatMessage(`🔪 @${chatterName} used a knife to force a duel on ${target}! ${winner} won ${reward} points!`, chatterName);
           return;
         }
 
         if (activeDuels.has(target)) {
-          await sendChatMessage(`${chatterName} ${target} already has a pending duel!`);
+          await sendChatMessage(`${chatterName} ${target} already has a pending duel!`, chatterName);
           return;
         }
 
@@ -973,14 +1187,14 @@ async function start() {
           timeoutId: timeoutId
         });
 
-        await sendChatMessage(`⚔️ ${chatterName} challenged ${target} for ${betAmount} pts! Type !acceptduel in 60s!`);
+        await sendChatMessage(`⚔️ ${chatterName} challenged ${target} for ${betAmount} pts! Type !acceptduel in 60s!`, chatterName);
       }
     },
     '!acceptduel': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (!activeDuels.has(chatterName)) {
-        //  await sendChatMessage(`${chatterName} you have no pending duel requests!`);
+        //  await sendChatMessage(`${chatterName} you have no pending duel requests!`, chatterName);
           return;
         }
 
@@ -1029,7 +1243,7 @@ async function start() {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (!activeDuels.has(chatterName)) {
-          //await sendChatMessage(`${chatterName} you have no pending duel requests to decline!`);
+          //await sendChatMessage(`${chatterName} you have no pending duel requests to decline!`, chatterName);
           return;
         }
 
@@ -1040,7 +1254,7 @@ async function start() {
 
         await db.run('UPDATE users SET points = points + ? WHERE username = ?', [duel.amount, duel.challenger]);
         
-        await sendChatMessage(`${chatterName} has declined the duel from ${duel.challenger}! Points refunded.`);
+        await sendChatMessage(`${chatterName} has declined the duel from ${duel.challenger}! Points refunded.`, chatterName);
       }
     },
     '!gamble': {
@@ -1048,7 +1262,7 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
         if (!user || user.points <= 0) {
-          await sendChatMessage(`${chatterName}, you don't have any points to gamble!`);
+          await sendChatMessage(`${chatterName}, you don't have any points to gamble!`, chatterName);
           return;
         }
 
@@ -1067,7 +1281,7 @@ async function start() {
         }
 
         if (isNaN(betAmount) || betAmount <= 0 || betAmount > user.points) {
-          await sendChatMessage(`${chatterName}, invalid amount! Try !gamble 50, !gamble 50%, or !gamble all`);
+          await sendChatMessage(`${chatterName}, invalid amount! Try !gamble 50, !gamble 50%, or !gamble all`, chatterName);
           return;
         }
 
@@ -1080,14 +1294,14 @@ async function start() {
           await updateUserStat(chatterName, 'gamble_played', 1);
           await updateUserStat(chatterName, 'gamble_won', 1);
           await updateUserStat(chatterName, 'gamble_points_won', betAmount);
-          await sendChatMessage(`${chatterName} won ${betAmount} points in a gamble! You now have ${newPoints} points.`);
+          await sendChatMessage(`${chatterName} won ${betAmount} points in a gamble! You now have ${newPoints} points.`, chatterName);
         } else {
           await db.run('UPDATE users SET points = points - ? WHERE username = ?', [betAmount, chatterName]);
           const newPoints = user.points - betAmount;
           await updateUserStat(chatterName, 'gamble_played', 1);
           await updateUserStat(chatterName, 'gamble_lost', 1);
           await updateUserStat(chatterName, 'gamble_points_lost', betAmount);
-          await sendChatMessage(`${chatterName} lost ${betAmount} points in a gamble... You now have ${newPoints} points.`);
+          await sendChatMessage(`${chatterName} lost ${betAmount} points in a gamble... You now have ${newPoints} points.`, chatterName);
         }
       }
     },
@@ -1096,17 +1310,17 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to start chat wars!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to start chat wars!`, chatterName);
           return;
         }
 
         if (activeChatWar) {
-          await sendChatMessage(`${chatterName} a chat war is already active!`);
+          await sendChatMessage(`${chatterName} a chat war is already active!`, chatterName);
           return;
         }
 
         if (args.length < 4) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !chatwar <emote1> <emote2> <cost> <time> (ex: !chatwar CoolCat OhMyDog 100 1m)`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !chatwar <emote1> <emote2> <cost> <time> (ex: !chatwar CoolCat OhMyDog 100 1m)`, chatterName);
           return;
         }
 
@@ -1116,13 +1330,13 @@ async function start() {
         const durationStr = args[3];
         
         if (isNaN(cost) || cost < 0) {
-           await sendChatMessage(`${chatterName} invalid cost!`);
+           await sendChatMessage(`${chatterName} invalid cost!`, chatterName);
            return;
         }
 
         const durationMs = parseFlexibleTime(durationStr);
         if (isNaN(durationMs) || durationMs <= 0) {
-           await sendChatMessage(`${chatterName} invalid time format! Use 10s, 1m, 1h.`);
+           await sendChatMessage(`${chatterName} invalid time format! Use 10s, 1m, 1h.`, chatterName);
            return;
         }
 
@@ -1137,7 +1351,7 @@ async function start() {
         const emoteUrl2 = getEmoteUrl(emote2);
 
         if (!emoteUrl1 || !emoteUrl2) {
-           await sendChatMessage(`${chatterName} one or both of those are not valid emotes! Please use actual Twitch or 3rd party emotes.`);
+           await sendChatMessage(`${chatterName} one or both of those are not valid emotes! Please use actual Twitch or 3rd party emotes.`, chatterName);
            return;
         }
 
@@ -1279,12 +1493,12 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to cancel chat war!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to cancel chat war!`, chatterName);
           return;
         }
 
         if (!activeChatWar) {
-          await sendChatMessage(`${chatterName} there is no active chat war!`);
+          await sendChatMessage(`${chatterName} there is no active chat war!`, chatterName);
           return;
         }
 
@@ -1302,12 +1516,138 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         await sendChatMessage(`CHAT WAR CANCELLED: All points (${refunded} total) have been refunded!`);
       }
     },
+    '!fish': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const pending = await db.get('SELECT * FROM pending_fish WHERE username = ?', chatterName);
+        if (pending) {
+          const timeLeft = Math.max(0, Math.ceil((pending.catch_time - Date.now()) / 1000));
+          if (timeLeft > 0) {
+            await sendChatMessage(`@${chatterName} you are already fishing! Wait ${timeLeft} more seconds.`, chatterName);
+            return;
+          }
+        }
+
+        let isFree = false;
+        const ticket = await db.get('SELECT * FROM user_modifiers WHERE username = ? AND modifier = ?', [chatterName, 'free_fish']);
+        if (ticket && ticket.value > 0) {
+          isFree = true;
+          await db.run('UPDATE user_modifiers SET value = value - 1 WHERE username = ? AND modifier = ?', [chatterName, 'free_fish']);
+        } else {
+          const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+          if (!user || user.points < 2000) {
+            await sendChatMessage(`@${chatterName} you need 2000 points to fish! (Or use a fishing ticket)`, chatterName);
+            return;
+          }
+          await db.run('UPDATE users SET points = points - 2000 WHERE username = ?', chatterName);
+        }
+
+        const catchTime = Date.now() + 5 * 60 * 1000;
+        await db.run('INSERT INTO pending_fish (username, catch_time, is_free) VALUES (?, ?, ?) ON CONFLICT(username) DO UPDATE SET catch_time = ?, is_free = ?', [chatterName, catchTime, isFree ? 1 : 0, catchTime, isFree ? 1 : 0]);
+        
+        await sendChatMessage(`🎣 @${chatterName} cast their line! Wait 5 minutes to see what bites...`, chatterName);
+      }
+    },
+    '!inventory': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const items = await db.all('SELECT * FROM user_inventory WHERE username = ? AND quantity > 0', chatterName);
+        if (items.length === 0) {
+          await sendChatMessage(`@${chatterName} your inventory is empty!`, chatterName);
+          return;
+        }
+        
+        const rarityOrder = { 'Legendary': 1, 'Rare': 2, 'Uncommon': 3, 'Common': 4 };
+        items.sort((a, b) => {
+          let rarityA = 4, rarityB = 4;
+          for (const [r, list] of Object.entries(FISHING_ITEMS)) {
+            if (list.some(i => i.name === a.item_name)) rarityA = rarityOrder[list[0].rarity];
+            if (list.some(i => i.name === b.item_name)) rarityB = rarityOrder[list[0].rarity];
+          }
+          if (rarityA !== rarityB) return rarityA - rarityB;
+          return a.item_name.localeCompare(b.item_name);
+        });
+
+        const displayItems = items.slice(0, 3).map(i => `${i.item_name}(${i.quantity}x)`);
+        let msg = `@${chatterName} inv: ${displayItems.join(', ')}`;
+        if (items.length > 3) {
+          msg += `... to see your full inventory go to the dashboard site.`;
+        }
+        await sendChatMessage(msg);
+      }
+    },
+    '!inv': { cost: 0, execute: async (args, chatterName, event, hasPermission) => builtInCommands['!inventory'].execute(args, chatterName, event, hasPermission) },
+    '!redeem': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const rawArgs = args.join(' ').toLowerCase();
+        
+        const allItems = [];
+        for (const [r, list] of Object.entries(FISHING_ITEMS)) {
+          allItems.push(...list.map(i => i.name));
+        }
+
+        const sortedItems = [...allItems].sort((a, b) => b.length - a.length);
+        const redeemRequests = [];
+        let workingStr = rawArgs;
+        
+        for (const itemName of sortedItems) {
+          const regex = new RegExp(`(${itemName})\\s+(all|\\d+)`, 'gi');
+          let match;
+          while ((match = regex.exec(workingStr)) !== null) {
+            redeemRequests.push({ item: itemName, qtyStr: match[2].toLowerCase() });
+          }
+          workingStr = workingStr.replace(regex, ' '.repeat(itemName.length + 5));
+        }
+
+        if (redeemRequests.length === 0) {
+          await sendChatMessage(`@${chatterName} invalid format! Try: !redeem knife all gold coin 3`, chatterName);
+          return;
+        }
+
+        let totalPointsGained = 0;
+        const summary = [];
+
+        for (const req of redeemRequests) {
+          const userInv = await db.get('SELECT quantity FROM user_inventory WHERE username = ? AND item_name = ?', [chatterName, req.item]);
+          if (!userInv || userInv.quantity === 0) continue;
+          
+          let qty = parseInt(req.qtyStr);
+          if (req.qtyStr === 'all') qty = userInv.quantity;
+          if (isNaN(qty) || qty <= 0) continue;
+          if (qty > userInv.quantity) qty = userInv.quantity;
+
+          await db.run('UPDATE user_inventory SET quantity = quantity - ? WHERE username = ? AND item_name = ?', [qty, chatterName, req.item]);
+          
+          if (req.item === 'gold coin') {
+            await db.run('UPDATE users SET points = points + ? WHERE username = ?', [qty * 100, chatterName]);
+            totalPointsGained += qty * 100;
+          } else if (req.item === 'gold pouch') {
+            await db.run('UPDATE users SET points = points + ? WHERE username = ?', [qty * 500, chatterName]);
+            totalPointsGained += qty * 500;
+          } else if (req.item === 'fishing ticket') {
+            await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [chatterName, 'free_fish', qty, qty]);
+          } else if (req.item === 'knife') {
+            await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [chatterName, 'auto_duel', qty, qty]);
+          }
+          
+          summary.push(`${qty}x ${req.item}`);
+        }
+
+        if (summary.length === 0) {
+          await sendChatMessage(`@${chatterName} you don't have enough of those items!`, chatterName);
+        } else {
+          await sendChatMessage(`✨ @${chatterName} redeemed: ${summary.join(', ')}!${totalPointsGained > 0 ? ` (Gained ${totalPointsGained} pts)` : ''}`);
+        }
+      }
+    },
+    '!use': { cost: 0, execute: async (args, chatterName, event, hasPermission) => builtInCommands['!redeem'].execute(args, chatterName, event, hasPermission) },
     '!clearoverlay': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'auroryNaru';
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to clear the overlay!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to clear the overlay!`, chatterName);
           return;
         }
 
@@ -1329,7 +1669,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         clearEmotes();
 
         if (cleared) {
-          await sendChatMessage(`Overlay cleared by ${chatterName}! (Bets and Chatwars will still continue in the background)`);
+          await sendChatMessage(`Overlay cleared by ${chatterName}! (Bets and Chatwars will still continue in the background)`, chatterName);
         } else {
           await sendChatMessage(`Overlay emotes cleared!`);
         }
@@ -1340,12 +1680,12 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-         // await sendChatMessage(`${chatterName} you do not have permission to start bets!`);
+         // await sendChatMessage(`${chatterName} you do not have permission to start bets!`, chatterName);
           return;
         }
 
         if (activeBets.has('default')) {
-          await sendChatMessage(`${chatterName} there is already an active or unresolved bet! Use !betstop or !betcancel first.`);
+          await sendChatMessage(`${chatterName} there is already an active or unresolved bet! Use !betstop or !betcancel first.`, chatterName);
           return;
         }
 
@@ -1361,7 +1701,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         } else {
           // Fallback for unquoted format like: !betstart Will we win yes,no 1m
           if (args.length < 2) {
-            await sendChatMessage(`${chatterName} invalid format! Use: !betstart "Will we win?" "yes,no" 5m`);
+            await sendChatMessage(`${chatterName} invalid format! Use: !betstart "Will we win?" "yes,no" 5m`, chatterName);
             return;
           }
 
@@ -1378,13 +1718,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             choicesRaw = lastArg.split(',').map(c => c.trim().toLowerCase()).filter(c => c);
             description = args.slice(0, args.length - 1).join(' ');
           } else {
-            await sendChatMessage(`${chatterName} invalid format! Make sure choices are separated by a comma (ex: yes,no). Example: !betstart test yes,no 1m`);
+            await sendChatMessage(`${chatterName} invalid format! Make sure choices are separated by a comma (ex: yes,no). Example: !betstart test yes,no 1m`, chatterName);
             return;
           }
         }
 
         if (choicesRaw.length < 2) {
-          await sendChatMessage(`${chatterName} you need at least 2 choices separated by commas!`);
+          await sendChatMessage(`${chatterName} you need at least 2 choices separated by commas!`, chatterName);
           return;
         }
 
@@ -1455,24 +1795,24 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-         //  await sendChatMessage(`${chatterName} you do not have permission to stop bets!`);
+         //  await sendChatMessage(`${chatterName} you do not have permission to stop bets!`, chatterName);
           return;
         }
 
         const bet = activeBets.get('default');
         if (!bet) {
-          await sendChatMessage(`${chatterName} there is no active bet!`);
+          await sendChatMessage(`${chatterName} there is no active bet!`, chatterName);
           return;
         }
 
         if (args.length < 1) {
-          await sendChatMessage(`${chatterName} please specify the winning choice! Example: !betstop yes`);
+          await sendChatMessage(`${chatterName} please specify the winning choice! Example: !betstop yes`, chatterName);
           return;
         }
 
         const winningChoice = args[0].toLowerCase();
         if (!bet.choices.includes(winningChoice)) {
-          await sendChatMessage(`${chatterName} invalid choice! Valid choices are: ${bet.choices.join(', ')}`);
+          await sendChatMessage(`${chatterName} invalid choice! Valid choices are: ${bet.choices.join(', ')}`, chatterName);
           return;
         }
 
@@ -1566,13 +1906,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to cancel bets!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to cancel bets!`, chatterName);
           return;
         }
 
         const bet = activeBets.get('default');
         if (!bet) {
-          await sendChatMessage(`${chatterName} there is no active bet!`);
+          await sendChatMessage(`${chatterName} there is no active bet!`, chatterName);
           return;
         }
 
@@ -1596,33 +1936,33 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const bet = activeBets.get('default');
         if (!bet) {
-          await sendChatMessage(`${chatterName} there is no active bet right now!`);
+          await sendChatMessage(`${chatterName} there is no active bet right now!`, chatterName);
           return;
         }
         if (!bet.isOpen) {
-          await sendChatMessage(`${chatterName} betting is closed for the current bet!`);
+          await sendChatMessage(`${chatterName} betting is closed for the current bet!`, chatterName);
           return;
         }
 
         if (bet.userBets[chatterName]) {
-          await sendChatMessage(`${chatterName} you have already bet ${bet.userBets[chatterName].amount} on [${bet.userBets[chatterName].choice}]!`);
+          await sendChatMessage(`${chatterName} you have already bet ${bet.userBets[chatterName].amount} on [${bet.userBets[chatterName].choice}]!`, chatterName);
           return;
         }
 
         if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !bet <choice> <amount>`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !bet <choice> <amount>`, chatterName);
           return;
         }
 
         const choice = args[0].toLowerCase();
         if (!bet.choices.includes(choice)) {
-          await sendChatMessage(`${chatterName} invalid choice! Valid choices are: ${bet.choices.join(', ')}`);
+          await sendChatMessage(`${chatterName} invalid choice! Valid choices are: ${bet.choices.join(', ')}`, chatterName);
           return;
         }
 
         const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
         if (!user || user.points <= 0) {
-          await sendChatMessage(`${chatterName} you don't have enough points!`);
+          await sendChatMessage(`${chatterName} you don't have enough points!`, chatterName);
           return;
         }
 
@@ -1641,7 +1981,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         }
 
         if (isNaN(betAmount) || betAmount <= 0 || betAmount > user.points) {
-          await sendChatMessage(`${chatterName} invalid amount!`);
+          await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
           return;
         }
 
@@ -1652,7 +1992,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         bet.totalPool += betAmount;
 
         broadcastBetState(bet);
-        await sendChatMessage(`${chatterName} bet ${betAmount} on ${choice}!`);
+        await sendChatMessage(`${chatterName} bet ${betAmount} on ${choice}!`, chatterName);
       }
     },
     '!betstatus': {
@@ -1678,12 +2018,12 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to edit commands!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to edit commands!`, chatterName);
           return;
         }
 
         if (args.length < 3) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !editcommand <command> <setting> <value>`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !editcommand <command> <setting> <value>`, chatterName);
           return;
         }
 
@@ -1697,7 +2037,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             if (setting === 'cost') {
               const costVal = parseInt(value, 10);
               if (isNaN(costVal) || costVal < 0) {
-                await sendChatMessage(`${chatterName} invalid cost! It must be a number >= 0.`);
+                await sendChatMessage(`${chatterName} invalid cost! It must be a number >= 0.`, chatterName);
                 return;
               }
               await db.run('UPDATE custom_aliases SET cost = ? WHERE command = ?', [costVal, targetCmd]);
@@ -1708,7 +2048,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             } else if (setting === 'cooldown') {
               const cdVal = parseFlexibleTime(value);
               if (isNaN(cdVal) || cdVal < 0) {
-                await sendChatMessage(`${chatterName} invalid cooldown time! Use ms (1000), or 10s, 5m, 1h.`);
+                await sendChatMessage(`${chatterName} invalid cooldown time! Use ms (1000), or 10s, 5m, 1h.`, chatterName);
                 return;
               }
               const configKey = `cmd_${targetCmd}_cooldown`;
@@ -1718,12 +2058,12 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               return;
             }
           }
-          await sendChatMessage(`${chatterName} unknown command: ${targetCmd}`);
+          await sendChatMessage(`${chatterName} unknown command: ${targetCmd}`, chatterName);
           return;
         }
 
         if (!validSettings.includes(setting)) {
-          await sendChatMessage(`${chatterName} invalid setting! ${targetCmd} only supports changing: ${validSettings.join(', ')}`);
+          await sendChatMessage(`${chatterName} invalid setting! ${targetCmd} only supports changing: ${validSettings.join(', ')}`, chatterName);
           return;
         }
 
@@ -1731,7 +2071,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         if (setting === 'cooldown' || setting === 'duration') {
           const parsedTime = parseFlexibleTime(value);
           if (isNaN(parsedTime) || parsedTime < 0) {
-            await sendChatMessage(`${chatterName} invalid ${setting} time! Use ms (1000), or 10s, 5m, 1h.`);
+            await sendChatMessage(`${chatterName} invalid ${setting} time! Use ms (1000), or 10s, 5m, 1h.`, chatterName);
             return;
           }
           finalValue = parsedTime.toString();
@@ -1755,29 +2095,29 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to add commands!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to add commands!`, chatterName);
           return;
         }
 
         if (args.length < 3) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !addcommand <!command> <cost> <action>`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !addcommand <!command> <cost> <action>`, chatterName);
           return;
         }
 
         const cmdName = args[0].toLowerCase();
         if (!cmdName.startsWith('!')) {
-          await sendChatMessage(`${chatterName} the command must start with a ! (e.g. !mycmd)`);
+          await sendChatMessage(`${chatterName} the command must start with a ! (e.g. !mycmd)`, chatterName);
           return;
         }
         
         if (customCommands[cmdName] || cmdName === '!showemote') {
-          await sendChatMessage(`${chatterName} you cannot overwrite a built-in command!`);
+          await sendChatMessage(`${chatterName} you cannot overwrite a built-in command!`, chatterName);
           return;
         }
 
         const cost = parseInt(args[1], 10);
         if (isNaN(cost) || cost < 0) {
-          await sendChatMessage(`${chatterName} invalid cost! It must be a number >= 0.`);
+          await sendChatMessage(`${chatterName} invalid cost! It must be a number >= 0.`, chatterName);
           return;
         }
 
@@ -1794,18 +2134,18 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to delete commands!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to delete commands!`, chatterName);
           return;
         }
 
         if (args.length < 1) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !removecommand <!command>`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !removecommand <!command>`, chatterName);
           return;
         }
 
         const cmdName = args[0].toLowerCase();
         if (!customAliasesMap.has(cmdName)) {
-          await sendChatMessage(`${chatterName} command ${cmdName} does not exist!`);
+          await sendChatMessage(`${chatterName} command ${cmdName} does not exist!`, chatterName);
           return;
         }
 
@@ -1830,23 +2170,23 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to disable commands!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to disable commands!`, chatterName);
           return;
         }
 
         if (args.length < 1) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !disable <!command> [time]`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !disable <!command> [time]`, chatterName);
           return;
         }
 
         const cmdName = args[0].toLowerCase();
         if (!cmdName.startsWith('!')) {
-          await sendChatMessage(`${chatterName} the command must start with a ! (e.g. !mycmd)`);
+          await sendChatMessage(`${chatterName} the command must start with a ! (e.g. !mycmd)`, chatterName);
           return;
         }
         
         if (cmdName === '!enable' || cmdName === '!disable') {
-          await sendChatMessage(`${chatterName} you cannot disable ${cmdName}!`);
+          await sendChatMessage(`${chatterName} you cannot disable ${cmdName}!`, chatterName);
           return;
         }
         
@@ -1854,7 +2194,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         if (args.length > 1) {
           const parsedTime = parseFlexibleTime(args[1]);
           if (isNaN(parsedTime) || parsedTime <= 0) {
-            await sendChatMessage(`${chatterName} invalid time format! Use ms (10000), or 10s, 10m, 10h.`);
+            await sendChatMessage(`${chatterName} invalid time format! Use ms (10000), or 10s, 10m, 10h.`, chatterName);
             return;
           }
           disabledValue = (Date.now() + parsedTime).toString();
@@ -1873,18 +2213,18 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to enable commands!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to enable commands!`, chatterName);
           return;
         }
 
         if (args.length < 1) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !enable <!command>`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !enable <!command>`, chatterName);
           return;
         }
 
         const cmdName = args[0].toLowerCase();
         if (!cmdName.startsWith('!')) {
-          await sendChatMessage(`${chatterName} the command must start with a ! (e.g. !mycmd)`);
+          await sendChatMessage(`${chatterName} the command must start with a ! (e.g. !mycmd)`, chatterName);
           return;
         }
         
@@ -1900,7 +2240,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to edit rewards!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to edit rewards!`, chatterName);
           return;
         }
 
@@ -1945,29 +2285,29 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to start raffles!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to start raffles!`, chatterName);
           return;
         }
 
         if (activeRaffle) {
-          await sendChatMessage(`${chatterName} there is already an active raffle!`);
+          await sendChatMessage(`${chatterName} there is already an active raffle!`, chatterName);
           return;
         }
 
         if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !raffle <amount> <time>`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !raffle <amount> <time>`, chatterName);
           return;
         }
 
         const amount = parseAmount(args[0]);
         if (isNaN(amount) || amount === 0) {
-          await sendChatMessage(`${chatterName} invalid amount!`);
+          await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
           return;
         }
 
         const durationMs = parseFlexibleTime(args[1]);
         if (isNaN(durationMs) || durationMs <= 0) {
-          await sendChatMessage(`${chatterName} invalid time!`);
+          await sendChatMessage(`${chatterName} invalid time!`, chatterName);
           return;
         }
 
@@ -2006,35 +2346,35 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to start raffles!`);
+        //  await sendChatMessage(`${chatterName} you do not have permission to start raffles!`, chatterName);
           return;
         }
 
         if (activeRaffle) {
-          await sendChatMessage(`${chatterName} there is already an active raffle!`);
+          await sendChatMessage(`${chatterName} there is already an active raffle!`, chatterName);
           return;
         }
 
         if (args.length < 3) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !multiraffle <amount> <time> <winners>`);
+          await sendChatMessage(`${chatterName} invalid format! Use: !multiraffle <amount> <time> <winners>`, chatterName);
           return;
         }
 
         const amount = parseAmount(args[0]);
         if (isNaN(amount) || amount === 0) {
-          await sendChatMessage(`${chatterName} invalid amount!`);
+          await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
           return;
         }
 
         const durationMs = parseFlexibleTime(args[1]);
         if (isNaN(durationMs) || durationMs <= 0) {
-          await sendChatMessage(`${chatterName} invalid time!`);
+          await sendChatMessage(`${chatterName} invalid time!`, chatterName);
           return;
         }
 
         const numWinners = parseInt(args[2], 10);
         if (isNaN(numWinners) || numWinners <= 0) {
-          await sendChatMessage(`${chatterName} invalid number of winners!`);
+          await sendChatMessage(`${chatterName} invalid number of winners!`, chatterName);
           return;
         }
 
