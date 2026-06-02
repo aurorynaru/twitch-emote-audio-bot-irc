@@ -518,7 +518,7 @@ async function start() {
     '!editpoints': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'auroryNaru';
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
         if (!isMod) {
         //  await sendChatMessage(`@${chatterName}, you do not have permission to edit points!`);
           return;
@@ -544,7 +544,7 @@ async function start() {
     '!chatcooldown': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'auroryNaru';
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
         if (!isMod) {
         //  await sendChatMessage(`@${chatterName}, you do not have permission to edit the chat cooldown!`);
           return;
@@ -622,7 +622,7 @@ async function start() {
     '!deleteplaysound': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'auroryNaru';
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
         if (!isMod) {
         //  await sendChatMessage(`${chatterName} you do not have permission to delete playsounds!`);
           return;
@@ -825,7 +825,7 @@ async function start() {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
        
-        if( chatterName === 'auroryNaru' || hasPermission || chatterName === TARGET_CHANNEL  ) {
+        if( chatterName === 'aurorynaru' || hasPermission || chatterName === TARGET_CHANNEL  ) {
           if (args.length < 1) {
             await sendChatMessage(`${chatterName} invalid command! Try !masspointsadd 1000 10m`);
             return;
@@ -858,7 +858,7 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
        
 
-        if ( chatterName === 'auroryNaru' ||  hasPermission || chatterName === TARGET_CHANNEL) { 
+        if ( chatterName === 'aurorynaru' ||  hasPermission || chatterName === TARGET_CHANNEL) { 
 
           
                   if (args.length < 1) {
@@ -1305,7 +1305,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     '!clearoverlay': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'auroryNaru';
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
         if (!isMod) {
         //  await sendChatMessage(`${chatterName} you do not have permission to clear the overlay!`);
           return;
@@ -2506,8 +2506,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               await db.run('UPDATE users SET points = points - ? WHERE username = ?', [activeCost, chatterName]);
             }
 
-            const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator'].includes(b.set_id)) || chatterName == "auroryNaru";
-            const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName == "auroryNaru";
+            const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator'].includes(b.set_id)) || chatterName == "aurorynaru";
+            const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName == "aurorynaru";
 
             if (!isMod) {
               const now = Date.now();
