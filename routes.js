@@ -70,7 +70,7 @@ export function setupRoutes(app, {
   });
 
   app.get('/overlay', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'overlay.html'));
   });
 
   app.get('/api/dashboard/commands', (req, res) => {
