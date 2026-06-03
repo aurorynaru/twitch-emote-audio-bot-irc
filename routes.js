@@ -16,7 +16,9 @@ export function setupRoutes(app, {
   getDb,
   globalConfig,
   customAliasesMap,
-  commandConfigSchema
+  commandConfigSchema,
+  FISHING_ITEMS,
+  FISHING_RARITIES
 }) {
   const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -55,6 +57,16 @@ export function setupRoutes(app, {
     res.json({
       durationMs: parseInt(globalConfig['cmd_!showemote_duration']) || parseInt(process.env.EMOTE_DURATION_MS) || 5000,
       sizePx: parseInt(globalConfig['cmd_!showemote_size']) || parseInt(process.env.EMOTE_SIZE_PX) || 150
+    });
+  });
+
+  app.get('/api/economy-rates', (req, res) => {
+    res.json({
+      level_base_cost: parseInt(globalConfig['level_base_cost'] || '200', 10),
+      points_to_xp_rate: parseFloat(globalConfig['points_to_xp_rate'] || '1'),
+      leg_bonus_rate: parseFloat(globalConfig['leg_bonus_rate'] || '0.01'),
+      rare_bonus_rate: parseFloat(globalConfig['rare_bonus_rate'] || '0.05'),
+      lvl_bonus_rate: parseFloat(globalConfig['lvl_bonus_rate'] || '0.001')
     });
   });
 
@@ -154,9 +166,36 @@ export function setupRoutes(app, {
     try {
       const db = getDb();
       if (!db) return res.status(503).json({ success: false, error: 'Database not ready' });
-      const userStats = await db.all('SELECT * FROM user_stats');
+      const userStatsRaw = await db.all('SELECT s.*, u.xp FROM user_stats s LEFT JOIN users u ON s.username = u.username');
+      const levelBase = parseInt(globalConfig['level_base_cost'] || '200', 10);
+      const userStats = userStatsRaw.map(u => {
+        u.level = Math.floor(Math.sqrt((u.xp || 0) / levelBase)) + 1;
+        return u;
+      });
       const emoteStats = await db.all('SELECT * FROM emote_stats');
       res.json({ success: true, userStats, emoteStats });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/api/dashboard/items', (req, res) => {
+    try {
+      res.json({ success: true, items: FISHING_ITEMS, rarities: FISHING_RARITIES });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.get('/api/dashboard/inventory', async (req, res) => {
+    try {
+      const db = getDb();
+      if (!db) return res.status(503).json({ success: false, error: 'Database not ready' });
+      const inventory = await db.all('SELECT * FROM user_inventory WHERE quantity > 0');
+      const now = Date.now();
+      const activeEffects = await db.all('SELECT * FROM active_effects WHERE expires_at > ? OR uses_left > 0', [now]);
+      const userModifiers = await db.all('SELECT * FROM user_modifiers WHERE value > 0');
+      res.json({ success: true, inventory, activeEffects, userModifiers });
     } catch (error) {
       res.status(500).json({ success: false, error: error.message });
     }
@@ -194,9 +233,17 @@ export function setupRoutes(app, {
   });
 }
 
-export function broadcastEmote(url, isZeroWidth = false, messageId = null, customX = null, customY = null) {
-  const payload = `data: ${JSON.stringify({ type: 'emote', url, isZeroWidth, messageId, customX, customY })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
+export function broadcastEmote(url, isZeroWidth = false, messageId = null, customX = null, customY = null, modifiers = []) {
+  const data = JSON.stringify({ 
+    type: 'emote', 
+    url, 
+    isZeroWidth, 
+    messageId,
+    customX,
+    customY,
+    modifiers
+  });
+  sseClients.forEach(client => client.write(`data: ${data}\n\n`));
 }
 
 export function broadcastAudio(filename) {

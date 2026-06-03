@@ -32,8 +32,9 @@ fetch('/api/config')
         const messageId = parsedData.messageId || null;
         const customX = parsedData.customX !== undefined ? parsedData.customX : null;
         const customY = parsedData.customY !== undefined ? parsedData.customY : null;
+        const modifiers = parsedData.modifiers || [];
 
-        displayEmote(emoteUrl, isZeroWidth, messageId, customX, customY);
+        displayEmote(emoteUrl, isZeroWidth, messageId, customX, customY, modifiers);
       } else if (parsedData.type === 'clear_emotes') {
         document.querySelectorAll('.emote-img').forEach(img => img.remove());
       }
@@ -47,57 +48,79 @@ let lastMessageId = null;
 let lastEmoteX = null;
 let lastEmoteY = null;
 
-function displayEmote(url, isZeroWidth = false, messageId = null, customX = null, customY = null) {
+function displayEmote(url, isZeroWidth = false, messageId = null, customX = null, customY = null, modifiers = []) {
+  const wrapper = document.createElement('div');
+  wrapper.style.position = 'absolute';
+  wrapper.style.pointerEvents = 'none';
+
   const img = document.createElement('img');
   img.src = url;
-  img.classList.add('emote-img');
-  
- 
-  img.style.setProperty('--duration', `${durationMs}ms`);
-
-
   img.style.height = `${sizePx}px`;
   img.style.width = 'auto'; 
+  img.style.display = 'block';
+
+  // Apply visual modifiers ONLY if not a zero-width emote
+  if (!isZeroWidth) {
+    if (modifiers.includes('cursed')) img.classList.add('mod-cursed');
+    if (modifiers.includes('hyper')) img.classList.add('mod-hyper');
+    if (modifiers.includes('rainbow')) img.classList.add('mod-rainbow');
+    
+    let transforms = [];
+    if (modifiers.includes('wide')) transforms.push('scaleX(3)');
+    if (modifiers.includes('flipx') && !modifiers.includes('wide')) transforms.push('scaleX(-1)');
+    if (modifiers.includes('flipx') && modifiers.includes('wide')) transforms.push('scaleX(-3)');
+    if (modifiers.includes('flipy')) transforms.push('scaleY(-1)');
+    
+    if (transforms.length > 0) {
+      img.style.transform = transforms.join(' ');
+    }
+  }
+  
+  // Combine movement animations for the wrapper
+  let wrapperAnims = [`fadeEffect ${durationMs}ms ease-in-out forwards`];
+  if (!isZeroWidth && modifiers.includes('leave')) wrapperAnims = [`leaveAnim ${durationMs}ms linear forwards`];
+  if (!isZeroWidth && modifiers.includes('arrive')) wrapperAnims = [`arriveAnim ${durationMs}ms linear forwards`];
+  
+  if (modifiers.includes('bounce')) wrapperAnims.push(`bounceAnim 0.5s cubic-bezier(0.28, 0.84, 0.42, 1) infinite alternate`);
+  if (modifiers.includes('jam')) wrapperAnims.push(`jamAnim 0.15s linear infinite alternate`);
+  if (!isZeroWidth && modifiers.includes('hyper')) wrapperAnims.push(`hyperAnim 0.1s linear infinite`);
+  
+  wrapper.style.animation = wrapperAnims.join(', ');
 
   let x, y;
   const margin = sizePx; 
   
   if (customX !== null && customY !== null) {
-
     x = (customX / 100) * (window.innerWidth - margin);
     y = (customY / 100) * (window.innerHeight - margin);
-    img.style.zIndex = '5'; 
+    wrapper.style.zIndex = '5'; 
     
     lastMessageId = messageId;
     lastEmoteX = x;
     lastEmoteY = y;
   } else if (isZeroWidth && lastMessageId === messageId && lastEmoteX !== null && lastEmoteY !== null) {
-   
     x = lastEmoteX;
     y = lastEmoteY;
- 
-    img.style.zIndex = '10';
+    wrapper.style.zIndex = '10';
   } else {
-
     x = Math.random() * (window.innerWidth - margin);
     y = Math.random() * (window.innerHeight - margin);
     
- 
     lastMessageId = messageId;
     lastEmoteX = x;
     lastEmoteY = y;
-    img.style.zIndex = '1';
+    wrapper.style.zIndex = '1';
   }
   
-  img.style.left = `${x}px`;
-  img.style.top = `${y}px`;
+  wrapper.style.left = `${x}px`;
+  wrapper.style.top = `${y}px`;
 
-  document.body.appendChild(img);
+  wrapper.appendChild(img);
+  document.body.appendChild(wrapper);
 
- 
   setTimeout(() => {
-    if (img.parentNode) {
-      img.parentNode.removeChild(img);
+    if (wrapper.parentNode) {
+      wrapper.parentNode.removeChild(wrapper);
     }
   }, durationMs);
 }

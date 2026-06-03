@@ -1,0 +1,230 @@
+{
+  "radioactive fish": {
+    "rarity": "Common",
+    "description": "Instantly deducts 100 points.",
+    "effectType": "instant_points",
+    "effectValue": -100,
+    "uses": 1,
+    "autoConsume": true
+  },
+  "pebble": {
+    "rarity": "Common",
+    "description": "A shiny gold coin. Grants 500 points.",
+    "effectType": "instant_points",
+    "effectValue": 500,
+    "uses": 1,
+     "autoConsume": true
+  },
+  "gold coin": {
+    "rarity": "Common",
+    "description": "A shiny gold coin. Grants 750 points.",
+    "effectType": "instant_points",
+    "effectValue": 750,
+    "uses": 1,
+     "autoConsume": true
+  },
+  "gold pouch": {
+    "rarity": "Common",
+    "description": "A small pouch of coins. Grants 1500 points.",
+    "effectType": "instant_points",
+    "effectValue": 1500,
+    "uses": 1,
+     "autoConsume": true
+  },
+  
+  "roon": {
+    "rarity": "Common",
+    "description": " Grants 2000 points.",
+    "effectType": "instant_points",
+    "effectValue": 2000,
+    "uses": 1,
+     "autoConsume": true
+  },
+
+  "fishing ticket": {
+    "rarity": "Rare",
+    "description": "Can be traded for special goods.",
+    "effectType": "none",
+    "effectValue": 0
+  },
+  "knife": {
+    "rarity": "Legendary",
+    "description": "A sharp knife. Instantly kills target.",
+    "effectType": "none",
+    "effectValue": 0
+  },
+  "monstir": {
+    "rarity": "Common",
+    "description": "Boosts your personal point gain by 5% for 15 minutes.",
+    "effectType": "personal_point_boost",
+    "effectValue": 0.05,
+    "effectDurationMinutes": 15
+  },
+  "espresso shot": {
+    "rarity": "Uncommon",
+    "description": "Boosts your personal point gain by 15% for 30 minutes.",
+    "effectType": "personal_point_boost",
+    "effectValue": 0.15,
+    "effectDurationMinutes": 30
+  },
+  "GoldPLZ": {
+    "rarity": "Rare",
+    "description": "Boosts your personal point gain by 30% for 2 hour.",
+    "effectType": "personal_point_boost",
+    "effectValue": 0.30,
+    "effectDurationMinutes": 120
+  },
+  "liquid gold": {
+    "rarity": "Legendary",
+    "description": "Boosts your personal point gain by 100% for 1 hour.",
+    "effectType": "personal_point_boost",
+    "effectValue": 1.0,
+    "effectDurationMinutes": 60
+  },
+  "Red Lion": {
+    "rarity": "Uncommon",
+    "description": "Boosts everyone in chat's point gain by 10% for 15 minutes.",
+    "effectType": "global_point_boost",
+    "effectValue": 0.10,
+    "effectDurationMinutes": 15
+  },
+  "Prospecting Aura": {
+    "rarity": "Rare",
+    "description": "Boosts everyone in chat's point gain by 25% for 30 minutes.",
+    "effectType": "global_point_boost",
+    "effectValue": 0.25,
+    "effectDurationMinutes": 60
+  },
+  "Greevils Greed": {
+    "rarity": "Legendary",
+    "description": "Boosts everyone in chat's point gain by 50% for 30 minutes.",
+    "effectType": "global_point_boost",
+    "effectValue": 0.50,
+    "effectDurationMinutes": 30
+  },
+  "twilight": {
+    "rarity": "Uncommon",
+    "description": "Decreases everyone in chat's point gain by 10% for 15 minutes.",
+    "effectType": "global_point_debuff",
+    "effectValue": 0.10,
+    "effectDurationMinutes": 15
+  },
+  "eclipse": {
+    "rarity": "Rare",
+    "description": "Decreases everyone in chat's point gain by 30% for 30 minutes.",
+    "effectType": "global_point_debuff",
+    "effectValue": 0.30,
+    "effectDurationMinutes": 30
+  },
+  "despair": {
+    "rarity": "Legendary",
+    "description": "Decreases everyone in chat's point gain by 60% for 1 hour.",
+    "effectType": "global_point_debuff",
+    "effectValue": 0.60,
+    "effectDurationMinutes": 60
+  },
+  "peekpoket": {
+    "rarity": "Rare",
+    "description": "Instantly steals 2 points from everyone in chat.",
+    "effectType": "global_point_drain",
+    "effectValue": 2
+  },
+  "yoink": {
+    "rarity": "Legendary",
+    "description": "Instantly steals 5 points from everyone in chat.",
+    "effectType": "global_point_drain",
+    "effectValue": 5
+  },
+  "worm bait": {
+    "rarity": "Common",
+    "description": "Reduces fishing wait time by 10% for 1 hour.",
+    "effectType": "fishing_time_reduction",
+    "effectValue": 0.10,
+    "effectDurationMinutes": 60
+  },
+  "quality lure": {
+    "rarity": "Uncommon",
+    "description": "Reduces fishing wait time by 25% for 1 hours.",
+    "effectType": "fishing_time_reduction",
+    "effectValue": 0.25,
+    "effectDurationMinutes": 60
+  },
+  "Fine rod": {
+    "rarity": "Rare",
+    "description": "Reduces fishing wait time by 40% for 1 hours",
+    "effectType": "fishing_time_reduction",
+    "effectValue": 0.40,
+    "effectDurationMinutes": 60
+  },
+  "Great rod": {
+    "rarity": "Legendary",
+    "description": "Reduces fishing wait time by 70% for 30 minutes.",
+    "effectType": "fishing_time_reduction",
+    "effectValue": 0.70,
+    "effectDurationMinutes": 30
+  },
+  "london passport": {
+    "rarity": "Rare",
+    "description": "Next duel you win, your points won are increased by 50%.",
+    "effectType": "duel_win_boost",
+    "effectValue": 0.50,
+    "uses": 1
+  },
+  "kevlar vest": {
+    "rarity": "Uncommon",
+    "description": "Next time you lose a duel, you only lose half the points.",
+    "effectType": "duel_shield",
+    "effectValue": 0.50,
+    "uses": 1
+  },
+  "lotus orb": {
+    "rarity": "Legendary",
+    "description": "The next time someone challenges you to a duel, you automatically win.loser loses 25% more points",
+    "effectType": "mirror_shield",
+    "effectValue": 1.25,
+    "uses": 1
+  },
+  "extra ticket": {
+    "rarity": "Uncommon",
+    "description": "Gives you 2 entries instead of 1 in the next raffle.",
+    "effectType": "raffle_ticket_multiplier",
+    "effectValue": 2,
+    "uses": 1
+  },
+  "vip pass": {
+    "rarity": "Rare",
+    "description": "Gives you 5 entries in the next raffle.",
+    "effectType": "raffle_ticket_multiplier",
+    "effectValue": 5,
+    "uses": 1
+  },
+  "golden ticket": {
+    "rarity": "Legendary",
+    "description": "100% win chance in the next raffle.",
+    "effectType": "golden_ticket",
+    "effectValue": 1,
+    "uses": 1
+  },
+  "loaded dice": {
+    "rarity": "Legendary",
+    "description": "Your next gamble is a guaranteed win. (Max bet: 20000)",
+    "effectType": "gamble_guaranteed_win",
+    "effectValue": 1,
+    "uses": 1,
+    "maxGambleLimit": 20000
+  },
+  "midas touch": {
+    "rarity": "Legendary",
+    "description": "Your next gamble win pays out 3x your bet instead of 2x.",
+    "effectType": "gamble_multiplier",
+    "effectValue": 3,
+    "uses": 1
+  },
+  "lane tax": {
+    "rarity": "Legendary",
+    "description": "For the next 30 minutes, you earn 1% of every single point earned by the rest of the chat.",
+    "effectType": "tax_collector",
+    "effectValue": 0.01,
+    "effectDurationMinutes": 30
+  }
+}

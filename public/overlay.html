@@ -28,6 +28,79 @@
       85% { opacity: 1; transform: scale(1); }
       100% { opacity: 0; transform: scale(0.8); }
     }
+
+    /* Modifiers Classes and Keyframes */
+    .mod-cursed { filter: grayscale(1) contrast(2) brightness(0.7); }
+    .mod-hyper { filter: grayscale(1) sepia(1) hue-rotate(-40deg) saturate(20) contrast(4); }
+    .mod-rainbow { animation: rainbowAnim 2s linear infinite; }
+    @keyframes rainbowAnim { 
+      0% { filter: hue-rotate(0deg); } 
+      100% { filter: hue-rotate(360deg); } 
+    }
+
+    .mod-bounce { animation: bounceAnim 0.5s cubic-bezier(0.28, 0.84, 0.42, 1) infinite alternate; }
+    @keyframes bounceAnim { 0% { transform: translateY(0); } 100% { transform: translateY(-40px); } }
+
+    .mod-jam { animation: jamAnim 0.15s linear infinite alternate; }
+    @keyframes jamAnim { 
+       0% { transform: translateY(-10px) rotate(-6deg); } 
+       100% { transform: translateY(0px) rotate(6deg); } 
+    }
+
+    .mod-hyper { animation: hyperAnim 0.1s linear infinite; }
+    @keyframes hyperAnim { 
+      0% { transform: translate(0, 0); } 
+      25% { transform: translate(2px, -2px); } 
+      50% { transform: translate(-2px, 2px); } 
+      75% { transform: translate(-2px, -2px); } 
+      100% { transform: translate(2px, 2px); } 
+    }
+
+    .mod-leave { animation: leaveAnim var(--duration, 5s) ease-in forwards; }
+    @keyframes leaveAnim { 
+      0% { opacity: 0; transform: scale(0.5); }
+      10% { opacity: 1; transform: scale(1.1); }
+      15% { opacity: 1; transform: scale(1) translateY(0); }
+      69.9% { opacity: 1; transform: scale(1) translateY(0); }
+      70% { opacity: 1; transform: scale(-1, 1) translateY(0); }
+      72% { opacity: 1; transform: scale(-0.93, 0.93) translateY(-10px); }
+      74% { opacity: 1; transform: scale(-0.86, 0.86) translateY(10px); }
+      76% { opacity: 1; transform: scale(-0.8, 0.8) translateY(-10px); }
+      78% { opacity: 1; transform: scale(-0.73, 0.73) translateY(10px); }
+      80% { opacity: 1; transform: scale(-0.66, 0.66) translateY(-10px); }
+      82% { opacity: 1; transform: scale(-0.6, 0.6) translateY(10px); }
+      84% { opacity: 1; transform: scale(-0.53, 0.53) translateY(-10px); }
+      86% { opacity: 1; transform: scale(-0.46, 0.46) translateY(10px); }
+      88% { opacity: 0.9; transform: scale(-0.4, 0.4) translateY(-10px); }
+      90% { opacity: 0.8; transform: scale(-0.33, 0.33) translateY(10px); }
+      92% { opacity: 0.7; transform: scale(-0.26, 0.26) translateY(-10px); }
+      94% { opacity: 0.5; transform: scale(-0.2, 0.2) translateY(10px); }
+      96% { opacity: 0.3; transform: scale(-0.13, 0.13) translateY(-10px); }
+      98% { opacity: 0.1; transform: scale(-0.06, 0.06) translateY(10px); }
+      100% { opacity: 0; transform: scale(0, 0) translateY(0); }
+    }
+
+    .mod-arrive { animation: arriveAnim var(--duration, 5s) ease-out forwards; }
+    @keyframes arriveAnim {
+      0% { opacity: 0; transform: scale(0) translateY(0); }
+      2% { opacity: 0.1; transform: scale(0.06) translateY(-10px); }
+      4% { opacity: 0.3; transform: scale(0.13) translateY(10px); }
+      6% { opacity: 0.5; transform: scale(0.2) translateY(-10px); }
+      8% { opacity: 0.7; transform: scale(0.26) translateY(10px); }
+      10% { opacity: 0.8; transform: scale(0.33) translateY(-10px); }
+      12% { opacity: 0.9; transform: scale(0.4) translateY(10px); }
+      14% { opacity: 1; transform: scale(0.46) translateY(-10px); }
+      16% { opacity: 1; transform: scale(0.53) translateY(10px); }
+      18% { opacity: 1; transform: scale(0.6) translateY(-10px); }
+      20% { opacity: 1; transform: scale(0.66) translateY(10px); }
+      22% { opacity: 1; transform: scale(0.73) translateY(-10px); }
+      24% { opacity: 1; transform: scale(0.8) translateY(10px); }
+      26% { opacity: 1; transform: scale(0.86) translateY(-10px); }
+      28% { opacity: 1; transform: scale(0.93) translateY(10px); }
+      30% { opacity: 1; transform: scale(1) translateY(0); }
+      85% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; transform: scale(0.5); }
+    }
     
     /* Betting UI styles */
     #bet-container {
