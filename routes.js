@@ -166,10 +166,34 @@ export function setupRoutes(app, {
     try {
       const db = getDb();
       if (!db) return res.status(503).json({ success: false, error: 'Database not ready' });
-      const userStatsRaw = await db.all('SELECT s.*, u.xp FROM user_stats s LEFT JOIN users u ON s.username = u.username');
+      const userStatsRaw = await db.all('SELECT u.username, u.xp, s.* FROM users u LEFT JOIN user_stats s ON u.username = s.username');
       const levelBase = parseInt(globalConfig['level_base_cost'] || '200', 10);
       const userStats = userStatsRaw.map(u => {
         u.level = Math.floor(Math.sqrt((u.xp || 0) / levelBase)) + 1;
+        
+        // Ensure stats default to 0 if they were NULL (because the user isn't in user_stats table yet)
+        u.duels_played = u.duels_played || 0;
+        u.duels_won = u.duels_won || 0;
+        u.duels_lost = u.duels_lost || 0;
+        u.duels_points_won = u.duels_points_won || 0;
+        u.duels_points_lost = u.duels_points_lost || 0;
+        u.raffles_joined = u.raffles_joined || 0;
+        u.raffles_won = u.raffles_won || 0;
+        u.raffles_points_won = u.raffles_points_won || 0;
+        u.gamble_played = u.gamble_played || 0;
+        u.gamble_won = u.gamble_won || 0;
+        u.gamble_lost = u.gamble_lost || 0;
+        u.gamble_points_won = u.gamble_points_won || 0;
+        u.gamble_points_lost = u.gamble_points_lost || 0;
+        u.bets_played = u.bets_played || 0;
+        u.bets_won = u.bets_won || 0;
+        u.bets_lost = u.bets_lost || 0;
+        u.bets_points_bet = u.bets_points_bet || 0;
+        u.bets_points_won = u.bets_points_won || 0;
+        u.bets_points_lost = u.bets_points_lost || 0;
+        u.chatwar_spent = u.chatwar_spent || 0;
+        u.chatwar_lost = u.chatwar_lost || 0;
+
         return u;
       });
       const emoteStats = await db.all('SELECT * FROM emote_stats');
