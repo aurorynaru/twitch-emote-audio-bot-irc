@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import cors from 'cors';
-dotenv.config();
+dotenv.config({override:true});
 
 import { parseFlexibleTime, parseAmount, parseTime } from './utils.js';
 import { setupRoutes, broadcastEmote, broadcastAudio, broadcastConfig, broadcastBetState, clearBetState, broadcastChatWarState, clearChatWarState, clearEmotes } from './routes.js';
@@ -43,7 +43,6 @@ const builtInAliases = {
   '!givepoint': '!givepoints',
   '!givept': '!givepoints',
   '!givepts': '!givepoints',
-  '!bet': '!betstart',
   '!startbet': '!betstart',
   '!stopbet': '!betstop',
   '!checkbet': '!betstatus',
@@ -61,7 +60,13 @@ const builtInAliases = {
   '!cmdlist': '!commandlist',
   '!roulette': '!gamble',
   '!roll': '!gamble',
-  '!setrewards': '!editrewards'
+  '!setrewards': '!editrewards',
+  '!buylvl': '!lvlup',
+  '!buylevel': '!lvlup',
+  '!buylevels': '!lvlup',
+  '!levelup': '!lvlup',
+  '!inv': '!inventory',
+  '!redeem': '!use'
 };
 
 const commandConfigSchema = {
@@ -98,7 +103,17 @@ const commandConfigSchema = {
   '!masspointssub': ['cooldown'],
   '!editpoints': ['cooldown'],
   '!toppoints': ['cooldown'],
-  '!editrewards': ['cooldown']
+  '!editrewards': ['cooldown'],
+  '!lvlup': ['cooldown'],
+  '!use': ['cooldown'],
+  '!fish': ['cooldown'],
+  '!inventory': ['cooldown'],
+  '!buffs': ['cooldown'],
+  '!emotesize': ['cooldown'],
+  '!emoteduration': ['cooldown'],
+  '!removepoints': ['cooldown'],
+  '!betcancel': ['cooldown'],
+  '!bet': ['cooldown']
 };
 
 const activeDuels = new Map();
@@ -130,12 +145,40 @@ const duelBrokeMessages = [
   "The duel is canceled because {target} doesn't have {amount} points!"
 ];
 
-const FISHING_ITEMS = {
-  common: [{ name: "gold coin", rarity: "Common" }],
-  uncommon: [{ name: "gold pouch", rarity: "Uncommon" }],
-  rare: [{ name: "fishing ticket", rarity: "Rare" }],
-  legendary: [{ name: "knife", rarity: "Legendary" }]
+let FISHING_ITEMS = {
+  common: [],
+  uncommon: [],
+  rare: [],
+  legendary: []
 };
+let ITEMS_REGISTRY = {};
+
+function loadItemsConfig() {
+  try {
+    if (fs.existsSync('./items.json')) {
+      const data = fs.readFileSync('./items.json', 'utf8');
+      const parsed = JSON.parse(data);
+      for (let key in ITEMS_REGISTRY) delete ITEMS_REGISTRY[key];
+      
+      FISHING_ITEMS = { common: [], uncommon: [], rare: [], legendary: [] };
+      
+      for (const [name, info] of Object.entries(parsed)) {
+        const lowerName = name.toLowerCase();
+        ITEMS_REGISTRY[lowerName] = info;
+        const rarity = info.rarity.toLowerCase();
+        if (FISHING_ITEMS[rarity]) {
+          FISHING_ITEMS[rarity].push({ name: lowerName, originalName: name, rarity: info.rarity, description: info.description });
+        }
+      }
+      console.log(`* Loaded ${Object.keys(ITEMS_REGISTRY).length} items from items.json`);
+    } else {
+      console.log('* items.json not found, using empty item pool');
+    }
+  } catch (err) {
+    console.error('Error loading items.json:', err);
+  }
+}
+loadItemsConfig();
 
 const FISHING_RARITIES = [
   { rarity: 'legendary', threshold: 0.7 },
@@ -177,6 +220,23 @@ async function initDb() {
       value TEXT
     )
   `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS active_effects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      target_user TEXT,
+      effect_type TEXT,
+      effect_value REAL,
+      expires_at INTEGER,
+      uses_left INTEGER
+    )
+  `);
+
+  try {
+    await db.exec('ALTER TABLE active_effects ADD COLUMN caster TEXT');
+  } catch (err) {
+    // Column might already exist
+  }
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS user_stats (
@@ -503,13 +563,58 @@ async function start() {
   const getLvl = (xp) => Math.floor(Math.sqrt((xp || 0) / getLevelBase())) + 1;
   const getXpForLvl = (lvl) => getLevelBase() * Math.pow(lvl - 1, 2);
   
+  const getLegBonusRate = () => parseFloat(globalConfig['leg_bonus_rate'] || '0.01');
+  const getRareBonusRate = () => parseFloat(globalConfig['rare_bonus_rate'] || '0.05');
+  const getPointsBonusRate = () => parseFloat(globalConfig['lvl_bonus_rate'] || '0.001');
+  const getPointsToXpRate = () => parseFloat(globalConfig['points_to_xp_rate'] || '1');
+
+  async function getActiveEffects(username, effectType) {
+    const now = Date.now();
+    await db.run('DELETE FROM active_effects WHERE expires_at IS NOT NULL AND expires_at < ?', [now]);
+    await db.run('DELETE FROM active_effects WHERE uses_left IS NOT NULL AND uses_left <= 0');
+    return await db.all(
+      'SELECT * FROM active_effects WHERE (target_user = ? OR target_user = "GLOBAL") AND effect_type = ?',
+      [username, effectType]
+    );
+  }
+  
   async function addPointsWithBonus(username, amount) {
     const userRow = await db.get('SELECT xp FROM users WHERE username = ?', [username]);
     const xp = userRow ? userRow.xp : 0;
     const lvl = getLvl(xp);
-    const bonus = Math.round(amount * (lvl * 0.001));
-    const finalAmount = amount + bonus;
+    const lvlBonus = Math.round(amount * (lvl * getPointsBonusRate()));
+    
+    // Check for item buffs/debuffs
+    const personalBoosts = await getActiveEffects(username, 'personal_point_boost');
+    const globalBoosts = await getActiveEffects(username, 'global_point_boost');
+    const globalDebuffs = await getActiveEffects(username, 'global_point_debuff');
+    
+    // Additive percentages for each category, then applied multiplicatively?
+    // Let's just stack them multiplicatively.
+    let multiplier = 1.0;
+    for (const b of personalBoosts) multiplier *= (1 + b.effect_value);
+    for (const b of globalBoosts) multiplier *= (1 + b.effect_value);
+    for (const b of globalDebuffs) {
+      if (b.caster !== username) {
+        multiplier *= (1 - b.effect_value);
+      }
+    }
+    
+    // Calculate final
+    let itemBonus = Math.round((amount * multiplier) - amount);
+    
+    const finalAmount = amount + lvlBonus + itemBonus;
     await db.run('INSERT INTO users (username, points, xp) VALUES (?, ?, 0) ON CONFLICT(username) DO UPDATE SET points = points + ?', [username, finalAmount, finalAmount]);
+    
+    // Tax Collector (only global effect, but applies to the collector's points)
+    // Avoid recursion if adding tax collector points, but since it's a global passive, we can just do:
+    const taxCollectors = await db.all('SELECT target_user, effect_value FROM active_effects WHERE effect_type = "tax_collector" AND target_user != ?', [username]);
+    for (const collector of taxCollectors) {
+      const taxAmount = Math.max(1, Math.round(finalAmount * collector.effect_value));
+      // Give tax directly to them without bonuses to prevent infinite loops
+      await db.run('UPDATE users SET points = points + ? WHERE username = ?', [taxAmount, collector.target_user]);
+    }
+    
     return finalAmount;
   }
 
@@ -540,16 +645,45 @@ async function start() {
 
   await loadThirdPartyEmotes(BROADCASTER_USER_ID);
 
+  const pendingActivityUpdates = new Map();
+  setInterval(async () => {
+    if (pendingActivityUpdates.size === 0 || !db) return;
+    const updates = Array.from(pendingActivityUpdates.entries());
+    pendingActivityUpdates.clear();
+    
+    try {
+      await db.exec('BEGIN TRANSACTION');
+      for (const [username, data] of updates) {
+        if (data.isNew) {
+          await db.run('INSERT INTO users (username, points, last_message_time, true_last_chat_time) VALUES (?, ?, ?, ?) ON CONFLICT(username) DO UPDATE SET true_last_chat_time = ?', 
+            [username, data.pointsReward, data.lastMessageTime, data.trueLastChatTime, data.trueLastChatTime]);
+        } else if (data.awardedPoints) {
+          await db.run('UPDATE users SET points = points + ?, last_message_time = ?, true_last_chat_time = ? WHERE username = ?', 
+            [data.pointsReward, data.lastMessageTime, data.trueLastChatTime, username]);
+        } else {
+          await db.run('UPDATE users SET true_last_chat_time = ? WHERE username = ?', 
+            [data.trueLastChatTime, username]);
+        }
+      }
+      await db.exec('COMMIT');
+    } catch (e) {
+      console.error('Batch chat update failed:', e);
+      await db.exec('ROLLBACK');
+    }
+  }, 10000);
+
   setInterval(async () => {
     try {
       const now = Date.now();
       const readyFishes = await db.all('SELECT * FROM pending_fish WHERE catch_time <= ?', [now]);
       
+      let processedUsernames = [];
+
       for (const fish of readyFishes) {
         const userRow = await db.get('SELECT xp FROM users WHERE username = ?', [fish.username]);
         const lvl = getLvl(userRow ? userRow.xp : 0);
-        const legBonus = lvl * 0.01;
-        const rareBonus = lvl * 0.05;
+        const legBonus = lvl * getLegBonusRate();
+        const rareBonus = lvl * getRareBonusRate();
 
         const customRarities = [
           { rarity: 'legendary', threshold: FISHING_RARITIES[0].threshold + legBonus },
@@ -558,7 +692,7 @@ async function start() {
           { rarity: 'common', threshold: 100.0 }
         ];
 
-        // Roll for rarity
+      
         const roll = Math.random() * 100;
         let rarityTier = 'common';
         for (const tier of customRarities) {
@@ -568,27 +702,112 @@ async function start() {
           }
         }
         
-        // Pick random item from rarity
+        
         const itemPool = FISHING_ITEMS[rarityTier];
         const item = itemPool[Math.floor(Math.random() * itemPool.length)];
         
-        // Give item
-        await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, 1) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + 1', [fish.username, item.name]);
+        const itemConfig = ITEMS_REGISTRY[item.name];
+        let autoConsumedMsg = '';
         
-        // Delete pending
+        if (itemConfig && itemConfig.autoConsume) {
+           if (itemConfig.effectType === 'instant_points') {
+              const pts = itemConfig.effectValue;
+              if (pts < 0) {
+                 await db.run('UPDATE users SET points = MAX(0, points + ?) WHERE username = ?', [pts, fish.username]);
+                 autoConsumedMsg = ` Ouch! It instantly deducted ${Math.abs(pts)} points!`;
+              } else {
+                 const addedAmount = await addPointsWithBonus(fish.username, pts);
+                 autoConsumedMsg = ` It instantly granted ${addedAmount} points!`;
+              }
+           }
+        } else {
+        
+           await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, 1) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + 1', [fish.username, item.name]);
+        }
+        
+       
         await db.run('DELETE FROM pending_fish WHERE username = ?', [fish.username]);
+        processedUsernames.push(fish.username);
         
-        // Announce
-        const prefix = rarityTier !== 'common' ? `[${item.rarity}] ` : '';
-        await sendChatMessage(`🎣 ${fish.username} reeled in a ${prefix}${item.name}!`, fish.username);
+  
+        if (readyFishes.length === 1) {
+          const prefix = rarityTier !== 'common' ? `[${item.rarity}] ` : '';
+          await sendChatMessage(`🎣 ${fish.username} reeled in a ${prefix}${item.name}!${autoConsumedMsg}`, fish.username);
+        }
+      }
+
+   
+      if (readyFishes.length > 1) {
+        let displayNames = processedUsernames.slice(0, 3).join(', ');
+        if (processedUsernames.length > 3) {
+          displayNames += ` and ${processedUsernames.length - 3} more`;
+        }
+        await sendChatMessage(`🎣 ${displayNames} are done fishing! Type !inv to check what new items you caught (or points instantly awarded)!`);
       }
     } catch (err) {
       console.error('Error resolving fishes:', err);
     }
   }, 10000);
 
-  // --- COMMANDS LIST ---
+  
+  async function buildRaffleParticipants(baseSet) {
+    const baseUsers = Array.from(baseSet);
+    let expanded = [];
+    let guaranteed = [];
+
+    for (const p of baseUsers) {
+      const goldens = await getActiveEffects(p, 'golden_ticket');
+      if (goldens.length > 0) {
+         await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [goldens[0].id]);
+         guaranteed.push(p);
+      }
+
+      const muls = await getActiveEffects(p, 'raffle_ticket_multiplier');
+      let tickets = 1;
+      for (const m of muls) {
+         tickets += (m.effect_value - 1);
+         await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [m.id]);
+      }
+      
+      for (let i = 0; i < tickets; i++) expanded.push(p);
+    }
+    return { expanded, guaranteed };
+  }
+
   const customCommands = {
+    '!editconfig': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        if (!hasPermission) {
+          await sendChatMessage(`${chatterName}, you don't have permission to use this command!`, chatterName);
+          return;
+        }
+        
+        if (args.length < 2) {
+          await sendChatMessage(`Usage: !editconfig <key> <value>. Available keys: level_base_cost, points_to_xp_rate, leg_bonus_rate, rare_bonus_rate, lvl_bonus_rate`, chatterName);
+          return;
+        }
+
+        const key = args[0].toLowerCase();
+        const value = args[1];
+        
+        const validKeys = [
+          'level_base_cost', 'points_to_xp_rate', 'leg_bonus_rate', 'rare_bonus_rate', 'lvl_bonus_rate',
+          'mod_wide_cost', 'mod_cursed_cost', 'mod_flipx_cost', 'mod_flipy_cost', 'mod_bounce_cost', 
+          'mod_leave_cost', 'mod_arrive_cost', 'mod_jam_cost', 'mod_rainbow_cost', 'mod_hyper_cost'
+        ];
+        if (!validKeys.includes(key)) {
+           await sendChatMessage(`Invalid key. Available keys: ${validKeys.join(', ')}`, chatterName);
+           return;
+        }
+
+        // Save to DB
+        await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [key, value, value]);
+        globalConfig[key] = value; // Update in-memory
+        
+        await sendChatMessage(`✅ Config '${key}' has been updated to ${value}!`, chatterName);
+      }
+    },
     '!lvlup': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
@@ -634,17 +853,159 @@ async function start() {
           return;
         }
 
-        const newXp = user.xp + spendAmount;
+        const gainedXp = Math.floor(spendAmount * getPointsToXpRate());
+        const newXp = user.xp + gainedXp;
         const newLvl = getLvl(newXp);
         const levelsGained = newLvl - currentLvl;
 
-        await db.run('UPDATE users SET points = points - ?, xp = xp + ? WHERE username = ?', [spendAmount, spendAmount, chatterName]);
+        await db.run('UPDATE users SET points = points - ?, xp = xp + ? WHERE username = ?', [spendAmount, gainedXp, chatterName]);
 
         if (levelsGained > 0) {
           await sendChatMessage(`${chatterName} spent ${spendAmount} points and gained ${levelsGained} level(s)! You are now Level ${newLvl}!`, chatterName);
         } else {
           const xpStillNeeded = getXpForLvl(newLvl + 1) - newXp;
           await sendChatMessage(`${chatterName} spent ${spendAmount} points! You need ${xpStillNeeded} more for Level ${newLvl + 1}.`, chatterName);
+        }
+      }
+    },
+    '!use': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        if (args.length === 0) {
+          await sendChatMessage(`${chatterName}, please specify an item to use! Example: !use energy drink 1 london passport all`, chatterName);
+          return;
+        }
+
+        let remainingInput = args.join(' ').toLowerCase();
+        let requestedItems = [];
+        const validItems = Object.keys(ITEMS_REGISTRY).sort((a,b) => b.length - a.length);
+
+        while (remainingInput.trim().length > 0) {
+          remainingInput = remainingInput.trim();
+          let matchedItem = null;
+          
+          for (const item of validItems) {
+            const lowerItem = item.toLowerCase();
+            if (remainingInput.startsWith(lowerItem) && (remainingInput.length === lowerItem.length || remainingInput[lowerItem.length] === ' ')) {
+               matchedItem = item;
+               break;
+            }
+          }
+          
+          if (!matchedItem) {
+             const word = remainingInput.split(' ')[0];
+             remainingInput = remainingInput.substring(word.length);
+             continue;
+          }
+          
+          remainingInput = remainingInput.substring(matchedItem.length).trim();
+          
+          let qtyWord = remainingInput.split(' ')[0];
+          let qty = 1;
+          let hasQty = false;
+          
+          if (qtyWord === 'all') {
+             qty = 'all';
+             hasQty = true;
+          } else if (!isNaN(parseInt(qtyWord, 10)) && parseInt(qtyWord, 10) > 0) {
+             qty = parseInt(qtyWord, 10);
+             hasQty = true;
+          }
+          
+          if (hasQty) {
+             remainingInput = remainingInput.substring(qtyWord.length);
+          }
+          
+          requestedItems.push({ name: matchedItem, amountReq: qty });
+        }
+
+        if (requestedItems.length === 0) {
+          await sendChatMessage(`${chatterName}, I couldn't recognize any items!`, chatterName);
+          return;
+        }
+
+        let totalUsed = [];
+        let totalPointsGained = 0;
+
+        for (const req of requestedItems) {
+          const itemName = req.name;
+          const inventoryRow = await db.get('SELECT quantity FROM user_inventory WHERE username = ? AND item_name = ?', [chatterName, itemName]);
+          if (!inventoryRow || inventoryRow.quantity <= 0) continue;
+
+          const amountToUse = req.amountReq === 'all' ? inventoryRow.quantity : Math.min(req.amountReq, inventoryRow.quantity);
+          if (amountToUse <= 0) continue;
+
+          const itemConfig = ITEMS_REGISTRY[itemName];
+          const isLegacy = (itemName === 'fishing ticket' || itemName === 'knife');
+          
+          if (!isLegacy && (!itemConfig || !itemConfig.effectType || itemConfig.effectType === 'none')) continue;
+
+          await db.run('UPDATE user_inventory SET quantity = quantity - ? WHERE username = ? AND item_name = ?', [amountToUse, chatterName, itemName]);
+
+          if (isLegacy) {
+            if (itemName === 'fishing ticket') {
+              await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [chatterName, 'free_fish', amountToUse, amountToUse]);
+            } else if (itemName === 'knife') {
+              await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [chatterName, 'auto_duel', amountToUse, amountToUse]);
+            }
+            totalUsed.push(`${amountToUse}x ${itemName}`);
+            continue;
+          }
+
+          const effectType = itemConfig.effectType;
+          const baseValue = itemConfig.effectValue;
+          const isGlobal = effectType.startsWith('global_');
+          const targetUser = isGlobal ? 'GLOBAL' : chatterName;
+
+          if (effectType === 'instant_points') {
+            const pointsToAdd = baseValue * amountToUse;
+            if (pointsToAdd > 0) {
+               const finalGained = await addPointsWithBonus(chatterName, pointsToAdd);
+               totalPointsGained += finalGained;
+            } else {
+               await db.run('UPDATE users SET points = MAX(0, points + ?) WHERE username = ?', [pointsToAdd, chatterName]);
+               totalPointsGained += pointsToAdd;
+            }
+          } else if (effectType === 'global_point_drain') {
+            const drainAmount = itemConfig.effectValue * amountToUse;
+            await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE username != ?', [drainAmount, chatterName]);
+            chatMsgs.push(`⚠️ A global point drain of ${drainAmount} points was unleashed!`);
+          } else if (effectType === 'global_point_boost' || effectType === 'personal_point_boost' || effectType === 'fishing_time_reduction' || effectType === 'tax_collector' || effectType === 'global_point_debuff') {
+            // These are time-based multiplier effects. Multiple uses add to TIME, not the multiplier value.
+            const now = Date.now();
+            const durationMs = itemConfig.effectDurationMinutes * 60 * 1000 * amountToUse;
+            
+     
+            const existing = await db.get('SELECT * FROM active_effects WHERE target_user = ? AND effect_type = ? AND effect_value = ?', [targetUser, effectType, baseValue]);
+            if (existing && existing.expires_at > now) {
+               await db.run('UPDATE active_effects SET expires_at = expires_at + ? WHERE id = ?', [durationMs, existing.id]);
+            } else {
+               await db.run(
+                 'INSERT INTO active_effects (target_user, effect_type, effect_value, expires_at, caster) VALUES (?, ?, ?, ?, ?)',
+                 [targetUser, effectType, baseValue, now + durationMs, chatterName]
+               );
+            }
+          } else {
+
+            const uses = itemConfig.uses * amountToUse;
+            const existing = await db.get('SELECT * FROM active_effects WHERE target_user = ? AND effect_type = ? AND effect_value = ?', [targetUser, effectType, baseValue]);
+            if (existing) {
+               await db.run('UPDATE active_effects SET uses_left = uses_left + ? WHERE id = ?', [uses, existing.id]);
+            } else {
+               await db.run(
+                 'INSERT INTO active_effects (target_user, effect_type, effect_value, uses_left, caster) VALUES (?, ?, ?, ?, ?)',
+                 [targetUser, effectType, baseValue, uses, chatterName]
+               );
+            }
+          }
+          
+          totalUsed.push(`${amountToUse}x ${itemName}`);
+        }
+
+        if (totalUsed.length > 0) {
+          await sendChatMessage(`✨ ${chatterName} redeemed: ${totalUsed.join(', ')}!${totalPointsGained > 0 ? ` (Gained ${totalPointsGained} pts)` : ''}`, chatterName);
+        } else {
+          await sendChatMessage(`${chatterName}, you don't have those items or they cannot be used!`, chatterName);
         }
       }
     },
@@ -768,7 +1129,7 @@ async function start() {
     '!playsound': {
       cost: 1,
       execute: async (args, chatterName, event, hasPermission) => {
-        if (!await isStreamerLive()) return;
+        // if (!await isStreamerLive()) return;
         args = [args[0]]
         const dynamicCostRaw = globalConfig['cmd_!playsound_cost'];
         const activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
@@ -1078,7 +1439,7 @@ async function start() {
             await sendChatMessage(`${chatterName} set emote duration to ${newDuration} seconds.`, chatterName);
           } else {
             console.log(`\n${chatterName} invalid value: ${newDuration}. ex. !emoteduration 10`);
-            await sendChatMessage(`Invalid value. Ex: !emoteduration 10`);
+            await sendChatMessage(`Invalid value. Ex: !emotesduration 10`);
           }
         }
       }
@@ -1131,7 +1492,7 @@ async function start() {
         if (knifeMod && knifeMod.value > 0) {
           const targetUserObj = await db.get('SELECT points FROM users WHERE username = ?', target);
           if (!targetUserObj || targetUserObj.points <= 0) {
-            await sendChatMessage(`@${chatterName} you tried to assassinate ${target}, but they have no points!`, chatterName);
+            await sendChatMessage(`${chatterName} you tried to assassinate ${target}, but they have no points!`, chatterName);
             return;
           }
           
@@ -1157,12 +1518,32 @@ async function start() {
           await updateUserStat(winner, 'duels_points_won', actualBet);
           await updateUserStat(loser, 'duels_points_lost', actualBet);
 
-          await sendChatMessage(`🔪 @${chatterName} used a knife to force a duel on ${target}! ${winner} won ${reward} points!`, chatterName);
+          await sendChatMessage(`🔪 ${chatterName} used a knife to force a duel on ${target}! ${winner} won ${reward} points!`, chatterName);
           return;
         }
 
         if (activeDuels.has(target)) {
           await sendChatMessage(`${chatterName} ${target} already has a pending duel!`, chatterName);
+          return;
+        }
+
+        const mirrorShields = await getActiveEffects(target, 'mirror_shield');
+        if (mirrorShields.length > 0) {
+          const mShield = mirrorShields[0];
+          await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [mShield.id]);
+          
+          const lossAmount = betAmount * mShield.effect_value;
+          await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE username = ?', [lossAmount, chatterName]);
+          await db.run('UPDATE users SET points = points + ? WHERE username = ?', [lossAmount, target]);
+          
+          await updateUserStat(chatterName, 'duels_played', 1);
+          await updateUserStat(target, 'duels_played', 1);
+          await updateUserStat(chatterName, 'duels_lost', 1);
+          await updateUserStat(target, 'duels_won', 1);
+          await updateUserStat(chatterName, 'duels_points_lost', lossAmount);
+          await updateUserStat(target, 'duels_points_won', lossAmount);
+
+          await sendChatMessage(`🛡️ ${target}'s MIRROR SHIELD reflected ${chatterName}'s duel! ${chatterName} lost ${lossAmount} points!`, chatterName);
           return;
         }
 
@@ -1204,7 +1585,7 @@ async function start() {
 
         const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
         if (!user || user.points < duel.amount) {
-          // Refund challenger
+   
           await db.run('UPDATE users SET points = points + ? WHERE username = ?', [duel.amount, duel.challenger]);
           const msg = duelBrokeMessages[Math.floor(Math.random() * duelBrokeMessages.length)]
             .replace(/{target}/g, `${chatterName}`)
@@ -1214,22 +1595,43 @@ async function start() {
           return;
         }
 
-        // Deduct from target
+  
         await db.run('UPDATE users SET points = points - ? WHERE username = ?', [duel.amount, chatterName]);
 
         const challengerWins = Math.random() < 0.5;
         const winner = challengerWins ? duel.challenger : chatterName;
         const loser = challengerWins ? chatterName : duel.challenger;
-        const reward = duel.amount * 2;
+        
+        let profit = duel.amount;
+        let loserPenalty = duel.amount;
 
-        await db.run('UPDATE users SET points = points + ? WHERE username = ?', [reward, winner]);
+
+        const winBoosts = await getActiveEffects(winner, 'duel_win_boost');
+        if (winBoosts.length > 0) {
+           await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [winBoosts[0].id]);
+           profit = Math.floor(profit * (1 + winBoosts[0].effect_value));
+        }
+
+ 
+        const shields = await getActiveEffects(loser, 'duel_shield');
+        if (shields.length > 0) {
+           await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [shields[0].id]);
+           const refund = Math.floor(loserPenalty * shields[0].effect_value);
+           await db.run('UPDATE users SET points = points + ? WHERE username = ?', [refund, loser]);
+           loserPenalty -= refund;
+        }
+
+        const finalProfit = await addPointsWithBonus(winner, profit);
+        await db.run('UPDATE users SET points = points + ? WHERE username = ?', [duel.amount, winner]); // refund original bet
+        
+        const reward = duel.amount + finalProfit; // used for stats and messages
 
         await updateUserStat(winner, 'duels_played', 1);
         await updateUserStat(loser, 'duels_played', 1);
         await updateUserStat(winner, 'duels_won', 1);
         await updateUserStat(loser, 'duels_lost', 1);
-        await updateUserStat(winner, 'duels_points_won', duel.amount);
-        await updateUserStat(loser, 'duels_points_lost', duel.amount);
+        await updateUserStat(winner, 'duels_points_won', reward - duel.amount); // Net win
+        await updateUserStat(loser, 'duels_points_lost', loserPenalty);
 
         const msg = duelWinMessages[Math.floor(Math.random() * duelWinMessages.length)]
           .replace(/{winner}/g, `${winner}`)
@@ -1285,16 +1687,50 @@ async function start() {
           return;
         }
 
-        
-        const isWin = Math.random() < 0.5;
+        let isWin = Math.random() < 0.5;
+
+        // Apply loaded dice
+        const guaranteedWins = await getActiveEffects(chatterName, 'gamble_guaranteed_win');
+        if (guaranteedWins.length > 0) {
+           let maxLimit = Infinity;
+           for (const config of Object.values(ITEMS_REGISTRY)) {
+               if (config.effectType === 'gamble_guaranteed_win' && config.maxGambleLimit) {
+                   maxLimit = config.maxGambleLimit;
+                   break;
+               }
+           }
+           if (betAmount > maxLimit) {
+               await sendChatMessage(`${chatterName}, your loaded dice only guarantees bets up to ${maxLimit}! Try a lower amount.`, chatterName);
+               return;
+           }
+
+           await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [guaranteedWins[0].id]);
+           isWin = true;
+        }
 
         if (isWin) {
-          await db.run('UPDATE users SET points = points + ? WHERE username = ?', [betAmount, chatterName]);
-          const newPoints = user.points + betAmount;
+          let winAmount = betAmount;
+          
+          // Apply Midas Touch multiplier
+          const multipliers = await getActiveEffects(chatterName, 'gamble_multiplier');
+          if (multipliers.length > 0) {
+             await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [multipliers[0].id]);
+             winAmount = Math.floor(betAmount * (multipliers[0].effect_value - 1)); // -1 because we add back the bet 
+          }
+          
+          const addedAmount = await addPointsWithBonus(chatterName, winAmount);
+          const updatedUser = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+          const newPoints = updatedUser.points;
+
           await updateUserStat(chatterName, 'gamble_played', 1);
           await updateUserStat(chatterName, 'gamble_won', 1);
-          await updateUserStat(chatterName, 'gamble_points_won', betAmount);
-          await sendChatMessage(`${chatterName} won ${betAmount} points in a gamble! You now have ${newPoints} points.`, chatterName);
+          await updateUserStat(chatterName, 'gamble_points_won', addedAmount);
+          
+          if (multipliers.length > 0) {
+            await sendChatMessage(`✨ MIDAS TOUCH! ${chatterName} won ${addedAmount + betAmount} points in a gamble! You now have ${newPoints} points.`, chatterName);
+          } else {
+            await sendChatMessage(`${chatterName} won ${addedAmount} points in a gamble! You now have ${newPoints} points.`, chatterName);
+          }
         } else {
           await db.run('UPDATE users SET points = points - ? WHERE username = ?', [betAmount, chatterName]);
           const newPoints = user.points - betAmount;
@@ -1422,10 +1858,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     const payout = Math.floor((data.spent / winningPool) * totalPool);
     const profit = payout - data.spent;
 
-    await db.run(
-      'UPDATE users SET points = points + ? WHERE username = ?',
-      [payout, user]
-    );
+    await db.run('UPDATE users SET points = points + ? WHERE username = ?', [data.spent, user]);
+    let finalProfit = profit;
+    if (profit > 0) {
+      finalProfit = await addPointsWithBonus(user, profit);
+    } else if (profit < 0) {
+      await db.run('UPDATE users SET points = MAX(0, points + ?) WHERE username = ?', [profit, user]);
+    }
 
     winnersCount++;
     winners.push({ user, won: profit });
@@ -1523,7 +1962,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         if (pending) {
           const timeLeft = Math.max(0, Math.ceil((pending.catch_time - Date.now()) / 1000));
           if (timeLeft > 0) {
-            await sendChatMessage(`@${chatterName} you are already fishing! Wait ${timeLeft} more seconds.`, chatterName);
+            await sendChatMessage(`${chatterName} you are already fishing! Wait ${timeLeft} more seconds.`, chatterName);
             return;
           }
         }
@@ -1536,16 +1975,26 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         } else {
           const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
           if (!user || user.points < 2000) {
-            await sendChatMessage(`@${chatterName} you need 2000 points to fish! (Or use a fishing ticket)`, chatterName);
+            await sendChatMessage(`${chatterName} you need 2000 points to fish! (Or use a fishing ticket)`, chatterName);
             return;
           }
           await db.run('UPDATE users SET points = points - 2000 WHERE username = ?', chatterName);
         }
 
-        const catchTime = Date.now() + 5 * 60 * 1000;
+        const reductions = await getActiveEffects(chatterName, 'fishing_time_reduction');
+        let multiplier = 1.0;
+        for (const r of reductions) {
+          multiplier *= (1 - r.effect_value);
+        }
+        
+        const baseTimeMinutes = 5;
+        const finalTimeMinutes = baseTimeMinutes * multiplier;
+        const finalTimeMs = Math.floor(finalTimeMinutes * 60 * 1000);
+
+        const catchTime = Date.now() + finalTimeMs;
         await db.run('INSERT INTO pending_fish (username, catch_time, is_free) VALUES (?, ?, ?) ON CONFLICT(username) DO UPDATE SET catch_time = ?, is_free = ?', [chatterName, catchTime, isFree ? 1 : 0, catchTime, isFree ? 1 : 0]);
         
-        await sendChatMessage(`🎣 @${chatterName} cast their line! Wait 5 minutes to see what bites...`, chatterName);
+        await sendChatMessage(`🎣 ${chatterName} cast their line! Wait ${Math.ceil(finalTimeMinutes)} minutes to see what bites...`, chatterName);
       }
     },
     '!inventory': {
@@ -1553,7 +2002,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const items = await db.all('SELECT * FROM user_inventory WHERE username = ? AND quantity > 0', chatterName);
         if (items.length === 0) {
-          await sendChatMessage(`@${chatterName} your inventory is empty!`, chatterName);
+          await sendChatMessage(`${chatterName} your inventory is empty!`, chatterName);
           return;
         }
         
@@ -1571,77 +2020,53 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         const displayItems = items.slice(0, 3).map(i => `${i.item_name}(${i.quantity}x)`);
         let msg = `@${chatterName} inv: ${displayItems.join(', ')}`;
         if (items.length > 3) {
-          msg += `... to see your full inventory go to the dashboard site.`;
+          msg += `... visit {site} to see more`;
         }
         await sendChatMessage(msg);
       }
     },
-    '!inv': { cost: 0, execute: async (args, chatterName, event, hasPermission) => builtInCommands['!inventory'].execute(args, chatterName, event, hasPermission) },
-    '!redeem': {
+    '!buffs': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const rawArgs = args.join(' ').toLowerCase();
-        
-        const allItems = [];
-        for (const [r, list] of Object.entries(FISHING_ITEMS)) {
-          allItems.push(...list.map(i => i.name));
-        }
+        // Query active effects that haven't expired
+        const now = Date.now();
+        await db.run('DELETE FROM active_effects WHERE expires_at IS NOT NULL AND expires_at < ?', [now]);
+        await db.run('DELETE FROM active_effects WHERE uses_left IS NOT NULL AND uses_left <= 0');
 
-        const sortedItems = [...allItems].sort((a, b) => b.length - a.length);
-        const redeemRequests = [];
-        let workingStr = rawArgs;
-        
-        for (const itemName of sortedItems) {
-          const regex = new RegExp(`(${itemName})\\s+(all|\\d+)`, 'gi');
-          let match;
-          while ((match = regex.exec(workingStr)) !== null) {
-            redeemRequests.push({ item: itemName, qtyStr: match[2].toLowerCase() });
-          }
-          workingStr = workingStr.replace(regex, ' '.repeat(itemName.length + 5));
-        }
+        const effects = await db.all('SELECT * FROM active_effects WHERE target_user = ?', chatterName);
+        const globalEffects = await db.all('SELECT * FROM active_effects WHERE target_user = "GLOBAL"');
+        const modifiers = await db.all('SELECT * FROM user_modifiers WHERE username = ? AND value > 0', chatterName);
 
-        if (redeemRequests.length === 0) {
-          await sendChatMessage(`@${chatterName} invalid format! Try: !redeem knife all gold coin 3`, chatterName);
+        const userRow = await db.get('SELECT xp FROM users WHERE username = ?', chatterName);
+        const lvl = userRow ? getLvl(userRow.xp) : 1;
+        const lvlPtBonusRate = lvl * (globalConfig['lvl_bonus_rate'] || 0.001);
+
+        const personalBoosts = effects.filter(e => e.effect_type === 'personal_point_boost');
+        const globalBoosts = globalEffects.filter(e => e.effect_type === 'global_point_boost');
+        const globalDebuffs = globalEffects.filter(e => e.effect_type === 'global_point_debuff');
+
+        let multiplier = 1.0;
+        for (const b of personalBoosts) multiplier *= (1 + b.effect_value);
+        for (const b of globalBoosts) multiplier *= (1 + b.effect_value);
+        for (const b of globalDebuffs) {
+           if (b.caster !== chatterName) {
+             multiplier *= (1 - b.effect_value);
+           }
+        }
+        
+        const totalBonusRate = lvlPtBonusRate + (multiplier - 1);
+        const ptGainPct = (totalBonusRate * 100).toFixed(1);
+        const ptGainStr = totalBonusRate > 0 ? `+${ptGainPct}%` : `${ptGainPct}%`;
+
+        if (effects.length === 0 && globalEffects.length === 0 && modifiers.length === 0 && totalBonusRate === 0) {
+          await sendChatMessage(`${chatterName} you have no active buffs or effects!`, chatterName);
           return;
         }
 
-        let totalPointsGained = 0;
-        const summary = [];
-
-        for (const req of redeemRequests) {
-          const userInv = await db.get('SELECT quantity FROM user_inventory WHERE username = ? AND item_name = ?', [chatterName, req.item]);
-          if (!userInv || userInv.quantity === 0) continue;
-          
-          let qty = parseInt(req.qtyStr);
-          if (req.qtyStr === 'all') qty = userInv.quantity;
-          if (isNaN(qty) || qty <= 0) continue;
-          if (qty > userInv.quantity) qty = userInv.quantity;
-
-          await db.run('UPDATE user_inventory SET quantity = quantity - ? WHERE username = ? AND item_name = ?', [qty, chatterName, req.item]);
-          
-          if (req.item === 'gold coin') {
-            await db.run('UPDATE users SET points = points + ? WHERE username = ?', [qty * 100, chatterName]);
-            totalPointsGained += qty * 100;
-          } else if (req.item === 'gold pouch') {
-            await db.run('UPDATE users SET points = points + ? WHERE username = ?', [qty * 500, chatterName]);
-            totalPointsGained += qty * 500;
-          } else if (req.item === 'fishing ticket') {
-            await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [chatterName, 'free_fish', qty, qty]);
-          } else if (req.item === 'knife') {
-            await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [chatterName, 'auto_duel', qty, qty]);
-          }
-          
-          summary.push(`${qty}x ${req.item}`);
-        }
-
-        if (summary.length === 0) {
-          await sendChatMessage(`@${chatterName} you don't have enough of those items!`, chatterName);
-        } else {
-          await sendChatMessage(`✨ @${chatterName} redeemed: ${summary.join(', ')}!${totalPointsGained > 0 ? ` (Gained ${totalPointsGained} pts)` : ''}`);
-        }
+        await sendChatMessage(`@${chatterName} Point Gain Bonus: ${ptGainStr} ... visit {site} to see more`);
       }
     },
-    '!use': { cost: 0, execute: async (args, chatterName, event, hasPermission) => builtInCommands['!redeem'].execute(args, chatterName, event, hasPermission) },
+
     '!clearoverlay': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
@@ -2280,12 +2705,91 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         }
       }
     },
-    '!raffle': {
+    '!giveitem': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+        if (!isMod) return;
+
+        if (args.length < 2) {
+          await sendChatMessage(`${chatterName} invalid format! Use: !giveitem <username> <item name> [amount]`);
+          return;
+        }
+
+        const targetUser = args[0].replace(/@/g, '').toLowerCase();
+        
+        let amount = 1;
+        let lastArg = args[args.length - 1];
+        if (!isNaN(parseInt(lastArg, 10)) && parseInt(lastArg, 10) > 0) {
+           amount = parseInt(lastArg, 10);
+           args.pop(); // remove amount from args
+        }
+        
+        const searchName = args.slice(1).join(' ').toLowerCase();
+        
+        let itemName = null;
+        for (const key of Object.keys(ITEMS_REGISTRY)) {
+           if (key.toLowerCase() === searchName) {
+              itemName = key;
+              break;
+           }
+        }
+
+        if (!itemName) {
+           await sendChatMessage(`Item "${searchName}" does not exist in items.json!`);
+           return;
+        }
+
+        await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, ?) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + ?', [targetUser, itemName, amount, amount]);
+        await sendChatMessage(`Given ${amount}x "${itemName}" to ${targetUser}!`);
+      }
+    },
+    '!reloaditems': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+        if (!isMod) return;
+
+        try {
+          const fs = await import('fs');
+          const path = await import('path');
+          const __dirname = path.dirname(new URL(import.meta.url).pathname).replace(/^\/([A-Za-z]:)/, '$1');
+          
+          const itemsData = fs.readFileSync(path.join(__dirname, 'items.json'), 'utf8');
+          const parsed = JSON.parse(itemsData);
+          
+          // Clear and reload
+          for (let key in ITEMS_REGISTRY) delete ITEMS_REGISTRY[key];
+          
+          FISHING_ITEMS = { common: [], uncommon: [], rare: [], legendary: [] };
+          
+          for (const [name, info] of Object.entries(parsed)) {
+            const lowerName = name.toLowerCase();
+            ITEMS_REGISTRY[lowerName] = info;
+            const rarity = info.rarity.toLowerCase();
+            if (FISHING_ITEMS[rarity]) {
+              FISHING_ITEMS[rarity].push({ name: lowerName, originalName: name, rarity: info.rarity, description: info.description });
+            }
+          }
+
+          await sendChatMessage(`items.json has been reloaded successfully!`);
+        } catch (e) {
+          console.error("Failed to reload items:", e);
+          await sendChatMessage(`Failed to reload items.json: ${e.message}`);
+        }
+      }
+    },
+    '!raffle': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        let user = await db.get('SELECT points, xp FROM users WHERE username = ?', chatterName);
+        if (!user) {
+          await db.run('INSERT OR IGNORE INTO users (username, points, xp) VALUES (?, 0, 0)', [chatterName]);
+          user = { points: 0, xp: 0 };
+        }
+
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to start raffles!`, chatterName);
           return;
         }
 
@@ -2332,12 +2836,21 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             return;
           }
 
-          const participants = Array.from(r.users);
-          const winner = participants[Math.floor(Math.random() * participants.length)];
+          const { expanded, guaranteed } = await buildRaffleParticipants(r.users);
+          const uniqueParticipants = Array.from(r.users);
 
-          await db.run('UPDATE users SET points = points + ? WHERE username = ?', [r.amount, winner]);
-          await updateRaffleStats(participants, [winner], r.amount);
-          await sendChatMessage(`🎉 The raffle has ended! Congratulations ${winner} you won ${r.amount} points!`);
+          let winner;
+          if (guaranteed.length > 0) {
+            winner = guaranteed[Math.floor(Math.random() * guaranteed.length)];
+          } else {
+            winner = expanded[Math.floor(Math.random() * expanded.length)];
+          }
+
+          const finalAdded = await addPointsWithBonus(winner, r.amount);
+
+          await updateRaffleStats(uniqueParticipants, [winner], finalAdded);
+
+          await sendChatMessage(`🎉 The raffle has ended! Congratulations ${winner} you won ${finalAdded} points!`);
         }, durationMs);
       }
     },
@@ -2400,22 +2913,42 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             return;
           }
 
-          const participants = Array.from(r.users);
+          const { expanded, guaranteed } = await buildRaffleParticipants(r.users);
+          const uniqueParticipants = Array.from(r.users);
           
-          for (let i = participants.length - 1; i > 0; i--) {
+          let allWinners = [];
+          
+          // 1. Pick guaranteed winners first
+          for (let i = guaranteed.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
-            [participants[i], participants[j]] = [participants[j], participants[i]];
+            [guaranteed[i], guaranteed[j]] = [guaranteed[j], guaranteed[i]];
+          }
+          for (const g of guaranteed) {
+            if (allWinners.length < r.numWinners && !allWinners.includes(g)) {
+              allWinners.push(g);
+            }
           }
 
-          const actualWinnersCount = Math.min(r.numWinners, participants.length);
-          const allWinners = participants.slice(0, actualWinnersCount);
+          // 2. Pick the rest from expanded pool
+          for (let i = expanded.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [expanded[i], expanded[j]] = [expanded[j], expanded[i]];
+          }
+          for (const p of expanded) {
+            if (allWinners.length >= r.numWinners) break;
+            if (!allWinners.includes(p)) {
+              allWinners.push(p);
+            }
+          }
+
+          const actualWinnersCount = allWinners.length;
           const splitAmount = Math.floor(r.amount / actualWinnersCount);
 
           for (const w of allWinners) {
-            await db.run('UPDATE users SET points = points + ? WHERE username = ?', [splitAmount, w]);
+            await addPointsWithBonus(w, splitAmount);
           }
 
-          await updateRaffleStats(participants, allWinners, splitAmount);
+          await updateRaffleStats(uniqueParticipants, allWinners, splitAmount);
 
           const displayWinners = allWinners.slice(0, 5);
           let winnersText = displayWinners.map(w => `${w}`).join(', ');
@@ -2423,7 +2956,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             winnersText += ` and ${actualWinnersCount - 5} others`;
           }
 
-          await sendChatMessage(`🎉 The multi-raffle has ended! Congratulations to our ${actualWinnersCount} winners: ${winnersText}. You each won ${splitAmount} points!`);
+          await sendChatMessage(`🎉 The multi-raffle has ended! Congratulations to our ${actualWinnersCount} winners: ${winnersText}. You each won ${splitAmount} base points (plus your personal bonuses)!`);
         }, durationMs);
       }
     },
@@ -2601,32 +3134,59 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       activeRaffle = null;
 
       if (r.users.size === 0) {
-        await sendChatMessage(`The random ${r.type === 'multi' ? 'multi-raffle' : 'raffle'} ended, but nobody joined! 😔`);
+        await sendChatMessage(`The random ${r.type === 'multi' ? 'multi-raffle' : 'raffle'} ended, but nobody joined!`);
         return;
       }
 
-      const participants = Array.from(r.users);
+      const { expanded, guaranteed } = await buildRaffleParticipants(r.users);
+      const uniqueParticipants = Array.from(r.users);
       
       if (r.type === 'multi') {
-        for (let i = participants.length - 1; i > 0; i--) {
+        let allWinners = [];
+        
+        // 1. Pick guaranteed winners first
+        for (let i = guaranteed.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
-          [participants[i], participants[j]] = [participants[j], participants[i]];
+          [guaranteed[i], guaranteed[j]] = [guaranteed[j], guaranteed[i]];
         }
-        const actualWinnersCount = Math.min(r.numWinners, participants.length);
-        const winners = participants.slice(0, actualWinnersCount);
+        for (const g of guaranteed) {
+          if (allWinners.length < r.numWinners && !allWinners.includes(g)) {
+            allWinners.push(g);
+          }
+        }
+
+        // 2. Pick the rest from expanded pool
+        for (let i = expanded.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [expanded[i], expanded[j]] = [expanded[j], expanded[i]];
+        }
+        for (const p of expanded) {
+          if (allWinners.length >= r.numWinners) break;
+          if (!allWinners.includes(p)) {
+            allWinners.push(p);
+          }
+        }
+
+        const actualWinnersCount = allWinners.length;
         const splitAmount = Math.floor(r.amount / actualWinnersCount);
 
-        for (const w of winners) {
-          await db.run('UPDATE users SET points = points + ? WHERE username = ?', [splitAmount, w]);
+        for (const w of allWinners) {
+          await addPointsWithBonus(w, splitAmount);
         }
-        await updateRaffleStats(participants, winners, splitAmount);
-        const winnersText = winners.map(w => `${w}`).join(', ');
-        await sendChatMessage(`🎉 The random multi-raffle has ended! Congratulations to our ${actualWinnersCount} winners: ${winnersText}. You each won ${splitAmount} points!`);
+        await updateRaffleStats(uniqueParticipants, allWinners, splitAmount);
+        const winnersText = allWinners.map(w => `${w}`).join(', ');
+        await sendChatMessage(`🎉 The random multi-raffle has ended! Congratulations to our ${actualWinnersCount} winners: ${winnersText}. You each won ${splitAmount} base points (plus your personal bonuses)!`);
       } else {
-        const winner = participants[Math.floor(Math.random() * participants.length)];
-        await db.run('UPDATE users SET points = points + ? WHERE username = ?', [r.amount, winner]);
-        await updateRaffleStats(participants, [winner], r.amount);
-        await sendChatMessage(`🎉 The random raffle has ended! Congratulations ${winner} you won ${r.amount} points!`);
+        let winner;
+        if (guaranteed.length > 0) {
+          winner = guaranteed[Math.floor(Math.random() * guaranteed.length)];
+        } else {
+          winner = expanded[Math.floor(Math.random() * expanded.length)];
+        }
+        
+        const finalAdded = await addPointsWithBonus(winner, r.amount);
+        await updateRaffleStats(uniqueParticipants, [winner], finalAdded);
+        await sendChatMessage(`🎉 The random raffle has ended! Congratulations ${winner} you won ${finalAdded} points!`);
       }
     }, durationMs);
   }
@@ -2640,8 +3200,18 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
     const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
     let isReconnecting = false;
+    let watchdogTimer = null;
+
+    function resetWatchdog() {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
+      watchdogTimer = setTimeout(() => {
+        console.log('! No messages from Twitch for 6 minutes. Connection is likely dead. Terminating to force reconnect...');
+        ws.terminate();
+      }, 6 * 60 * 1000);
+    }
 
     ws.on('open', () => {
+      resetWatchdog();
       isReconnecting = false;
       console.log(`* Connected to Twitch IRC at ${TARGET_CHANNEL}...`);
       
@@ -2653,6 +3223,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     });
 
     ws.on('message', async (data) => {
+      resetWatchdog();
       const rawMessage = data.toString().trim();
       const lines = rawMessage.split('\r\n');
 
@@ -2702,29 +3273,40 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           if (bits > 0 && chatterName && !ignoredBots.includes(chatterName)) {
             const pointsToAward = bits * 10;
             if (db) {
-              await db.run('INSERT INTO users (username, points) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET points = points + ?', [chatterName, pointsToAward, pointsToAward]);
-              console.log(`* [POINTS] Awarded ${pointsToAward} points to ${chatterName} for cheering ${bits} bits!`);
+              const finalAwarded = await addPointsWithBonus(chatterName, pointsToAward);
+              console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for cheering ${bits} bits!`);
               await triggerRandomRaffle('bit cheer');
             }
           }
 
           if (db && chatterName && !ignoredBots.includes(chatterName)) {
             const now = Date.now();
-            const user = await db.get('SELECT * FROM users WHERE username = ?', chatterName);
-             const isLive = await isStreamerLive();
+            let user = await db.get('SELECT last_message_time FROM users WHERE username = ?', chatterName);
+            const isLive = await isStreamerLive();
 
-            if (!user) {
-              await db.run('INSERT INTO users (username, points, last_message_time, true_last_chat_time) VALUES (?, ?, ?, ?)', [chatterName, isLive ? pointReward : 0, now, now]);
+            let pending = pendingActivityUpdates.get(chatterName);
+            let lastMsgTime = pending && pending.lastMessageTime ? pending.lastMessageTime : (user ? user.last_message_time : 0);
+            
+            if (!user && !pending) {
+              pendingActivityUpdates.set(chatterName, {
+                isNew: true,
+                pointsReward: isLive ? pointReward : 0,
+                lastMessageTime: now,
+                trueLastChatTime: now,
+                awardedPoints: true
+              });
             } else {
-              if (now - user.last_message_time >= 25 * 60 * 1000) {
+              let record = pending || { isNew: false, pointsReward: 0, awardedPoints: false, lastMessageTime: lastMsgTime };
+              record.trueLastChatTime = now;
+              
+              if (now - lastMsgTime >= 25 * 60 * 1000) {
+                record.lastMessageTime = now;
                 if (isLive) {
-                  await db.run('UPDATE users SET points = points + ?, last_message_time = ?, true_last_chat_time = ? WHERE username = ?', [pointReward, now, now, chatterName]);
-                } else {
-                  await db.run('UPDATE users SET last_message_time = ?, true_last_chat_time = ? WHERE username = ?', [now, now, chatterName]);
+                  record.pointsReward += pointReward;
+                  record.awardedPoints = true;
                 }
-              } else {
-                await db.run('UPDATE users SET true_last_chat_time = ? WHERE username = ?', [now, chatterName]);
               }
+              pendingActivityUpdates.set(chatterName, record);
             }
           }
 
@@ -2903,7 +3485,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
  
           if (chatText.toLowerCase().startsWith('!showemote ')) {
-            if (!await isStreamerLive()) return;
+            // if (!await isStreamerLive()) return;
 
             const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator'].includes(b.set_id));
             const isMod = hasPermission || chatterName === TARGET_CHANNEL;
@@ -2955,24 +3537,42 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               userCooldowns.set(chatterName, now);
               lastChatWideCommandTime = now;
             }
-
+        
             const tokens = [];
+            let currentEmoteGroup = [];
+            const validModifiers = ['wide', 'cursed', 'flipx', 'flipy', 'bounce', 'leave', 'arrive', 'jam', 'rainbow', 'hyper'];
+
             event.message.fragments.forEach(fragment => {
               if (fragment.type === 'emote') {
                 const twitchEmoteUrl = `https://static-cdn.jtvnw.net/emoticons/v2/${fragment.emote.id}/default/dark/3.0`;
-                tokens.push({ type: 'emote', url: twitchEmoteUrl, isZeroWidth: false, original: `Twitch Emote: ${twitchEmoteUrl}` });
+                const token = { type: 'emote', url: twitchEmoteUrl, isZeroWidth: false, modifiers: [], original: `Twitch Emote: ${twitchEmoteUrl}` };
+                tokens.push(token);
+                currentEmoteGroup = [token];
               } else if (fragment.type === 'text') {
                 const words = fragment.text.split(' ');
                 words.forEach(word => {
+                  const lowerWord = word.toLowerCase();
                   if (thirdPartyEmotes.has(word)) {
                     const emoteData = thirdPartyEmotes.get(word);
-                    tokens.push({ type: 'emote', url: emoteData.url, isZeroWidth: emoteData.isZeroWidth, original: `3rd-Party Emote: ${emoteData.url}` });
+                    const token = { type: 'emote', url: emoteData.url, isZeroWidth: emoteData.isZeroWidth, modifiers: [], original: `3rd-Party Emote: ${emoteData.url}` };
+                    tokens.push(token);
+                    if (emoteData.isZeroWidth) {
+                      currentEmoteGroup.push(token);
+                    } else {
+                      currentEmoteGroup = [token];
+                    }
+                  } else if (validModifiers.includes(lowerWord) && currentEmoteGroup.length > 0) {
+                    currentEmoteGroup.forEach(t => {
+                      if (!t.modifiers.includes(lowerWord)) t.modifiers.push(lowerWord);
+                    });
                   } else if (word.trim() !== '') {
                     tokens.push({ type: 'text', text: word, original: word });
+                    currentEmoteGroup = [];
                   }
                 });
               } else if (fragment.type === 'mention') {
                 tokens.push({ type: 'text', text: `${fragment.mention.user_name}` , original: `@${fragment.mention.user_name}` });
+                currentEmoteGroup = [];
               }
             });
 
@@ -2982,33 +3582,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             }
 
             const dynamicShowEmoteCost = parseInt(globalConfig['cmd_!showemote_cost'], 10) || 0;
-            if (dynamicShowEmoteCost > 0) {
-              const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
-              if (!user || user.points < dynamicShowEmoteCost) {
-                console.log(`[COMMAND] ${chatterName} tried to use !showemote but lacks points.`);
-                return;
-              }
-              await db.run('UPDATE users SET points = points - ? WHERE username = ?', [dynamicShowEmoteCost, chatterName]);
-            }
-  
+            
             let hasBaseEmote = false;
-  
+            let broadcastTokens = [];
+
             for (let i = 0; i < tokens.length; i++) {
               const current = tokens[i];
-  
               if (current.type === 'emote') {
-                let customX = null;
-                let customY = null;
-  
-                if (i + 1 < tokens.length && tokens[i + 1].type === 'text') {
-                  const match = tokens[i + 1].text.match(/^(\d+),(\d+)$/);
-                  if (match) {
-                    customX = parseInt(match[1], 10);
-                    customY = parseInt(match[2], 10);
-                    i++;
-                  }
-                }
-  
                 let shouldBroadcast = true;
                 if (!current.isZeroWidth) {
                   if (hasBaseEmote) {
@@ -3017,11 +3597,65 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                     hasBaseEmote = true;
                   }
                 }
-  
                 if (shouldBroadcast) {
-                  broadcastEmote(current.url, current.isZeroWidth, event.message_id, customX, customY);
+                  broadcastTokens.push({ token: current, originalIndex: i });
                 }
               }
+            }
+
+            let uniqueModifiers = new Set();
+            broadcastTokens.forEach(b => {
+              if (b.token.modifiers) {
+                b.token.modifiers.forEach(mod => uniqueModifiers.add(mod));
+              }
+            });
+
+            let modifierCost = 0;
+            uniqueModifiers.forEach(mod => {
+              modifierCost += parseInt(globalConfig[`mod_${mod}_cost`], 10) || 0;
+            });
+
+            const totalCost = dynamicShowEmoteCost + modifierCost;
+
+            if (dynamicShowEmoteCost > 0 || modifierCost > 0) {
+              const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+              const userPoints = user ? user.points : 0;
+
+              if (userPoints < dynamicShowEmoteCost) {
+                console.log(`[COMMAND] ${chatterName} tried to use !showemote but lacks base points.`);
+                return;
+              }
+
+              let finalCost = dynamicShowEmoteCost;
+              if (userPoints >= totalCost) {
+                finalCost = totalCost;
+              } else {
+                console.log(`[COMMAND] ${chatterName} cannot afford modifiers. Dropping modifiers.`);
+                broadcastTokens.forEach(b => {
+                  b.token.modifiers = [];
+                });
+              }
+
+              if (finalCost > 0) {
+                await db.run('UPDATE users SET points = points - ? WHERE username = ?', [finalCost, chatterName]);
+              }
+            }
+  
+            for (let b of broadcastTokens) {
+              const current = b.token;
+              const i = b.originalIndex;
+              let customX = null;
+              let customY = null;
+
+              if (i + 1 < tokens.length && tokens[i + 1].type === 'text') {
+                const match = tokens[i + 1].text.match(/^(\d+),(\d+)$/);
+                if (match) {
+                  customX = parseInt(match[1], 10);
+                  customY = parseInt(match[2], 10);
+                }
+              }
+
+              broadcastEmote(current.url, current.isZeroWidth, event.message_id, customX, customY, current.modifiers || []);
             }
           
             // --- COMMAND LOGIC END ---
@@ -3035,15 +3669,15 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             if (msgId === 'sub' || msgId === 'resub') {
               if (db && chatterName) {
                 const subReward = parseInt(globalConfig['reward_sub'] || '5000', 10);
-                await db.run('INSERT INTO users (username, points) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET points = points + ?', [chatterName, subReward, subReward]);
-                console.log(`* [POINTS] Awarded ${subReward} points to ${chatterName} for subscribing!`);
+                const finalAwarded = await addPointsWithBonus(chatterName, subReward);
+                console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for subscribing!`);
                 await triggerRandomRaffle('subscription');
               }
             } else if (msgId === 'subgift') {
               if (db && chatterName) {
                 const giftReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
-                await db.run('INSERT INTO users (username, points) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET points = points + ?', [chatterName, giftReward, giftReward]);
-                console.log(`* [POINTS] Awarded ${giftReward} points to ${chatterName} for gifting sub(s)!`);
+                const finalAwarded = await addPointsWithBonus(chatterName, giftReward);
+                console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting sub(s)!`);
                 await triggerRandomRaffle('gift sub');
               }
             } else if (msgId === 'viewermilestone') {
@@ -3052,8 +3686,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 if (streak > 0 && db && chatterName) {
                   const streakMult = parseInt(globalConfig['reward_watchstreak'] || '1000', 10);
                   const reward = streak * streakMult;
-                  await db.run('INSERT INTO users (username, points) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET points = points + ?', [chatterName, reward, reward]);
-                  console.log(`* [POINTS] Awarded ${reward} points to ${chatterName} for a ${streak} watch streak!`);
+                  const finalAwarded = await addPointsWithBonus(chatterName, reward);
+                  console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for a ${streak} watch streak!`);
                 }
               }
             }
@@ -3066,6 +3700,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     });
 
     ws.on('close', () => {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
       console.log('* Disconnected from Twitch IRC WebSocket');
       if (ws === activeWs && !isReconnecting) {
         console.log('! Connection dropped unexpectedly! Reconnecting in 5 seconds...');

@@ -60,6 +60,16 @@ export function setupRoutes(app, {
     });
   });
 
+  app.get('/api/economy-rates', (req, res) => {
+    res.json({
+      level_base_cost: parseInt(globalConfig['level_base_cost'] || '200', 10),
+      points_to_xp_rate: parseFloat(globalConfig['points_to_xp_rate'] || '1'),
+      leg_bonus_rate: parseFloat(globalConfig['leg_bonus_rate'] || '0.01'),
+      rare_bonus_rate: parseFloat(globalConfig['rare_bonus_rate'] || '0.05'),
+      lvl_bonus_rate: parseFloat(globalConfig['lvl_bonus_rate'] || '0.001')
+    });
+  });
+
   app.get('/api/stream-emotes', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -72,7 +82,7 @@ export function setupRoutes(app, {
   });
 
   app.get('/overlay', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'overlay.html'));
   });
 
   app.get('/api/dashboard/commands', (req, res) => {
@@ -182,7 +192,10 @@ export function setupRoutes(app, {
       const db = getDb();
       if (!db) return res.status(503).json({ success: false, error: 'Database not ready' });
       const inventory = await db.all('SELECT * FROM user_inventory WHERE quantity > 0');
-      res.json({ success: true, inventory });
+      const now = Date.now();
+      const activeEffects = await db.all('SELECT * FROM active_effects WHERE expires_at > ? OR uses_left > 0', [now]);
+      const userModifiers = await db.all('SELECT * FROM user_modifiers WHERE value > 0');
+      res.json({ success: true, inventory, activeEffects, userModifiers });
     } catch (error) {
       res.status(500).json({ success: false, error: error.message });
     }
@@ -220,9 +233,17 @@ export function setupRoutes(app, {
   });
 }
 
-export function broadcastEmote(url, isZeroWidth = false, messageId = null, customX = null, customY = null) {
-  const payload = `data: ${JSON.stringify({ type: 'emote', url, isZeroWidth, messageId, customX, customY })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
+export function broadcastEmote(url, isZeroWidth = false, messageId = null, customX = null, customY = null, modifiers = []) {
+  const data = JSON.stringify({ 
+    type: 'emote', 
+    url, 
+    isZeroWidth, 
+    messageId,
+    customX,
+    customY,
+    modifiers
+  });
+  sseClients.forEach(client => client.write(`data: ${data}\n\n`));
 }
 
 export function broadcastAudio(filename) {
