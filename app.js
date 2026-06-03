@@ -805,7 +805,7 @@ async function start() {
         await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [key, value, value]);
         globalConfig[key] = value; // Update in-memory
         
-        await sendChatMessage(`✅ Config '${key}' has been updated to ${value}!`, chatterName);
+        await sendChatMessage(`Config '${key}' has been updated to ${value}!`, chatterName);
       }
     },
     '!lvlup': {
