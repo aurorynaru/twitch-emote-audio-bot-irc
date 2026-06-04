@@ -2670,7 +2670,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         }
 
         if (args.length < 2) {
-          await sendChatMessage(`Usage: !editrewards <type> <val1> [val2]. Types: sub, giftsub, watchstreak, raffle, multiraffle`);
+          await sendChatMessage(`Usage: !editrewards <type> <val1> [val2]. Types: sub, giftsub, watchstreak, raffle, multiraffle, chat`);
           return;
         }
 
@@ -2700,8 +2700,25 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           globalConfig[keyMin] = val1.toString();
           globalConfig[keyMax] = val2.toString();
           await sendChatMessage(`Reward range for ${type} updated to ${val1} - ${val2}.`);
+        } else if (type === 'chat') {
+          if (val2 === null || isNaN(val2) || args.length < 4) {
+            await sendChatMessage(`Usage for chat: !editrewards chat <nonsub_points> <sub_points> <cooldown_minutes>`);
+            return;
+          }
+          const val3 = parseInt(args[3], 10);
+          if (isNaN(val3)) {
+            await sendChatMessage(`Invalid cooldown value: ${args[3]}`);
+            return;
+          }
+          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', ['reward_chat_nonsub', val1, val1]);
+          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', ['reward_chat_sub', val2, val2]);
+          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', ['reward_chat_cooldown', val3, val3]);
+          globalConfig['reward_chat_nonsub'] = val1.toString();
+          globalConfig['reward_chat_sub'] = val2.toString();
+          globalConfig['reward_chat_cooldown'] = val3.toString();
+          await sendChatMessage(`Chat rewards updated! Non-subs: ${val1} pts | Subs: ${val2} pts | Cooldown: ${val3} mins.`);
         } else {
-          await sendChatMessage(`Unknown reward type: ${type}. Valid types: sub, giftsub, watchstreak, raffle, multiraffle`);
+          await sendChatMessage(`Unknown reward type: ${type}. Valid types: sub, giftsub, watchstreak, raffle, multiraffle, chat`);
         }
       }
     },
@@ -3264,7 +3281,10 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           const messageText = parts.slice(3).join(' ').substring(1);
           const chatterName = tags['display-name'] ? tags['display-name'].toLowerCase() : source.split('!')[0].substring(1).toLowerCase();
           const isSub = tags['subscriber'] === '1' || (tags['badges'] && tags['badges'].includes('founder'));
-          const pointReward = isSub ? 750 : 500;
+          
+          const subRewardAmt = parseInt(globalConfig['reward_chat_sub'] || '750', 10);
+          const nonsubRewardAmt = parseInt(globalConfig['reward_chat_nonsub'] || '500', 10);
+          const pointReward = isSub ? subRewardAmt : nonsubRewardAmt;
           const bits = parseInt(tags['bits']) || 0;
           if (bits > 0) {
             console.log(`[BITS EVENT DETECTED] Raw tags:`, JSON.stringify(tags));
@@ -3299,7 +3319,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               let record = pending || { isNew: false, pointsReward: 0, awardedPoints: false, lastMessageTime: lastMsgTime };
               record.trueLastChatTime = now;
               
-              if (now - lastMsgTime >= 25 * 60 * 1000) {
+              const chatCdMins = parseInt(globalConfig['reward_chat_cooldown'] || '25', 10);
+              if (now - lastMsgTime >= chatCdMins * 60 * 1000) {
                 record.lastMessageTime = now;
                 if (isLive) {
                   record.pointsReward += pointReward;
