@@ -106,7 +106,7 @@ const commandConfigSchema = {
   '!editrewards': ['cooldown'],
   '!lvlup': ['cooldown'],
   '!use': ['cooldown'],
-  '!fish': ['cooldown'],
+  '!fish': ['cost','cooldown'],
   '!inventory': ['cooldown'],
   '!buffs': ['cooldown'],
   '!emotesize': ['cooldown'],
@@ -1973,12 +1973,15 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           isFree = true;
           await db.run('UPDATE user_modifiers SET value = value - 1 WHERE username = ? AND modifier = ?', [chatterName, 'free_fish']);
         } else {
-          const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
-          if (!user || user.points < 2000) {
-            await sendChatMessage(`${chatterName} you need 2000 points to fish! (Or use a fishing ticket)`, chatterName);
-            return;
+          const fishCost = parseInt(globalConfig['cmd_!fish_cost'] !== undefined ? globalConfig['cmd_!fish_cost'] : '2000', 10);
+          if (fishCost > 0) {
+            const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+            if (!user || user.points < fishCost) {
+              await sendChatMessage(`${chatterName} you need ${fishCost} points to fish! (Or use a fishing ticket)`, chatterName);
+              return;
+            }
+            await db.run('UPDATE users SET points = points - ? WHERE username = ?', [fishCost, chatterName]);
           }
-          await db.run('UPDATE users SET points = points - 2000 WHERE username = ?', chatterName);
         }
 
         const reductions = await getActiveEffects(chatterName, 'fishing_time_reduction');
