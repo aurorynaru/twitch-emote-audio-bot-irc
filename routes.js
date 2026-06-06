@@ -166,7 +166,7 @@ export function setupRoutes(app, {
     try {
       const db = getDb();
       if (!db) return res.status(503).json({ success: false, error: 'Database not ready' });
-      const userStatsRaw = await db.all('SELECT u.xp, s.*, u.username FROM users u LEFT JOIN user_stats s ON u.username = s.username');
+      const userStatsRaw = await db.all('SELECT u.xp, u.points, s.*, u.username FROM users u LEFT JOIN user_stats s ON u.username = s.username');
       const levelBase = parseInt(globalConfig['level_base_cost'] || '200', 10);
       const userStats = userStatsRaw.map(u => {
         u.level = Math.floor(Math.sqrt((u.xp || 0) / levelBase)) + 1;
