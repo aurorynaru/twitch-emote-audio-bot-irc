@@ -971,20 +971,20 @@ async function start() {
             await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE username != ?', [drainAmount, chatterName]);
             chatMsgs.push(`⚠️ A global point drain of ${drainAmount} points was unleashed!`);
           } else if (effectType === 'global_point_boost' || effectType === 'personal_point_boost' || effectType === 'fishing_time_reduction' || effectType === 'tax_collector' || effectType === 'global_point_debuff') {
-            // These are time-based multiplier effects. Multiple uses add to TIME, not the multiplier value.
             const now = Date.now();
-            const durationMs = itemConfig.effectDurationMinutes * 60 * 1000 * amountToUse;
+            const durationMs = itemConfig.effectDurationMinutes * 60 * 1000;
             
-     
-            const existing = await db.get('SELECT * FROM active_effects WHERE target_user = ? AND effect_type = ? AND effect_value = ?', [targetUser, effectType, baseValue]);
-            if (existing && existing.expires_at > now) {
-               await db.run('UPDATE active_effects SET expires_at = expires_at + ? WHERE id = ?', [durationMs, existing.id]);
+            let combinedValue = 0;
+            if (effectType === 'global_point_debuff' || effectType === 'fishing_time_reduction') {
+               combinedValue = 1 - Math.pow(1 - baseValue, amountToUse);
             } else {
-               await db.run(
-                 'INSERT INTO active_effects (target_user, effect_type, effect_value, expires_at, caster) VALUES (?, ?, ?, ?, ?)',
-                 [targetUser, effectType, baseValue, now + durationMs, chatterName]
-               );
+               combinedValue = Math.pow(1 + baseValue, amountToUse) - 1;
             }
+
+            await db.run(
+              'INSERT INTO active_effects (target_user, effect_type, effect_value, expires_at, caster) VALUES (?, ?, ?, ?, ?)',
+              [targetUser, effectType, combinedValue, now + durationMs, chatterName]
+            );
           } else {
 
             const uses = itemConfig.uses * amountToUse;
