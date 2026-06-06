@@ -1661,6 +1661,7 @@ async function start() {
     },
     '!gamble': {
       cost: 0, 
+      manualCost: true,
       execute: async (args, chatterName, event, hasPermission) => {
         const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
         if (!user || user.points <= 0) {
@@ -1957,6 +1958,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     },
     '!fish': {
       cost: 0,
+      manualCost: true,
       execute: async (args, chatterName, event, hasPermission) => {
         const pending = await db.get('SELECT * FROM pending_fish WHERE username = ?', chatterName);
         if (pending) {
@@ -3443,7 +3445,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             const dynamicCostRaw = globalConfig[`cmd_${commandName}_cost`];
             const activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : command.cost;
 
-            if (activeCost > 0) {
+            if (activeCost > 0 && !command.manualCost) {
               const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
               if (!user || user.points < activeCost) {
                 console.log(`[COMMAND] ${chatterName} tried to use ${commandName} but lacks points.`);
