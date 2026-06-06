@@ -3393,15 +3393,16 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           if (builtInAliases[commandName]) {
             commandName = builtInAliases[commandName];
           }
+
+          // Global disable check
+          const disabledUntilRaw = globalConfig[`cmd_${commandName}_disabled_until`];
+          if (disabledUntilRaw) {
+            if (disabledUntilRaw === 'forever' || Date.now() < parseInt(disabledUntilRaw, 10)) {
+              return;
+            }
+          }
           
           if (customAliasesMap.has(commandName)) {
-            const disabledUntilRaw = globalConfig[`cmd_${commandName}_disabled_until`];
-            if (disabledUntilRaw) {
-              if (disabledUntilRaw === 'forever' || Date.now() < parseInt(disabledUntilRaw, 10)) {
-                return;
-              }
-            }
-
             const alias = customAliasesMap.get(commandName);
             if (alias.cost > 0) {
               const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
@@ -3426,6 +3427,14 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                   fragments: chatText.split(' ').map(word => ({ type: 'text', text: word + ' ' }))
                 }
               };
+
+              // Re-check disable for the new resolved command
+              const newDisabledUntilRaw = globalConfig[`cmd_${commandName}_disabled_until`];
+              if (newDisabledUntilRaw) {
+                if (newDisabledUntilRaw === 'forever' || Date.now() < parseInt(newDisabledUntilRaw, 10)) {
+                  return;
+                }
+              }
             } else {
               await sendChatMessage(alias.action);
               return;
@@ -3433,12 +3442,6 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           }
        
           if (customCommands[commandName]) {
-            const disabledUntilRaw = globalConfig[`cmd_${commandName}_disabled_until`];
-            if (disabledUntilRaw) {
-              if (disabledUntilRaw === 'forever' || Date.now() < parseInt(disabledUntilRaw, 10)) {
-                return;
-              }
-            }
 
             const command = customCommands[commandName];
             
