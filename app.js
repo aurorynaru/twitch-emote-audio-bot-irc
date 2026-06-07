@@ -2665,6 +2665,39 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         await sendChatMessage(`Successfully enabled ${cmdName}!`);
       }
     },
+    '!subonly': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+        if (!isMod) {
+          return;
+        }
+
+        if (args.length < 2) {
+          await sendChatMessage(`${chatterName} invalid format! Use: !subonly <!command> <true/false>`, chatterName);
+          return;
+        }
+
+        const cmdName = args[0].toLowerCase();
+        if (!cmdName.startsWith('!')) {
+          await sendChatMessage(`${chatterName} the command must start with a ! (e.g. !mycmd)`, chatterName);
+          return;
+        }
+        
+        const isSubOnly = args[1].toLowerCase() === 'true';
+        const configKey = `cmd_${cmdName}_sub_only`;
+        
+        if (isSubOnly) {
+          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, 'true', 'true']);
+          globalConfig[configKey] = 'true';
+          await sendChatMessage(`Successfully made ${cmdName} subscriber-only!`);
+        } else {
+          await db.run('DELETE FROM app_config WHERE key = ?', configKey);
+          delete globalConfig[configKey];
+          await sendChatMessage(`Successfully removed subscriber-only restriction from ${cmdName}!`);
+        }
+      }
+    },
     '!editrewards': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
@@ -3401,6 +3434,15 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               return;
             }
           }
+
+          // Global sub-only check
+          const isSubOnly = globalConfig[`cmd_${commandName}_sub_only`] === 'true';
+          if (isSubOnly) {
+            const isSubOrMod = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'subscriber', 'founder'].includes(b.set_id)) || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+            if (!isSubOrMod) {
+              return;
+            }
+          }
           
           if (customAliasesMap.has(commandName)) {
             const alias = customAliasesMap.get(commandName);
@@ -3432,6 +3474,15 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               const newDisabledUntilRaw = globalConfig[`cmd_${commandName}_disabled_until`];
               if (newDisabledUntilRaw) {
                 if (newDisabledUntilRaw === 'forever' || Date.now() < parseInt(newDisabledUntilRaw, 10)) {
+                  return;
+                }
+              }
+
+              // Re-check sub-only for the new resolved command
+              const newIsSubOnly = globalConfig[`cmd_${commandName}_sub_only`] === 'true';
+              if (newIsSubOnly) {
+                const isSubOrMod = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'subscriber', 'founder'].includes(b.set_id)) || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+                if (!isSubOrMod) {
                   return;
                 }
               }
