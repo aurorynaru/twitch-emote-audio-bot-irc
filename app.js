@@ -2342,7 +2342,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
         const bet = activeBets.get('default');
         if (!bet) {
-          await sendChatMessage(`${chatterName} there is no active bet!`, chatterName);
+         // await sendChatMessage(`${chatterName} there is no active bet!`, chatterName);
           return;
         }
 
@@ -2366,7 +2366,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const bet = activeBets.get('default');
         if (!bet) {
-          await sendChatMessage(`${chatterName} there is no active bet right now!`, chatterName);
+       //   await sendChatMessage(`${chatterName} there is no active bet right now!`, chatterName);
           return;
         }
         if (!bet.isOpen) {
@@ -2430,7 +2430,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         const bet = activeBets.get('default');
         if (!bet) {
-          await sendChatMessage(`There is no active bet right now!`);
+       //   await sendChatMessage(`There is no active bet right now!`);
           return;
         }
 
