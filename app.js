@@ -1938,7 +1938,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         }
 
         if (!activeChatWar) {
-          await sendChatMessage(`${chatterName} there is no active chat war!`, chatterName);
+         // await sendChatMessage(`${chatterName} there is no active chat war!`, chatterName);
           return;
         }
 
@@ -2231,7 +2231,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
         const bet = activeBets.get('default');
         if (!bet) {
-          await sendChatMessage(`${chatterName} there is no active bet!`, chatterName);
+        //  await sendChatMessage(`${chatterName} there is no active bet!`, chatterName);
           return;
         }
 
