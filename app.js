@@ -24,6 +24,7 @@ let USER_ACCESS_TOKEN = '';
 let BOT_USERNAME = ''
 const TOKEN_FILE = path.join(__dirname, 'data', 'tokens.json');
 let COMMAND_COOLDOWN=process.env.COMMAND_COOLDOWN || 1000
+let currentDuelTax = 0.05;
 
 const DB_PATH = path.join(__dirname, 'data', 'database.sqlite');
 if (!fs.existsSync(path.join(__dirname, 'data'))) {
@@ -36,6 +37,7 @@ if (!fs.existsSync(path.join(__dirname, 'data', 'playsounds'))) {
 const globalConfig = {};
 const customAliasesMap = new Map();
 const ignoredBots = ['nightbot', 'streamelements', 'streamlabs', 'moobot', 'dotabod', 'wizebot', 'fossabot', 'kofibot', 'soundalerts'];
+let streamStartTime = Date.now();
 
 const builtInAliases = {
   '!point': '!points',
@@ -94,6 +96,7 @@ const commandConfigSchema = {
   '!duel': ['cooldown'],
   '!acceptduel': ['cooldown'],
   '!declineduel': ['cooldown'],
+  '!dueltax': ['cooldown'],
   '!disable': ['cooldown'],
   '!enable':['cooldown'],
   '!raffle': ['cooldown'],
@@ -577,6 +580,20 @@ async function start() {
       [username, effectType]
     );
   }
+
+  async function distributeRobinHoodTax(taxAmount) {
+    if (taxAmount <= 0) return;
+    await isStreamerLive(); // Fetch latest start time if live
+    const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
+    const row = await db.get(`SELECT COUNT(*) as count FROM users WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [streamStartTime]);
+    const count = row ? row.count : 0;
+    if (count > 0) {
+      const splitAmount = Math.floor(taxAmount / count);
+      if (splitAmount > 0) {
+        await db.run(`UPDATE users SET points = points + ? WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [splitAmount, streamStartTime]);
+      }
+    }
+  }
   
   async function addPointsWithBonus(username, amount) {
     const userRow = await db.get('SELECT xp FROM users WHERE username = ?', [username]);
@@ -589,8 +606,7 @@ async function start() {
     const globalBoosts = await getActiveEffects(username, 'global_point_boost');
     const globalDebuffs = await getActiveEffects(username, 'global_point_debuff');
     
-    // Additive percentages for each category, then applied multiplicatively?
-    // Let's just stack them multiplicatively.
+
     let multiplier = 1.0;
     for (const b of personalBoosts) multiplier *= (1 + b.effect_value);
     for (const b of globalBoosts) multiplier *= (1 + b.effect_value);
@@ -1507,9 +1523,13 @@ async function start() {
           const challengerWins = Math.random() < 0.5;
           const winner = challengerWins ? chatterName : target;
           const loser = challengerWins ? target : chatterName;
-          const reward = actualBet * 2;
+          
+          const taxAmount = Math.floor(actualBet * currentDuelTax);
+          const finalProfit = actualBet - taxAmount;
+          const reward = actualBet + finalProfit;
 
           await db.run('UPDATE users SET points = points + ? WHERE username = ?', [reward, winner]);
+          await distributeRobinHoodTax(taxAmount);
 
           await updateUserStat(winner, 'duels_played', 1);
           await updateUserStat(loser, 'duels_played', 1);
@@ -1621,8 +1641,11 @@ async function start() {
            loserPenalty -= refund;
         }
 
-        const finalProfit = await addPointsWithBonus(winner, profit);
-        await db.run('UPDATE users SET points = points + ? WHERE username = ?', [duel.amount, winner]); // refund original bet
+        const taxAmount = Math.floor(profit * currentDuelTax);
+        const finalProfit = profit - taxAmount;
+        
+        await db.run('UPDATE users SET points = points + ? WHERE username = ?', [duel.amount + finalProfit, winner]); // refund original bet + profit
+        await distributeRobinHoodTax(taxAmount);
         
         const reward = duel.amount + finalProfit; // used for stats and messages
 
@@ -1657,6 +1680,27 @@ async function start() {
         await db.run('UPDATE users SET points = points + ? WHERE username = ?', [duel.amount, duel.challenger]);
         
         await sendChatMessage(`${chatterName} has declined the duel from ${duel.challenger}! Points refunded.`, chatterName);
+      }
+    },
+    '!dueltax': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+        if (!isMod) return;
+
+        if (args.length === 0) {
+          await sendChatMessage(`Current duel tax is ${currentDuelTax * 100}%.`, chatterName);
+          return;
+        }
+
+        let newTaxStr = args[0].replace('%', '');
+        let newTax = parseFloat(newTaxStr);
+        if (!isNaN(newTax) && newTax >= 0 && newTax <= 100) {
+          currentDuelTax = newTax / 100;
+          await sendChatMessage(`Duel tax is now set to ${newTax}%.`, chatterName);
+        } else {
+          await sendChatMessage(`Invalid tax amount. Use a percentage from 0 to 100.`, chatterName);
+        }
       }
     },
     '!gamble': {
@@ -3055,6 +3099,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       if (data && data.data) {
         isStreamLiveCached = data.data.length > 0;
         lastStreamCheckTime = Date.now();
+        if (isStreamLiveCached && data.data[0].started_at) {
+          streamStartTime = new Date(data.data[0].started_at).getTime();
+        }
       } else {
         console.error('! Twitch API Error during isStreamerLive:', data);
       }
