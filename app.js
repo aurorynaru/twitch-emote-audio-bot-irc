@@ -970,17 +970,45 @@ async function start() {
 
           const effectType = itemConfig.effectType;
           const baseValue = itemConfig.effectValue;
-          const isGlobal = effectType.startsWith('global_');
+          const isGlobal = effectType.startsWith('global_') || itemConfig.isGlobal;
           const targetUser = isGlobal ? 'GLOBAL' : chatterName;
 
           if (effectType === 'instant_points') {
-            const pointsToAdd = baseValue * amountToUse;
-            if (pointsToAdd > 0) {
-               const finalGained = await addPointsWithBonus(chatterName, pointsToAdd);
-               totalPointsGained += finalGained;
+            const rawPointsToAdd = baseValue * amountToUse;
+            if (isGlobal) {
+              await isStreamerLive();
+              const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
+              if (itemConfig.isPercentage) {
+                if (rawPointsToAdd > 0) {
+                   await db.run(`UPDATE users SET points = points + (points * ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [rawPointsToAdd, streamStartTime]);
+                   chatMsgs.push(`🎁 ${chatterName} used a global item! Everyone active this stream gained ${rawPointsToAdd * 100}% points!`);
+                } else {
+                   await db.run(`UPDATE users SET points = MAX(0, points + (points * ?)) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [rawPointsToAdd, streamStartTime]);
+                   chatMsgs.push(`⚠️ ${chatterName} unleashed a global item! Everyone active this stream lost ${Math.abs(rawPointsToAdd * 100)}% points!`);
+                }
+              } else {
+                if (rawPointsToAdd > 0) {
+                   await db.run(`UPDATE users SET points = points + ? WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [rawPointsToAdd, streamStartTime]);
+                   chatMsgs.push(`🎁 ${chatterName} used a global item! Everyone active this stream gained ${rawPointsToAdd} points!`);
+                } else {
+                   await db.run(`UPDATE users SET points = MAX(0, points + ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [rawPointsToAdd, streamStartTime]);
+                   chatMsgs.push(`⚠️ ${chatterName} unleashed a global item! Everyone active this stream lost ${Math.abs(rawPointsToAdd)} points!`);
+                }
+              }
             } else {
-               await db.run('UPDATE users SET points = MAX(0, points + ?) WHERE username = ?', [pointsToAdd, chatterName]);
-               totalPointsGained += pointsToAdd;
+              let pointsToAdd = rawPointsToAdd;
+              if (itemConfig.isPercentage) {
+                 const uRow = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+                 const currentPts = uRow ? uRow.points : 0;
+                 pointsToAdd = Math.round(currentPts * rawPointsToAdd);
+              }
+              if (pointsToAdd > 0) {
+                 const finalGained = await addPointsWithBonus(chatterName, pointsToAdd);
+                 totalPointsGained += finalGained;
+              } else {
+                 await db.run('UPDATE users SET points = MAX(0, points + ?) WHERE username = ?', [pointsToAdd, chatterName]);
+                 totalPointsGained += pointsToAdd;
+              }
             }
           } else if (effectType === 'global_point_drain') {
             const drainAmount = itemConfig.effectValue * amountToUse;
@@ -1703,6 +1731,29 @@ async function start() {
         }
       }
     },
+    '!setfishtime': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+        if (!isMod) return;
+
+        if (args.length === 0) {
+          const currentFishTime = parseFloat(globalConfig['cmd_!fish_time'] !== undefined ? globalConfig['cmd_!fish_time'] : '5');
+          await sendChatMessage(`Current fishing time is ${currentFishTime} minutes.`, chatterName);
+          return;
+        }
+
+        let newTime = parseFloat(args[0]);
+        if (!isNaN(newTime) && newTime > 0) {
+          await db.run('INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', ['cmd_!fish_time', newTime.toString(), newTime.toString()]);
+          globalConfig['cmd_!fish_time'] = newTime.toString();
+          broadcastConfig(globalConfig);
+          await sendChatMessage(`Fishing time is now set to ${newTime} minutes.`, chatterName);
+        } else {
+          await sendChatMessage(`Invalid time amount. Use a number greater than 0.`, chatterName);
+        }
+      }
+    },
     '!gamble': {
       cost: 0, 
       manualCost: true,
@@ -2036,7 +2087,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           multiplier *= (1 - r.effect_value);
         }
         
-        const baseTimeMinutes = 5;
+        const baseTimeMinutes = parseFloat(globalConfig['cmd_!fish_time'] !== undefined ? globalConfig['cmd_!fish_time'] : '5');
         const finalTimeMinutes = baseTimeMinutes * multiplier;
         const finalTimeMs = Math.floor(finalTimeMinutes * 60 * 1000);
 
@@ -3201,8 +3252,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     const amount = Math.floor(Math.random() * (maxPoints - minPoints + 1)) + minPoints;
     
     const durationMinutes = 1;
-    const durationMs = durationMinutes * 60000;
-    const durationStr = `1 minute`;
+    const durationMs = durationMinutes * 30000;
+    const durationStr = `30 seconds`;
 
     if (isMulti) {
       const minWinnersRaffle = parseInt(globalConfig['reward_multiraffle_min'] || '3', 10);

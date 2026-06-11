@@ -7,6 +7,19 @@
     "uses": 1,
     "autoConsume": true
   },
+
+
+
+  "Gold chest": {
+    "rarity": "Common",
+    "description": "Chest that grants 500 points to everyone in chat",
+    "effectType": "instant_points",
+    "effectValue": 500,
+    "uses": 1,
+    "isGlobal": true,
+    "autoConsume": true
+  },
+  
   "pebble": {
     "rarity": "Common",
     "description": "A shiny gold coin. Grants 500 points.",
@@ -74,6 +87,16 @@
     "effectValue": 0.30,
     "effectDurationMinutes": 120
   },
+   "Great chest": {
+    "rarity": "Uncommon",
+    "description": "Chest that grants 1000 points to everyone in chat",
+    "effectType": "instant_points",
+    "effectValue": 1000,
+    "uses": 1,
+    "isGlobal": true,
+    "autoConsume": true
+  },
+  
   "liquid gold": {
     "rarity": "Legendary",
     "description": "Boosts your personal point gain by 100% for 1 hour.",
@@ -184,6 +207,27 @@
     "effectValue": 1.25,
     "uses": 1
   },
+
+ "Neo TROLL": {
+    "rarity": "uncommon",
+    "description": "Instantly deducts 1% of all chatter's total points. TROLL",
+    "effectType": "instant_points",
+    "effectValue": -0.1,
+    "uses": 1,
+    "autoConsume": true,
+    "isPercentage": true,
+    "isGlobal": true
+  },
+
+  "TROLL": {
+    "rarity": "Legendary",
+    "description": "Instantly deducts 10% of your total points. TROLL",
+    "effectType": "instant_points",
+    "effectValue": -0.10,
+    "uses": 1,
+    "autoConsume": true,
+    "isPercentage": true
+  },
   "extra ticket": {
     "rarity": "Uncommon",
     "description": "Gives you 2 entries instead of 1 in the next raffle.",
@@ -226,5 +270,31 @@
     "effectType": "tax_collector",
     "effectValue": 0.01,
     "effectDurationMinutes": 30
+  },
+
+  "Fish": {
+    "rarity": "Rare",
+    "description": "Reduces everyone's fishing cooldown by 10% for 30 minutes.",
+    "effectType": "fishing_time_reduction",
+    "effectValue": 0.10,
+    "effectDurationMinutes": 30,
+    "isGlobal": true
+  },
+
+  "fishing net": {
+    "rarity": "Rare",
+    "description": "Reduces everyone's fishing cooldown by 15% for 30 minutes.",
+    "effectType": "fishing_time_reduction",
+    "effectValue": 0.15,
+    "effectDurationMinutes": 30,
+    "isGlobal": true
+  },
+  "FishMoley": {
+    "rarity": "Legendary",
+    "description": "Reduces everyone's fishing cooldown by 20% for 1 hour.",
+    "effectType": "fishing_time_reduction",
+    "effectValue": 0.20,
+    "effectDurationMinutes": 60,
+    "isGlobal": true
   }
 }
