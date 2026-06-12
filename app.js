@@ -328,6 +328,21 @@ async function initDb() {
   }
 }
 
+async function swapDatabase() {
+  if (db) {
+    await db.close();
+    db = null;
+  }
+  const stagingPath = path.join(__dirname, 'data', 'database_staging.sqlite');
+  const actualPath = path.join(__dirname, 'data', 'database.sqlite');
+  if (fs.existsSync(stagingPath)) {
+    if (fs.existsSync(actualPath)) fs.unlinkSync(actualPath);
+    fs.renameSync(stagingPath, actualPath);
+  }
+  await initDb();
+}
+
+
 async function updateUserStat(username, field, amount) {
   if (!db || !username || !field) return;
   try {
@@ -457,7 +472,8 @@ setupRoutes(app, {
   customAliasesMap,
   commandConfigSchema,
   FISHING_ITEMS,
-  FISHING_RARITIES
+  FISHING_RARITIES,
+  swapDatabase
 });
 
 app.listen(PORT, () => {

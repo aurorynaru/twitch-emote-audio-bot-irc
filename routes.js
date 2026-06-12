@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { ZipArchive } from 'archiver';
 import multer from 'multer';
+import AdmZip from 'adm-zip';
 import { adminAuth } from './utils.js';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -18,7 +19,8 @@ export function setupRoutes(app, {
   customAliasesMap,
   commandConfigSchema,
   FISHING_ITEMS,
-  FISHING_RARITIES
+  FISHING_RARITIES,
+  swapDatabase
 }) {
   const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -35,7 +37,27 @@ export function setupRoutes(app, {
     storage: storage,
     fileFilter: (req, file, cb) => {
       const name = file.originalname.toLowerCase();
-      if (!name.endsWith('.ogg') && !name.endsWith('.mp3')) {
+      if (!name.endsWith('.ogg') && !name.endsWith('.mp3') && !name.endsWith('.zip')) {
+        return cb(null, false);
+      }
+      cb(null, true);
+    }
+  });
+
+  const dbStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+      cb(null, path.join(__dirname, 'data'))
+    },
+    filename: function (req, file, cb) {
+      cb(null, 'database_staging.sqlite');
+    }
+  });
+
+  const dbUpload = multer({
+    storage: dbStorage,
+    fileFilter: (req, file, cb) => {
+      const name = file.originalname.toLowerCase();
+      if (!name.endsWith('.sqlite') && !name.endsWith('.db')) {
         return cb(null, false);
       }
       cb(null, true);
@@ -48,9 +70,46 @@ export function setupRoutes(app, {
 
   app.post('/api/upload-sound', adminAuth, upload.array('soundFiles', 50), (req, res) => {
     if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ error: 'No files uploaded or files were not .ogg or .mp3!' });
+      return res.status(400).json({ error: 'No files uploaded or files were not .ogg, .mp3, or .zip!' });
     }
-    res.json({ success: true, filenames: req.files.map(f => f.filename) });
+    const finalFilenames = [];
+    for (const file of req.files) {
+      if (file.filename.endsWith('.zip')) {
+        try {
+          const zip = new AdmZip(file.path);
+          const zipEntries = zip.getEntries();
+          for (const zipEntry of zipEntries) {
+             const name = zipEntry.entryName.toLowerCase();
+             if (!zipEntry.isDirectory && (name.endsWith('.mp3') || name.endsWith('.ogg'))) {
+                const outPath = path.join(__dirname, 'data', 'playsounds', path.basename(zipEntry.entryName));
+                fs.writeFileSync(outPath, zipEntry.getData());
+                finalFilenames.push(path.basename(zipEntry.entryName));
+             }
+          }
+          fs.unlinkSync(file.path);
+        } catch (e) {
+          console.error("Failed to extract zip", e);
+        }
+      } else {
+        finalFilenames.push(file.filename);
+      }
+    }
+    res.json({ success: true, filenames: finalFilenames });
+  });
+
+  app.post('/api/upload-database', adminAuth, dbUpload.single('database'), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No valid database file uploaded!' });
+    }
+    try {
+      if (swapDatabase) {
+         await swapDatabase();
+      }
+      res.json({ success: true, message: 'Database successfully replaced and reloaded.' });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ success: false, error: 'Error swapping database: ' + e.message });
+    }
   });
 
   app.get('/api/config', (req, res) => {
