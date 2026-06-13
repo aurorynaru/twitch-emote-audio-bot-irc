@@ -214,12 +214,10 @@
 <body>
 
 <header>
-  <div class="header-top">
+  <div class="header-top" style="justify-content: flex-start; gap: 20px;">
     <h1>Admin Dashboard</h1>
-    <div style="display: flex; align-items: center; gap: 15px;">
-      <button onclick="window.location.reload()" style="background: #3a3a44; color: #00ff7f; border: none; padding: 8px 16px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#bf94ff'; this.style.color='#000';" onmouseout="this.style.background='#3a3a44'; this.style.color='#00ff7f';">↻ Refresh</button>
-      <div id="status"></div>
-    </div>
+    <button onclick="window.location.reload()" style="background: #3a3a44; color: #00ff7f; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#bf94ff'; this.style.color='#000';" onmouseout="this.style.background='#3a3a44'; this.style.color='#00ff7f';">↻ Refresh</button>
+    <div id="status" style="margin-left: auto;"></div>
   </div>
   <div class="tabs">
     <button class="tab-btn active" data-target="tab-global">Global Settings</button>
