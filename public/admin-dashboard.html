@@ -304,18 +304,35 @@
       <button class="save-btn" style="background-color: #ff4a4a; width: 100%;" id="clearOverlayBtn">Instant Clear All</button>
     </div>
 
-  <div class="card" style="margin-bottom: 20px;">
-    <h3>Delete Playsound</h3>
+
+      <div class="card" style="margin-bottom: 20px;">
+    <h3>Temporarily Disable Command</h3>
+    <p style="color: #adadb8; margin-top: 0; margin-bottom: 10px; font-size: 14px;">Leave Duration MS empty or 0 to disable forever.</p>
+    <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Command</label>
+        <input type="text" id="disableCmdName" placeholder="!command" autocomplete="off">
+        <ul id="commandsSuggestions" class="autocomplete-list"></ul>
+      </div>
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Duration (ms)</label>
+        <input type="number" id="disableDuration" placeholder="e.g. 60000 for 1 min">
+      </div>
+      <button class="save-btn" style="background-color: #ffaa00; color: black;" id="disableCmdBtn">Disable Command</button>
+    </div>
+
+    <h3 style="margin-top: 30px;">Enable Command</h3>
+    <p style="color: #adadb8; margin-top: 0; margin-bottom: 10px; font-size: 14px;">Select a currently disabled command to re-enable it.</p>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Sound Name</label>
-        <input type="text" id="deleteSoundName" placeholder="Sound Name" autocomplete="off">
-        <ul id="soundsSuggestions" class="autocomplete-list"></ul>
+        <label>Disabled Command</label>
+        <input type="text" id="enableCmdName" placeholder="!command" autocomplete="off">
+        <ul id="disabledCommandsSuggestions" class="autocomplete-list"></ul>
       </div>
-      <button class="save-btn" style="background-color: #2e8b57;" id="playSoundBtn">Play</button>
-      <button class="save-btn" style="background-color: #ff4a4a;" id="deleteSoundBtn">Delete Sound</button>
+      <button class="save-btn" style="background-color: #2e8b57;" id="enableCmdBtn">Enable Command</button>
     </div>
   </div>
+
 
     <div class="card" style="margin-bottom: 20px;">
     <h3>Blacklist Specific Playsound / Emote</h3>
@@ -350,31 +367,17 @@
     <div id="blacklistedItemsList" style="margin-top: 10px;"></div>
   </div>
 
-  <div class="card" style="margin-bottom: 20px;">
-    <h3>Temporarily Disable Command</h3>
-    <p style="color: #adadb8; margin-top: 0; margin-bottom: 10px; font-size: 14px;">Leave Duration MS empty or 0 to disable forever.</p>
-    <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
-      <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Command</label>
-        <input type="text" id="disableCmdName" placeholder="!command" autocomplete="off">
-        <ul id="commandsSuggestions" class="autocomplete-list"></ul>
-      </div>
-      <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Duration (ms)</label>
-        <input type="number" id="disableDuration" placeholder="e.g. 60000 for 1 min">
-      </div>
-      <button class="save-btn" style="background-color: #ffaa00; color: black;" id="disableCmdBtn">Disable Command</button>
-    </div>
 
-    <h3 style="margin-top: 30px;">Enable Command</h3>
-    <p style="color: #adadb8; margin-top: 0; margin-bottom: 10px; font-size: 14px;">Select a currently disabled command to re-enable it.</p>
+  <div class="card" style="margin-bottom: 20px;">
+    <h3>Delete Playsound</h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Disabled Command</label>
-        <input type="text" id="enableCmdName" placeholder="!command" autocomplete="off">
-        <ul id="disabledCommandsSuggestions" class="autocomplete-list"></ul>
+        <label>Sound Name</label>
+        <input type="text" id="deleteSoundName" placeholder="Sound Name" autocomplete="off">
+        <ul id="soundsSuggestions" class="autocomplete-list"></ul>
       </div>
-      <button class="save-btn" style="background-color: #2e8b57;" id="enableCmdBtn">Enable Command</button>
+      <button class="save-btn" style="background-color: #2e8b57;" id="playSoundBtn">Play</button>
+      <button class="save-btn" style="background-color: #ff4a4a;" id="deleteSoundBtn">Delete Sound</button>
     </div>
   </div>
 
