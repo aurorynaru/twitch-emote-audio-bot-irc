@@ -406,7 +406,7 @@
 
 
   <div class="card" style="margin-bottom: 20px;">
-    <h3>Blacklist Specific Playsound / Emote <span class="tooltip-icon" data-tooltip="Prevent a playsound or emote from being triggered without deleting the file.">ⓘ</span></h3>
+    <h3>Blacklist Specific Playsound / Emote / Modifier <span class="tooltip-icon" data-tooltip="Prevent a playsound, emote, or modifier from being triggered without deleting it.">ⓘ</span></h3>
     
     <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
       <div class="form-group" style="flex: 1; margin: 0;">
@@ -433,6 +433,29 @@
       <button class="save-btn" style="background-color: #ffaa00; color: black;" id="blacklistEmoteBtn">Disable Emote</button>
     </div>
 
+    <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Modifier Name</label>
+        <select id="blacklistModifierInput" style="width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #3f3f46; background: #09090b; color: #fff;">
+          <option value="wide">wide</option>
+          <option value="cursed">cursed</option>
+          <option value="flipx">flipx</option>
+          <option value="flipy">flipy</option>
+          <option value="bounce">bounce</option>
+          <option value="leave">leave</option>
+          <option value="arrive">arrive</option>
+          <option value="jam">jam</option>
+          <option value="rainbow">rainbow</option>
+          <option value="hyper">hyper</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Duration (ms)</label>
+        <input type="number" id="blacklistModifierDuration" placeholder="Leave empty for forever">
+      </div>
+      <button class="save-btn" style="background-color: #ffaa00; color: black;" id="blacklistModifierBtn">Disable Modifier</button>
+    </div>
+    
     <h3 style="margin-top: 30px;">Currently Blacklisted</h3>
     <div id="blacklistedItemsList" style="margin-top: 10px;"></div>
   </div>
@@ -874,10 +897,10 @@
     const now = Date.now();
 
     for (const [key, val] of Object.entries(configData.globalConfig)) {
-      if ((val === 'true' || (!isNaN(parseInt(val)) && parseInt(val) > now)) && (key.startsWith('disabled_playsound_') || key.startsWith('disabled_emote_'))) {
+      if ((val === 'true' || (!isNaN(parseInt(val)) && parseInt(val) > now)) && (key.startsWith('disabled_playsound_') || key.startsWith('disabled_emote_') || key.startsWith('disabled_mod_'))) {
         hasItems = true;
-        const type = key.startsWith('disabled_playsound_') ? 'Playsound' : 'Emote';
-        const name = key.replace('disabled_playsound_', '').replace('disabled_emote_', '');
+        const type = key.startsWith('disabled_playsound_') ? 'Playsound' : (key.startsWith('disabled_emote_') ? 'Emote' : 'Modifier');
+        const name = key.replace('disabled_playsound_', '').replace('disabled_emote_', '').replace('disabled_mod_', '');
         
         let extraText = '';
         if (val !== 'true') {
@@ -905,7 +928,7 @@
     }
     
     if (!hasItems) {
-      list.innerHTML = '<p style="color: #888; margin: 0; font-style: italic;">No specific playsounds or emotes are blacklisted.</p>';
+      list.innerHTML = '<p style="color: #888; margin: 0; font-style: italic;">No specific playsounds, emotes, or modifiers are blacklisted.</p>';
     }
   }
 
@@ -914,7 +937,7 @@
       const res = await fetch('/api/admin/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [key]: '' })
+        body: JSON.stringify({ updates: [{ key: key, value: '' }] })
       });
       const data = await res.json();
       if (data.success) {
@@ -1054,7 +1077,7 @@
       const res = await fetch('/api/admin/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ['disabled_playsound_' + item]: disableValue })
+        body: JSON.stringify({ updates: [{ key: 'disabled_playsound_' + item, value: disableValue }] })
       });
       const data = await res.json();
       if (data.success) {
@@ -1079,12 +1102,36 @@
       const res = await fetch('/api/admin/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ['disabled_emote_' + item]: disableValue })
+        body: JSON.stringify({ updates: [{ key: 'disabled_emote_' + item, value: disableValue }] })
       });
       const data = await res.json();
       if (data.success) {
         document.getElementById('blacklistEmoteInput').value = '';
         document.getElementById('blacklistEmoteDuration').value = '';
+        loadConfig();
+      } else alert('Error: ' + data.error);
+    } catch (e) { alert(e.message); }
+  });
+
+  document.getElementById('blacklistModifierBtn').addEventListener('click', async () => {
+    const item = document.getElementById('blacklistModifierInput').value;
+    const duration = document.getElementById('blacklistModifierDuration').value;
+    if (!item) return alert('Modifier name required.');
+
+    let disableValue = 'true';
+    if (duration && parseInt(duration) > 0) {
+      disableValue = (Date.now() + parseInt(duration)).toString();
+    }
+
+    try {
+      const res = await fetch('/api/admin/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: [{ key: 'disabled_mod_' + item, value: disableValue }] })
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('blacklistModifierDuration').value = '';
         loadConfig();
       } else alert('Error: ' + data.error);
     } catch (e) { alert(e.message); }

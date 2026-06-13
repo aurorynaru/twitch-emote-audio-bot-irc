@@ -1551,6 +1551,44 @@ async function start() {
         }
       }
     },
+    '!disablemodifier': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        if (!hasPermission) return;
+        if (args.length === 0) {
+          await sendChatMessage(`Usage: !disablemodifier <modifier>. Available: wide, cursed, flipx, flipy, bounce, leave, arrive, jam, rainbow, hyper`, chatterName);
+          return;
+        }
+        const mod = args[0].toLowerCase();
+        const validModifiers = ['wide', 'cursed', 'flipx', 'flipy', 'bounce', 'leave', 'arrive', 'jam', 'rainbow', 'hyper'];
+        if (!validModifiers.includes(mod)) {
+          await sendChatMessage(`Invalid modifier! Valid modifiers: ${validModifiers.join(', ')}`, chatterName);
+          return;
+        }
+        await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [`disabled_mod_${mod}`, 'true', 'true']);
+        globalConfig[`disabled_mod_${mod}`] = 'true';
+        await sendChatMessage(`Modifier '${mod}' has been disabled!`, chatterName);
+      }
+    },
+    '!enablemodifier': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        if (!hasPermission) return;
+        if (args.length === 0) {
+          await sendChatMessage(`Usage: !enablemodifier <modifier>. Available: wide, cursed, flipx, flipy, bounce, leave, arrive, jam, rainbow, hyper`, chatterName);
+          return;
+        }
+        const mod = args[0].toLowerCase();
+        const validModifiers = ['wide', 'cursed', 'flipx', 'flipy', 'bounce', 'leave', 'arrive', 'jam', 'rainbow', 'hyper'];
+        if (!validModifiers.includes(mod)) {
+          await sendChatMessage(`Invalid modifier! Valid modifiers: ${validModifiers.join(', ')}`, chatterName);
+          return;
+        }
+        await db.run('DELETE FROM app_config WHERE key = ?', [`disabled_mod_${mod}`]);
+        delete globalConfig[`disabled_mod_${mod}`];
+        await sendChatMessage(`Modifier '${mod}' has been enabled!`, chatterName);
+      }
+    },
     '!duel': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
@@ -3816,9 +3854,14 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                       currentEmoteGroup = [token];
                     }
                   } else if (validModifiers.includes(lowerWord) && currentEmoteGroup.length > 0) {
-                    currentEmoteGroup.forEach(t => {
-                      if (!t.modifiers.includes(lowerWord)) t.modifiers.push(lowerWord);
-                    });
+                    const disabledRaw = globalConfig[`disabled_mod_${lowerWord}`];
+                    if (disabledRaw === 'true' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw))) {
+                      console.log(`[SHOWEMOTE] Modifier ${lowerWord} is disabled.`);
+                    } else {
+                      currentEmoteGroup.forEach(t => {
+                        if (!t.modifiers.includes(lowerWord)) t.modifiers.push(lowerWord);
+                      });
+                    }
                   } else if (word.trim() !== '') {
                     tokens.push({ type: 'text', text: word, original: word });
                     currentEmoteGroup = [];

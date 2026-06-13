@@ -417,7 +417,8 @@ export function setupRoutes(app, {
           raffle_min: parseInt(globalConfig['reward_raffle_min'] || '1500', 10),
           raffle_max: parseInt(globalConfig['reward_raffle_max'] || '25000', 10),
           multiraffle_min: parseInt(globalConfig['reward_multiraffle_min'] || '3', 10),
-          multiraffle_max: parseInt(globalConfig['reward_multiraffle_max'] || '12', 10)
+          multiraffle_max: parseInt(globalConfig['reward_multiraffle_max'] || '12', 10),
+          chat_cooldown: parseInt(globalConfig['reward_chat_cooldown'] || '25', 10)
         }
       });
     } catch (error) {
