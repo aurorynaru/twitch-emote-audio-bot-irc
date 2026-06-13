@@ -173,7 +173,7 @@
     
     // Render Global Settings
     globalKeys.forEach(g => {
-      const value = configData.globalConfig[g.key] !== undefined ? configData.globalConfig[g.key] : '';
+      const value = configData.globalConfig[g.key] !== undefined ? configData.globalConfig[g.key] : '0';
       const card = document.createElement('div');
       card.className = 'card';
       card.innerHTML = `
@@ -217,7 +217,7 @@
       // Schema fields (cost, cooldown, duration, size)
       schema.forEach(field => {
         const configKey = `cmd_${cmdName}_${field}`;
-        const val = configData.globalConfig[configKey] !== undefined ? configData.globalConfig[configKey] : '';
+        const val = configData.globalConfig[configKey] !== undefined && configData.globalConfig[configKey] !== '' ? configData.globalConfig[configKey] : '0';
         html += `
           <div class="form-group">
             <label>${field.charAt(0).toUpperCase() + field.slice(1)}</label>
