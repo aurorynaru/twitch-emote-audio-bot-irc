@@ -47,6 +47,44 @@
       margin: 0 auto;
       padding: 20px;
     }
+    .form-group input {
+      padding: 10px;
+      background: #18181b;
+      border: 1px solid #3f3f46;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 14px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .form-group {
+      position: relative;
+    }
+    .autocomplete-list {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #18181b;
+      border: 1px solid #bf94ff;
+      border-top: none;
+      border-radius: 0 0 4px 4px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+    }
+    .autocomplete-list li {
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    .autocomplete-list li:hover {
+      background: #bf94ff;
+      color: #000;
+    }
     h2 {
       border-bottom: 1px solid #3a3a44;
       padding-bottom: 10px;
@@ -162,8 +200,8 @@
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Username</label>
-        <input type="text" id="editUsername" list="usersList" placeholder="username" autocomplete="off">
-        <datalist id="usersList"></datalist>
+        <input type="text" id="editUsername" placeholder="username" autocomplete="off">
+        <ul id="usersSuggestions" class="autocomplete-list"></ul>
       </div>
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Set Points To</label>
@@ -179,8 +217,8 @@
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Sound Name (e.g. boom)</label>
-        <input type="text" id="deleteSoundName" list="soundsList" placeholder="Sound Name" autocomplete="off">
-        <datalist id="soundsList"></datalist>
+        <input type="text" id="deleteSoundName" placeholder="Sound Name" autocomplete="off">
+        <ul id="soundsSuggestions" class="autocomplete-list"></ul>
       </div>
       <button class="save-btn" style="background-color: #ff4a4a;" id="deleteSoundBtn">Delete Sound</button>
     </div>
@@ -192,8 +230,8 @@
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Command</label>
-        <input type="text" id="disableCmdName" list="commandsList" placeholder="!command" autocomplete="off">
-        <datalist id="commandsList"></datalist>
+        <input type="text" id="disableCmdName" placeholder="!command" autocomplete="off">
+        <ul id="commandsSuggestions" class="autocomplete-list"></ul>
       </div>
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Duration (ms)</label>
@@ -261,13 +299,54 @@
     }
   }
 
+  let globalUsers = [];
+  let globalSounds = [];
+  let globalCommands = [];
+
+  function setupAutocomplete(inputId, listId, dataArray) {
+    const input = document.getElementById(inputId);
+    const list = document.getElementById(listId);
+
+    input.addEventListener('input', () => {
+      const val = input.value.toLowerCase();
+      list.innerHTML = '';
+      if (!val) {
+        list.style.display = 'none';
+        return;
+      }
+      const matches = dataArray.filter(item => item.toLowerCase().includes(val));
+      if (matches.length === 0) {
+        list.style.display = 'none';
+        return;
+      }
+      matches.forEach(match => {
+        const li = document.createElement('li');
+        li.textContent = match;
+        li.addEventListener('mousedown', () => {
+          input.value = match;
+          list.style.display = 'none';
+        });
+        list.appendChild(li);
+      });
+      list.style.display = 'block';
+    });
+
+    input.addEventListener('focus', () => {
+      if (input.value) input.dispatchEvent(new Event('input'));
+    });
+
+    input.addEventListener('blur', () => {
+      list.style.display = 'none';
+    });
+  }
+
   async function loadUsersForAutocomplete() {
     try {
       const res = await fetch('/api/admin/users');
       const data = await res.json();
       if (data.success) {
-        const datalist = document.getElementById('usersList');
-        datalist.innerHTML = data.users.map(u => `<option value="${u}">`).join('');
+        globalUsers = data.users;
+        setupAutocomplete('editUsername', 'usersSuggestions', globalUsers);
       }
     } catch (e) { console.error(e); }
   }
@@ -277,8 +356,8 @@
       const res = await fetch('/api/admin/playsounds');
       const data = await res.json();
       if (data.success) {
-        const datalist = document.getElementById('soundsList');
-        datalist.innerHTML = data.sounds.map(s => `<option value="${s}">`).join('');
+        globalSounds = data.sounds;
+        setupAutocomplete('deleteSoundName', 'soundsSuggestions', globalSounds);
       }
     } catch (e) { console.error(e); }
   }
@@ -294,10 +373,8 @@
           if (!options.includes(cmd.command)) options.push(cmd.command);
         });
       }
-      const commandsList = document.getElementById('commandsList');
-      if (commandsList) {
-        commandsList.innerHTML = options.map(c => `<option value="${c}">`).join('');
-      }
+      globalCommands = options;
+      setupAutocomplete('disableCmdName', 'commandsSuggestions', globalCommands);
     } catch(e) {
       console.error(e);
     }
