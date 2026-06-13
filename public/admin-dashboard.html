@@ -600,8 +600,8 @@
 
   // State
   const globalKeys = [
-    { key: 'chat_wide_cooldown', label: 'Chat Wide Cooldown (ms)', type: 'number', def: 1500, tooltip: 'Global delay between any chat commands being processed' },
-    { key: 'cmd_!global_cooldown', label: 'Global Default Cooldown (ms)', type: 'number', def: 1000, tooltip: "Default cooldown applied to commands that don't have a specific cooldown set" },
+    { key: 'chat_wide_cooldown', label: 'Chat Wide Cooldown (ms)', type: 'number', def: 1500, tooltip: 'Limits how fast the bot can react to anyone. Acts as a strict speed limit for the entire chat to prevent spam.' },
+    { key: 'cmd_!global_cooldown', label: 'Global Default Cooldown (ms)', type: 'number', def: 1000, tooltip: 'Limits how fast a single chatter can spam the bot. This is the default personal cooldown for a specific chatter across all commands.' },
     { key: 'cmd_!fish_time', label: 'Base Fish Time (minutes)', type: 'number', def: 5, tooltip: 'Base duration for the fishing minigame' },
     { key: 'level_base_cost', label: 'Level Base Cost', type: 'number', def: 200, tooltip: 'Points required to reach the first level' },
     { key: 'points_to_xp_rate', label: 'Points to XP Rate', type: 'text', def: 1, tooltip: 'Multiplier for converting points to XP' },
