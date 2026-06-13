@@ -162,7 +162,8 @@
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Username</label>
-        <input type="text" id="editUsername" placeholder="username">
+        <input type="text" id="editUsername" list="usersList" placeholder="username" autocomplete="off">
+        <datalist id="usersList"></datalist>
       </div>
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Set Points To</label>
@@ -173,6 +174,35 @@
   </div>
 
   <h2 style="margin-top: 40px;">System Actions</h2>
+  <div class="card" style="margin-bottom: 20px;">
+    <h3>Delete Playsound</h3>
+    <div style="display: flex; gap: 10px; align-items: flex-end;">
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Sound Name (e.g. boom)</label>
+        <input type="text" id="deleteSoundName" list="soundsList" placeholder="Sound Name" autocomplete="off">
+        <datalist id="soundsList"></datalist>
+      </div>
+      <button class="save-btn" style="background-color: #ff4a4a;" id="deleteSoundBtn">Delete Sound</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom: 20px;">
+    <h3>Temporarily Disable Command</h3>
+    <p style="color: #adadb8; margin-top: 0; margin-bottom: 10px; font-size: 14px;">Leave Duration MS empty or 0 to disable forever.</p>
+    <div style="display: flex; gap: 10px; align-items: flex-end;">
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Command</label>
+        <input type="text" id="disableCmdName" list="commandsList" placeholder="!command" autocomplete="off">
+        <datalist id="commandsList"></datalist>
+      </div>
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Duration (ms)</label>
+        <input type="number" id="disableDuration" placeholder="e.g. 60000 for 1 min">
+      </div>
+      <button class="save-btn" style="background-color: #ffaa00; color: black;" id="disableCmdBtn">Disable Command</button>
+    </div>
+  </div>
+
   <div class="card" style="border-color: #ff4a4a;">
     <h3 style="color: #ff4a4a; margin-bottom: 10px;">Clear Overlay</h3>
     <p style="color: #adadb8; margin-top: 0; margin-bottom: 20px;">This will instantly wipe all active emotes, hide active bets, and stop any chat wars currently showing on the screen.</p>
@@ -221,18 +251,52 @@
         alert('Failed to load config');
       }
 
-      await loadCustomCommands();
+      await Promise.all([
+        loadCustomCommands(),
+        loadUsersForAutocomplete(),
+        loadPlaysoundsForAutocomplete()
+      ]);
     } catch (e) {
       alert('Error loading config: ' + e.message);
     }
+  }
+
+  async function loadUsersForAutocomplete() {
+    try {
+      const res = await fetch('/api/admin/users');
+      const data = await res.json();
+      if (data.success) {
+        const datalist = document.getElementById('usersList');
+        datalist.innerHTML = data.users.map(u => `<option value="${u}">`).join('');
+      }
+    } catch (e) { console.error(e); }
+  }
+
+  async function loadPlaysoundsForAutocomplete() {
+    try {
+      const res = await fetch('/api/admin/playsounds');
+      const data = await res.json();
+      if (data.success) {
+        const datalist = document.getElementById('soundsList');
+        datalist.innerHTML = data.sounds.map(s => `<option value="${s}">`).join('');
+      }
+    } catch (e) { console.error(e); }
   }
 
   async function loadCustomCommands() {
     try {
       const res = await fetch('/api/admin/custom-commands');
       const data = await res.json();
+      const options = Object.keys(configData.commandConfigSchema || {});
       if (data.success) {
         renderCustomCommands(data.commands);
+        data.commands.forEach(cmd => {
+          if (!options.includes(cmd.command)) options.push(cmd.command);
+        });
+      }
+      const commandsList = document.getElementById('commandsList');
+      if (commandsList) {
+        commandsList.innerHTML = options.map(c => `<option value="${c}">`).join('');
       }
     } catch(e) {
       console.error(e);
@@ -432,6 +496,43 @@
   });
 
   // System Actions
+  document.getElementById('deleteSoundBtn').addEventListener('click', async () => {
+    const sound = document.getElementById('deleteSoundName').value;
+    if (!sound) return alert('Sound name required.');
+    if (!confirm(`Delete playsound ${sound}?`)) return;
+
+    try {
+      const res = await fetch('/api/admin/playsounds/' + encodeURIComponent(sound), { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        alert('Sound deleted!');
+        document.getElementById('deleteSoundName').value = '';
+        loadPlaysoundsForAutocomplete();
+      } else alert('Error: ' + data.error);
+    } catch (e) { alert(e.message); }
+  });
+
+  document.getElementById('disableCmdBtn').addEventListener('click', async () => {
+    const command = document.getElementById('disableCmdName').value;
+    const duration = document.getElementById('disableDuration').value;
+    if (!command) return alert('Command required.');
+
+    try {
+      const res = await fetch('/api/admin/commands/disable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, durationMs: parseInt(duration, 10) || 0 })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Command disabled!');
+        document.getElementById('disableCmdName').value = '';
+        document.getElementById('disableDuration').value = '';
+        loadConfig(); // Refresh dashboard
+      } else alert('Error: ' + data.error);
+    } catch (e) { alert(e.message); }
+  });
+
   document.getElementById('clearOverlayBtn').addEventListener('click', async () => {
     if (!confirm('Are you sure you want to completely clear the overlay?')) return;
     try {

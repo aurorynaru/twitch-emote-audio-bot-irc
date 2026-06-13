@@ -205,6 +205,54 @@ export function setupRoutes(app, {
     }
   });
 
+  app.get('/api/admin/users', adminAuth, async (req, res) => {
+    try {
+      const db = getDb();
+      const users = await db.all('SELECT username FROM users ORDER BY username ASC');
+      res.json({ success: true, users: users.map(u => u.username) });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  app.get('/api/admin/playsounds', adminAuth, (req, res) => {
+    try {
+      const dir = path.join(__dirname, 'data', 'playsounds');
+      if (!fs.existsSync(dir)) return res.json({ success: true, sounds: [] });
+      const files = fs.readdirSync(dir);
+      const sounds = files.map(f => f.split('.')[0]).filter((v, i, a) => a.indexOf(v) === i);
+      res.json({ success: true, sounds });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  app.delete('/api/admin/playsounds/:name', adminAuth, (req, res) => {
+    try {
+      const filename = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+      const oggPath = path.join(__dirname, 'data', 'playsounds', filename + '.ogg');
+      const mp3Path = path.join(__dirname, 'data', 'playsounds', filename + '.mp3');
+      
+      let deleted = false;
+      if (fs.existsSync(oggPath)) { fs.unlinkSync(oggPath); deleted = true; }
+      if (fs.existsSync(mp3Path)) { fs.unlinkSync(mp3Path); deleted = true; }
+      
+      if (deleted) res.json({ success: true });
+      else res.json({ success: false, error: 'Sound not found' });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  app.post('/api/admin/commands/disable', adminAuth, express.json(), async (req, res) => {
+    try {
+      const { command, durationMs } = req.body;
+      if (!command) return res.status(400).json({ success: false, error: 'Command required' });
+      
+      const val = durationMs > 0 ? (Date.now() + durationMs).toString() : 'forever';
+      const key = 'disabled_' + command;
+      
+      const db = getDb();
+      await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [key, val, val]);
+      globalConfig[key] = val;
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
   app.get('/api/config', (req, res) => {
     res.json({
       durationMs: parseInt(globalConfig['cmd_!showemote_duration']) || parseInt(process.env.EMOTE_DURATION_MS) || 5000,

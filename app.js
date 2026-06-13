@@ -326,6 +326,14 @@ async function initDb() {
   for (const row of aliases) {
     customAliasesMap.set(row.command, { cost: row.cost, action: row.action });
   }
+
+
+  try {
+    await db.run('UPDATE users SET points = CAST(points AS INTEGER)');
+    console.log('* Ensured all user points are integers.');
+  } catch (err) {
+    console.error('Error cleaning up points decimals:', err);
+  }
 }
 
 async function swapDatabase() {
@@ -760,13 +768,29 @@ async function start() {
         
         if (itemConfig && itemConfig.autoConsume) {
            if (itemConfig.effectType === 'instant_points') {
-              const pts = itemConfig.effectValue;
-              if (pts < 0) {
-                 await db.run('UPDATE users SET points = MAX(0, points + ?) WHERE username = ?', [pts, fish.username]);
-                 autoConsumedMsg = ` Ouch! It instantly deducted ${Math.abs(pts)} points!`;
+              const isPercent = itemConfig.isPercentage || (Math.abs(itemConfig.effectValue) > 0 && Math.abs(itemConfig.effectValue) < 1);
+              
+              if (isPercent) {
+                 const user = await db.get('SELECT points FROM users WHERE username = ?', [fish.username]);
+                 const currPoints = user ? user.points : 0;
+                 const modifier = Math.floor(currPoints * Math.abs(itemConfig.effectValue));
+                 
+                 if (itemConfig.effectValue < 0) {
+                    await db.run('UPDATE users SET points = MAX(0, CAST(points - ? AS INTEGER)) WHERE username = ?', [modifier, fish.username]);
+                    autoConsumedMsg = ` Ouch! It instantly deducted ${modifier} points (${Math.abs(itemConfig.effectValue * 100)}%)!`;
+                 } else {
+                    const addedAmount = await addPointsWithBonus(fish.username, modifier);
+                    autoConsumedMsg = ` It instantly granted ${addedAmount} points (${Math.abs(itemConfig.effectValue * 100)}%)!`;
+                 }
               } else {
-                 const addedAmount = await addPointsWithBonus(fish.username, pts);
-                 autoConsumedMsg = ` It instantly granted ${addedAmount} points!`;
+                  const pts = Math.floor(itemConfig.effectValue);
+                  if (pts < 0) {
+                     await db.run('UPDATE users SET points = MAX(0, CAST(points + ? AS INTEGER)) WHERE username = ?', [pts, fish.username]);
+                     autoConsumedMsg = ` Ouch! It instantly deducted ${Math.abs(pts)} points!`;
+                  } else {
+                     const addedAmount = await addPointsWithBonus(fish.username, pts);
+                     autoConsumedMsg = ` It instantly granted ${addedAmount} points!`;
+                  }
               }
            }
         } else {
