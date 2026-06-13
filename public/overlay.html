@@ -29,9 +29,9 @@
       100% { opacity: 0; transform: scale(0.8); }
     }
 
-    /* Modifiers Classes and Keyframes */
-    .mod-cursed { filter: grayscale(1) contrast(2) brightness(0.7); }
-    .mod-hyper { filter: grayscale(1) sepia(1) hue-rotate(-40deg) saturate(20) contrast(4); }
+
+    .mod-cursed { filter: grayscale(1) brightness(0.7) contrast(5); }
+    .mod-hyper { filter: contrast(5) grayscale(1) brightness(0.5) sepia(1) hue-rotate(-50deg) saturate(10) contrast(2); }
     .mod-rainbow { animation: rainbowAnim 2s linear infinite; }
     @keyframes rainbowAnim { 
       0% { filter: hue-rotate(0deg); } 
