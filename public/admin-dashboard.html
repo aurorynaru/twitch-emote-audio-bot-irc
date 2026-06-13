@@ -189,6 +189,22 @@
       from { opacity: 0; transform: translateY(5px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    
+    /* Route Links */
+    .route-link {
+      display: inline-block;
+      padding: 8px 16px;
+      background-color: #3a3a44;
+      color: #00ff7f;
+      text-decoration: none;
+      border-radius: 4px;
+      font-weight: bold;
+      transition: all 0.2s;
+    }
+    .route-link:hover {
+      background-color: #bf94ff;
+      color: #000;
+    }
   </style>
 </head>
 <body>
@@ -369,24 +385,24 @@
         </thead>
         <tbody>
           <tr>
-            <td style="padding: 10px; font-weight: bold;">OBS Overlay URL</td>
-            <td style="padding: 10px;"><a href="/overlay" target="_blank" style="color: #00ff7f; text-decoration: none;">/overlay</a></td>
-            <td style="padding: 10px;">The main URL to put into your OBS Browser Source for !showemote and !playsound to work.</td>
+            <td style="padding: 15px 10px; font-weight: bold;">OBS Overlay URL</td>
+            <td style="padding: 15px 10px;"><a href="/overlay" target="_blank" class="route-link">Open /overlay</a></td>
+            <td style="padding: 15px 10px;">The main URL to put into your OBS Browser Source for !showemote and !playsound to work.</td>
+          </tr>
+          <tr style="background: rgba(255,255,255,0.02);">
+            <td style="padding: 15px 10px; font-weight: bold;">Upload Files UI</td>
+            <td style="padding: 15px 10px;"><a href="/addsound" target="_blank" class="route-link">Open /addsound</a></td>
+            <td style="padding: 15px 10px;">The page used to upload new playsound audio files and restore SQLite database files.</td>
           </tr>
           <tr>
-            <td style="padding: 10px; font-weight: bold;">Upload Files UI</td>
-            <td style="padding: 10px;"><a href="/addsound" target="_blank" style="color: #00ff7f; text-decoration: none;">/addsound</a></td>
-            <td style="padding: 10px;">The page used to upload new playsound audio files and restore SQLite database files.</td>
+            <td style="padding: 15px 10px; font-weight: bold;">Export Database</td>
+            <td style="padding: 15px 10px;"><a href="/export-database" target="_blank" class="route-link">Download Database</a></td>
+            <td style="padding: 15px 10px;">Click to instantly download a backup copy of your current SQLite database.</td>
           </tr>
-          <tr>
-            <td style="padding: 10px; font-weight: bold;">Export Database</td>
-            <td style="padding: 10px;"><a href="/export-database" target="_blank" style="color: #00ff7f; text-decoration: none;">/export-database</a></td>
-            <td style="padding: 10px;">Click to instantly download a backup copy of your current SQLite database.</td>
-          </tr>
-          <tr>
-            <td style="padding: 10px; font-weight: bold;">Export Playsounds</td>
-            <td style="padding: 10px;"><a href="/export-playsounds" target="_blank" style="color: #00ff7f; text-decoration: none;">/export-playsounds</a></td>
-            <td style="padding: 10px;">Click to instantly download a ZIP file containing all your uploaded audio files.</td>
+          <tr style="background: rgba(255,255,255,0.02);">
+            <td style="padding: 15px 10px; font-weight: bold;">Export Playsounds</td>
+            <td style="padding: 15px 10px;"><a href="/export-playsounds" target="_blank" class="route-link">Download Playsounds</a></td>
+            <td style="padding: 15px 10px;">Click to instantly download a ZIP file containing all your uploaded audio files.</td>
           </tr>
         </tbody>
       </table>
