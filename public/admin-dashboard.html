@@ -137,18 +137,31 @@
 
 <script>
   const globalKeys = [
-    { key: 'chat_wide_cooldown', label: 'Chat Wide Cooldown (ms)', type: 'number' },
-    { key: 'cmd_!global_cooldown', label: 'Global Default Cooldown (ms)', type: 'number' },
-    { key: 'cmd_!fish_time', label: 'Base Fish Time (minutes)', type: 'number' },
-    { key: 'level_base_cost', label: 'Level Base Cost', type: 'number' },
-    { key: 'points_to_xp_rate', label: 'Points to XP Rate', type: 'text' },
-    { key: 'leg_bonus_rate', label: 'Legendary Bonus Rate', type: 'text' },
-    { key: 'rare_bonus_rate', label: 'Rare Bonus Rate', type: 'text' },
-    { key: 'lvl_bonus_rate', label: 'Level Bonus Rate', type: 'text' },
-    { key: 'reward_chat_sub', label: 'Reward: Sub', type: 'number' },
-    { key: 'reward_chat_sub_gift', label: 'Reward: Gift Sub', type: 'number' },
-    { key: 'reward_chat_bits', label: 'Reward: Bits', type: 'number' }
+    { key: 'chat_wide_cooldown', label: 'Chat Wide Cooldown (ms)', type: 'number', def: 1500 },
+    { key: 'cmd_!global_cooldown', label: 'Global Default Cooldown (ms)', type: 'number', def: 1000 },
+    { key: 'cmd_!fish_time', label: 'Base Fish Time (minutes)', type: 'number', def: 5 },
+    { key: 'level_base_cost', label: 'Level Base Cost', type: 'number', def: 200 },
+    { key: 'points_to_xp_rate', label: 'Points to XP Rate', type: 'text', def: 1 },
+    { key: 'leg_bonus_rate', label: 'Legendary Bonus Rate', type: 'text', def: 0.01 },
+    { key: 'rare_bonus_rate', label: 'Rare Bonus Rate', type: 'text', def: 0.05 },
+    { key: 'lvl_bonus_rate', label: 'Level Bonus Rate', type: 'text', def: 0.001 },
+    { key: 'reward_sub', label: 'Reward: Sub', type: 'number', def: 5000 },
+    { key: 'reward_giftsub', label: 'Reward: Gift Sub', type: 'number', def: 5000 },
+    { key: 'reward_watchstreak', label: 'Reward: Watch Streak', type: 'number', def: 1000 },
+    { key: 'reward_chat_sub', label: 'Reward: Chat (Sub)', type: 'number', def: 750 },
+    { key: 'reward_chat_nonsub', label: 'Reward: Chat (Non-Sub)', type: 'number', def: 500 },
+    { key: 'reward_chat_cooldown', label: 'Reward: Chat Cooldown (mins)', type: 'number', def: 25 },
+    { key: 'reward_raffle_min', label: 'Reward: Raffle Min', type: 'number', def: 1500 },
+    { key: 'reward_raffle_max', label: 'Reward: Raffle Max', type: 'number', def: 25000 },
+    { key: 'reward_multiraffle_min', label: 'Reward: Multi-Raffle Min', type: 'number', def: 3 },
+    { key: 'reward_multiraffle_max', label: 'Reward: Multi-Raffle Max', type: 'number', def: 12 }
   ];
+
+  const commandDefaults = {
+    '!showemote_duration': 5000,
+    '!showemote_size': 150,
+    '!playsound_cost': 0, // Fallback is DEFAULT_PLAYSOUND_COST which is in env, usually 0
+  };
 
   let configData = {};
   
@@ -173,7 +186,7 @@
     
     // Render Global Settings
     globalKeys.forEach(g => {
-      const value = configData.globalConfig[g.key] !== undefined ? configData.globalConfig[g.key] : '0';
+      const value = configData.globalConfig[g.key] !== undefined && configData.globalConfig[g.key] !== '' ? configData.globalConfig[g.key] : g.def;
       const card = document.createElement('div');
       card.className = 'card';
       card.innerHTML = `
@@ -217,7 +230,8 @@
       // Schema fields (cost, cooldown, duration, size)
       schema.forEach(field => {
         const configKey = `cmd_${cmdName}_${field}`;
-        const val = configData.globalConfig[configKey] !== undefined && configData.globalConfig[configKey] !== '' ? configData.globalConfig[configKey] : '0';
+        const def = commandDefaults[`${cmdName}_${field}`] !== undefined ? commandDefaults[`${cmdName}_${field}`] : '0';
+        const val = configData.globalConfig[configKey] !== undefined && configData.globalConfig[configKey] !== '' ? configData.globalConfig[configKey] : def;
         html += `
           <div class="form-group">
             <label>${field.charAt(0).toUpperCase() + field.slice(1)}</label>
