@@ -466,6 +466,22 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/playsounds', express.static(path.join(__dirname, 'data', 'playsounds')));
 
+function clearOverlaySystem() {
+  if (activeBets.has('default')) {
+    const bet = activeBets.get('default');
+    bet.isHidden = true;
+    clearBetState(null);
+  }
+  
+  if (activeChatWar) {
+    activeChatWar.isHidden = true;
+    clearChatWarState(null);
+  }
+
+  clearEmotes();
+  sendChatMessage(`Overlay cleared by Admin Dashboard!`);
+}
+
 setupRoutes(app, {
   getDb: () => db,
   globalConfig,
@@ -473,7 +489,8 @@ setupRoutes(app, {
   commandConfigSchema,
   FISHING_ITEMS,
   FISHING_RARITIES,
-  swapDatabase
+  swapDatabase,
+  clearOverlaySystem
 });
 
 app.listen(PORT, () => {

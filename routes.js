@@ -21,7 +21,8 @@ export function setupRoutes(app, {
   commandConfigSchema,
   FISHING_ITEMS,
   FISHING_RARITIES,
-  swapDatabase
+  swapDatabase,
+  clearOverlaySystem
 }) {
   const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -144,6 +145,63 @@ export function setupRoutes(app, {
     } catch (e) {
       console.error('Error updating config from dashboard:', e);
       res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.get('/api/admin/custom-commands', adminAuth, (req, res) => {
+    const commands = [];
+    for (const [cmd, details] of customAliasesMap.entries()) {
+      commands.push({ command: cmd, cost: details.cost, action: details.action });
+    }
+    res.json({ success: true, commands });
+  });
+
+  app.post('/api/admin/custom-commands', adminAuth, express.json(), async (req, res) => {
+    try {
+      const { command, cost, action } = req.body;
+      if (!command || !command.startsWith('!')) return res.status(400).json({ success: false, error: 'Command must start with !' });
+      const c = parseInt(cost, 10) || 0;
+      
+      const db = getDb();
+      await db.run('INSERT INTO custom_aliases (command, cost, action) VALUES (?, ?, ?) ON CONFLICT(command) DO UPDATE SET cost = ?, action = ?', [command, c, action, c, action]);
+      
+      customAliasesMap.set(command, { cost: c, action });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.delete('/api/admin/custom-commands/:cmd', adminAuth, async (req, res) => {
+    try {
+      const command = req.params.cmd;
+      const db = getDb();
+      await db.run('DELETE FROM custom_aliases WHERE command = ?', [command]);
+      customAliasesMap.delete(command);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post('/api/admin/users/points', adminAuth, express.json(), async (req, res) => {
+    try {
+      const { username, points } = req.body;
+      if (!username || points === undefined) return res.status(400).json({ success: false, error: 'Invalid input' });
+      const db = getDb();
+      await db.run('UPDATE users SET points = ? WHERE username = ?', [parseInt(points, 10), username.toLowerCase()]);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post('/api/admin/actions/clear', adminAuth, (req, res) => {
+    if (clearOverlaySystem) {
+      clearOverlaySystem();
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ success: false, error: 'clearOverlaySystem not available' });
     }
   });
 
