@@ -269,7 +269,7 @@
     <button class="tab-btn" data-target="tab-custom">Custom Commands</button>
     <button class="tab-btn" data-target="tab-users">User Management</button>
     <button class="tab-btn" data-target="tab-system">System Actions</button>
-    <button class="tab-btn" data-target="tab-routes">Routes</button>
+    <button class="tab-btn" data-target="tab-routes">Links</button>
     <button class="tab-btn" data-target="tab-reference">Command Reference</button>
   </div>
 </header>
@@ -466,6 +466,11 @@
         </thead>
         <tbody>
           <tr>
+            <td style="padding: 15px 10px; font-weight: bold;">User Dashboard</td>
+            <td style="padding: 15px 10px;"><a href="https://admiralclanker.vercel.app" target="_blank" class="route-link" style="background-color: #bf94ff; color: #000;">Open User Dashboard</a></td>
+            <td style="padding: 15px 10px;">The public React dashboard for non-admin users.</td>
+          </tr>
+          <tr style="background: rgba(255,255,255,0.02);">
             <td style="padding: 15px 10px; font-weight: bold;">OBS Overlay URL</td>
             <td style="padding: 15px 10px;"><a href="/overlay" target="_blank" class="route-link">Open /overlay</a></td>
             <td style="padding: 15px 10px;">The main URL to put into your OBS Browser Source for !showemote and !playsound to work.</td>
@@ -590,7 +595,17 @@
     { key: 'reward_raffle_max', label: 'Reward: Raffle Max', type: 'number', def: 25000, tooltip: 'Maximum points won in a normal raffle' },
     { key: 'reward_multiraffle_min', label: 'Reward: Multi-Raffle Min', type: 'number', def: 3, tooltip: 'Minimum winners in a multi-raffle' },
     { key: 'reward_multiraffle_max', label: 'Reward: Multi-Raffle Max', type: 'number', def: 12, tooltip: 'Maximum winners in a multi-raffle' },
-    { key: 'duel_tax', label: 'Duel Tax Rate (0 to 1)', type: 'text', def: 0.05, tooltip: 'Percentage of points taken from winning duels (e.g. 0.05 for 5%)' }
+    { key: 'duel_tax', label: 'Duel Tax Rate (0 to 1)', type: 'text', def: 0.05, tooltip: 'Percentage of points taken from winning duels (e.g. 0.05 for 5%)' },
+    { key: 'mod_wide_cost', label: 'Modifier: Wide Cost', type: 'number', def: 0, tooltip: 'Cost added when using the wide modifier for emotes' },
+    { key: 'mod_cursed_cost', label: 'Modifier: Cursed Cost', type: 'number', def: 0, tooltip: 'Cost added when using the cursed modifier for emotes' },
+    { key: 'mod_flipx_cost', label: 'Modifier: FlipX Cost', type: 'number', def: 0, tooltip: 'Cost added when using the flipx modifier for emotes' },
+    { key: 'mod_flipy_cost', label: 'Modifier: FlipY Cost', type: 'number', def: 0, tooltip: 'Cost added when using the flipy modifier for emotes' },
+    { key: 'mod_bounce_cost', label: 'Modifier: Bounce Cost', type: 'number', def: 0, tooltip: 'Cost added when using the bounce modifier for emotes' },
+    { key: 'mod_leave_cost', label: 'Modifier: Leave Cost', type: 'number', def: 0, tooltip: 'Cost added when using the leave modifier for emotes' },
+    { key: 'mod_arrive_cost', label: 'Modifier: Arrive Cost', type: 'number', def: 0, tooltip: 'Cost added when using the arrive modifier for emotes' },
+    { key: 'mod_jam_cost', label: 'Modifier: Jam Cost', type: 'number', def: 0, tooltip: 'Cost added when using the jam modifier for emotes' },
+    { key: 'mod_rainbow_cost', label: 'Modifier: Rainbow Cost', type: 'number', def: 0, tooltip: 'Cost added when using the rainbow modifier for emotes' },
+    { key: 'mod_hyper_cost', label: 'Modifier: Hyper Cost', type: 'number', def: 0, tooltip: 'Cost added when using the hyper modifier for emotes' }
   ];
 
   const commandDefaults = {
