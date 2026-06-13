@@ -1237,6 +1237,12 @@ async function start() {
 
         const filename = args.join('').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
         if (filename) {
+          const disabledRaw = globalConfig[`disabled_playsound_${filename}`];
+          if (disabledRaw === 'true' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw))) {
+            console.log(`[PLAYSOUND] Sound '${filename}' is disabled.`);
+            return;
+          }
+
           const oggPath = path.join(__dirname, 'data', 'playsounds', filename + '.ogg');
           const mp3Path = path.join(__dirname, 'data', 'playsounds', filename + '.mp3');
           
@@ -3779,6 +3785,11 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
             event.message.fragments.forEach(fragment => {
               if (fragment.type === 'emote') {
+                const disabledRaw = globalConfig[`disabled_emote_${fragment.text}`];
+                if (disabledRaw === 'true' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw))) {
+                  console.log(`[SHOWEMOTE] Emote ${fragment.text} is disabled.`);
+                  return;
+                }
                 const twitchEmoteUrl = `https://static-cdn.jtvnw.net/emoticons/v2/${fragment.emote.id}/default/dark/3.0`;
                 const token = { type: 'emote', url: twitchEmoteUrl, isZeroWidth: false, modifiers: [], original: `Twitch Emote: ${twitchEmoteUrl}` };
                 tokens.push(token);
@@ -3788,6 +3799,11 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 words.forEach(word => {
                   const lowerWord = word.toLowerCase();
                   if (thirdPartyEmotes.has(word)) {
+                    const disabledRaw = globalConfig[`disabled_emote_${word}`];
+                    if (disabledRaw === 'true' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw))) {
+                      console.log(`[SHOWEMOTE] Emote ${word} is disabled.`);
+                      return;
+                    }
                     const emoteData = thirdPartyEmotes.get(word);
                     const token = { type: 'emote', url: emoteData.url, isZeroWidth: emoteData.isZeroWidth, modifiers: [], original: `3rd-Party Emote: ${emoteData.url}` };
                     tokens.push(token);

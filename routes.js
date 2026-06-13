@@ -253,6 +253,37 @@ export function setupRoutes(app, {
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
   });
 
+  app.post('/api/admin/commands/enable', adminAuth, express.json(), async (req, res) => {
+    try {
+      const { command } = req.body;
+      if (!command) return res.status(400).json({ success: false, error: 'Command required' });
+      
+      const key = 'disabled_' + command;
+      
+      const db = getDb();
+      await db.run('DELETE FROM app_config WHERE key = ?', [key]);
+      delete globalConfig[key];
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  app.get('/api/admin/commands/disabled', adminAuth, (req, res) => {
+    try {
+      const disabled = [];
+      for (const [key, val] of Object.entries(globalConfig)) {
+        if (key.startsWith('disabled_')) {
+          const cmd = key.replace('disabled_', '');
+          if (val === 'true' || val === 'forever') {
+            disabled.push(cmd);
+          } else if (!isNaN(val) && parseInt(val, 10) > Date.now()) {
+            disabled.push(cmd);
+          }
+        }
+      }
+      res.json({ success: true, disabled });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
   app.get('/api/config', (req, res) => {
     res.json({
       durationMs: parseInt(globalConfig['cmd_!showemote_duration']) || parseInt(process.env.EMOTE_DURATION_MS) || 5000,

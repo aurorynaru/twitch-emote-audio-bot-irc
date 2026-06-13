@@ -216,10 +216,11 @@
     <h3>Delete Playsound</h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Sound Name (e.g. boom)</label>
+        <label>Sound Name</label>
         <input type="text" id="deleteSoundName" placeholder="Sound Name" autocomplete="off">
         <ul id="soundsSuggestions" class="autocomplete-list"></ul>
       </div>
+      <button class="save-btn" style="background-color: #2e8b57;" id="playSoundBtn">Play</button>
       <button class="save-btn" style="background-color: #ff4a4a;" id="deleteSoundBtn">Delete Sound</button>
     </div>
   </div>
@@ -227,7 +228,7 @@
   <div class="card" style="margin-bottom: 20px;">
     <h3>Temporarily Disable Command</h3>
     <p style="color: #adadb8; margin-top: 0; margin-bottom: 10px; font-size: 14px;">Leave Duration MS empty or 0 to disable forever.</p>
-    <div style="display: flex; gap: 10px; align-items: flex-end;">
+    <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Command</label>
         <input type="text" id="disableCmdName" placeholder="!command" autocomplete="off">
@@ -239,6 +240,50 @@
       </div>
       <button class="save-btn" style="background-color: #ffaa00; color: black;" id="disableCmdBtn">Disable Command</button>
     </div>
+
+    <h3 style="margin-top: 30px;">Enable Command</h3>
+    <p style="color: #adadb8; margin-top: 0; margin-bottom: 10px; font-size: 14px;">Select a currently disabled command to re-enable it.</p>
+    <div style="display: flex; gap: 10px; align-items: flex-end;">
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Disabled Command</label>
+        <input type="text" id="enableCmdName" placeholder="!command" autocomplete="off">
+        <ul id="disabledCommandsSuggestions" class="autocomplete-list"></ul>
+      </div>
+      <button class="save-btn" style="background-color: #2e8b57;" id="enableCmdBtn">Enable Command</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom: 20px;">
+    <h3>Blacklist Specific Playsound / Emote</h3>
+    <p style="color: #adadb8; margin-top: 0; margin-bottom: 20px; font-size: 14px;">Prevent specific playsounds or emotes from being used, without deleting them.</p>
+    
+    <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Playsound Name</label>
+        <input type="text" id="blacklistPlaysoundInput" placeholder="e.g. weebwow" autocomplete="off">
+        <ul id="blacklistPlaysoundSuggestions" class="autocomplete-list"></ul>
+      </div>
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Duration (ms)</label>
+        <input type="number" id="blacklistPlaysoundDuration" placeholder="Leave empty for forever">
+      </div>
+      <button class="save-btn" style="background-color: #ffaa00; color: black;" id="blacklistPlaysoundBtn">Disable Playsound</button>
+    </div>
+
+    <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Emote Name</label>
+        <input type="text" id="blacklistEmoteInput" placeholder="e.g. Kappa" autocomplete="off">
+      </div>
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Duration (ms)</label>
+        <input type="number" id="blacklistEmoteDuration" placeholder="Leave empty for forever">
+      </div>
+      <button class="save-btn" style="background-color: #ffaa00; color: black;" id="blacklistEmoteBtn">Disable Emote</button>
+    </div>
+
+    <h3 style="margin-top: 30px;">Currently Blacklisted</h3>
+    <div id="blacklistedItemsList" style="margin-top: 10px;"></div>
   </div>
 
   <div class="card" style="border-color: #ff4a4a;">
@@ -292,7 +337,8 @@
       await Promise.all([
         loadCustomCommands(),
         loadUsersForAutocomplete(),
-        loadPlaysoundsForAutocomplete()
+        loadPlaysoundsForAutocomplete(),
+        loadDisabledCommandsForAutocomplete()
       ]);
     } catch (e) {
       alert('Error loading config: ' + e.message);
@@ -302,6 +348,7 @@
   let globalUsers = [];
   let globalSounds = [];
   let globalCommands = [];
+  let globalDisabledCommands = [];
 
   function setupAutocomplete(inputId, listId, dataArray) {
     const input = document.getElementById(inputId);
@@ -358,6 +405,18 @@
       if (data.success) {
         globalSounds = data.sounds;
         setupAutocomplete('deleteSoundName', 'soundsSuggestions', globalSounds);
+        setupAutocomplete('blacklistPlaysoundInput', 'blacklistPlaysoundSuggestions', globalSounds);
+      }
+    } catch (e) { console.error(e); }
+  }
+
+  async function loadDisabledCommandsForAutocomplete() {
+    try {
+      const res = await fetch('/api/admin/commands/disabled');
+      const data = await res.json();
+      if (data.success) {
+        globalDisabledCommands = data.disabled;
+        setupAutocomplete('enableCmdName', 'disabledCommandsSuggestions', globalDisabledCommands);
       }
     } catch (e) { console.error(e); }
   }
@@ -429,6 +488,8 @@
     commandsGrid.innerHTML = '';
 
     for (const [cmdName, schema] of Object.entries(configData.commandConfigSchema)) {
+      if (cmdName === '!global') continue;
+
       const card = document.createElement('div');
       card.className = 'card';
       
@@ -469,6 +530,65 @@
       card.innerHTML = html;
       commandsGrid.appendChild(card);
     }
+
+    renderBlacklistedItems();
+  }
+
+  function renderBlacklistedItems() {
+    const list = document.getElementById('blacklistedItemsList');
+    list.innerHTML = '';
+    
+    let hasItems = false;
+    const now = Date.now();
+
+    for (const [key, val] of Object.entries(configData.globalConfig)) {
+      if ((val === 'true' || (!isNaN(parseInt(val)) && parseInt(val) > now)) && (key.startsWith('disabled_playsound_') || key.startsWith('disabled_emote_'))) {
+        hasItems = true;
+        const type = key.startsWith('disabled_playsound_') ? 'Playsound' : 'Emote';
+        const name = key.replace('disabled_playsound_', '').replace('disabled_emote_', '');
+        
+        let extraText = '';
+        if (val !== 'true') {
+          const timeLeftMs = parseInt(val) - now;
+          const timeLeftMins = Math.ceil(timeLeftMs / 60000);
+          extraText = ` <span style="color: #888; font-size: 12px;">(Expires in ${timeLeftMins} min)</span>`;
+        }
+
+        const div = document.createElement('div');
+        div.style.display = 'flex';
+        div.style.justifyContent = 'space-between';
+        div.style.alignItems = 'center';
+        div.style.background = '#18181b';
+        div.style.padding = '10px';
+        div.style.marginBottom = '5px';
+        div.style.borderRadius = '4px';
+        div.style.border = '1px solid #3f3f46';
+        
+        div.innerHTML = `
+          <span><strong>${type}:</strong> <span style="color: #bf94ff;">${name}</span>${extraText}</span>
+          <button class="save-btn" style="background-color: #ff4a4a; padding: 4px 10px; margin: 0; font-size: 12px;" onclick="unblacklist('${key}')">Remove</button>
+        `;
+        list.appendChild(div);
+      }
+    }
+    
+    if (!hasItems) {
+      list.innerHTML = '<p style="color: #888; margin: 0; font-style: italic;">No specific playsounds or emotes are blacklisted.</p>';
+    }
+  }
+
+  window.unblacklist = async function(key) {
+    try {
+      const res = await fetch('/api/dashboard/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: '' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        loadConfig();
+      } else alert('Error: ' + data.error);
+    } catch (e) { alert(e.message); }
   }
 
   document.getElementById('saveBtn').addEventListener('click', async () => {
@@ -573,18 +693,85 @@
   });
 
   // System Actions
+  document.getElementById('playSoundBtn').addEventListener('click', () => {
+    const sound = document.getElementById('deleteSoundName').value;
+    if (!sound) return alert('Sound name required.');
+    
+    // Try .ogg first, then .mp3 if it fails
+    const audio = new Audio(`/playsounds/${encodeURIComponent(sound)}.ogg`);
+    audio.play().catch(() => {
+      const audioMp3 = new Audio(`/playsounds/${encodeURIComponent(sound)}.mp3`);
+      audioMp3.play().catch(() => {
+        alert('Could not play sound. It might not exist or the browser blocked it.');
+      });
+    });
+  });
+
   document.getElementById('deleteSoundBtn').addEventListener('click', async () => {
     const sound = document.getElementById('deleteSoundName').value;
     if (!sound) return alert('Sound name required.');
-    if (!confirm(`Delete playsound ${sound}?`)) return;
+    
+    if (!confirm(`Are you sure you want to PERMANENTLY delete the sound '${sound}'?`)) return;
 
     try {
-      const res = await fetch('/api/admin/playsounds/' + encodeURIComponent(sound), { method: 'DELETE' });
+      const res = await fetch('/api/admin/playsounds/' + encodeURIComponent(sound), {
+        method: 'DELETE'
+      });
       const data = await res.json();
       if (data.success) {
-        alert('Sound deleted!');
+        alert('Sound deleted successfully!');
         document.getElementById('deleteSoundName').value = '';
-        loadPlaysoundsForAutocomplete();
+        loadPlaysoundsForAutocomplete(); // Refresh list
+      } else alert('Error: ' + data.error);
+    } catch (e) { alert(e.message); }
+  });
+
+  document.getElementById('blacklistPlaysoundBtn').addEventListener('click', async () => {
+    const item = document.getElementById('blacklistPlaysoundInput').value;
+    const duration = document.getElementById('blacklistPlaysoundDuration').value;
+    if (!item) return alert('Playsound name required.');
+    
+    let disableValue = 'true';
+    if (duration && parseInt(duration) > 0) {
+      disableValue = (Date.now() + parseInt(duration)).toString();
+    }
+
+    try {
+      const res = await fetch('/api/dashboard/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ['disabled_playsound_' + item]: disableValue })
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('blacklistPlaysoundInput').value = '';
+        document.getElementById('blacklistPlaysoundDuration').value = '';
+        loadConfig();
+      } else alert('Error: ' + data.error);
+    } catch (e) { alert(e.message); }
+  });
+
+  document.getElementById('blacklistEmoteBtn').addEventListener('click', async () => {
+    const item = document.getElementById('blacklistEmoteInput').value;
+    const duration = document.getElementById('blacklistEmoteDuration').value;
+    if (!item) return alert('Emote name required.');
+
+    let disableValue = 'true';
+    if (duration && parseInt(duration) > 0) {
+      disableValue = (Date.now() + parseInt(duration)).toString();
+    }
+
+    try {
+      const res = await fetch('/api/dashboard/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ['disabled_emote_' + item]: disableValue })
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('blacklistEmoteInput').value = '';
+        document.getElementById('blacklistEmoteDuration').value = '';
+        loadConfig();
       } else alert('Error: ' + data.error);
     } catch (e) { alert(e.message); }
   });
@@ -605,6 +792,25 @@
         alert('Command disabled!');
         document.getElementById('disableCmdName').value = '';
         document.getElementById('disableDuration').value = '';
+        loadConfig(); // Refresh dashboard
+      } else alert('Error: ' + data.error);
+    } catch (e) { alert(e.message); }
+  });
+
+  document.getElementById('enableCmdBtn').addEventListener('click', async () => {
+    const command = document.getElementById('enableCmdName').value;
+    if (!command) return alert('Command required.');
+
+    try {
+      const res = await fetch('/api/admin/commands/enable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Command enabled!');
+        document.getElementById('enableCmdName').value = '';
         loadConfig(); // Refresh dashboard
       } else alert('Error: ' + data.error);
     } catch (e) { alert(e.message); }
