@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restore Database</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #18181b;
+      color: #efeff1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background-color: #1f1f23;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 400px;
+      width: 100%;
+    }
+    h1 {
+      color: #ffaa00;
+      margin-top: 0;
+    }
+    .upload-area {
+      border: 2px dashed #4f4f5a;
+      padding: 20px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      transition: border-color 0.2s;
+    }
+    .upload-area:hover {
+      border-color: #ffaa00;
+    }
+    input[type="file"] {
+      display: none;
+    }
+    .file-label {
+      display: inline-block;
+      background-color: #3a3a44;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background-color 0.2s;
+    }
+    .file-label:hover {
+      background-color: #4f4f5a;
+    }
+    #fileName {
+      margin-top: 15px;
+      font-size: 0.9em;
+      color: #adadb8;
+      word-break: break-all;
+    }
+    button {
+      background-color: #ffaa00;
+      color: black;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 4px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      width: 100%;
+      transition: opacity 0.2s;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+    button:disabled {
+      background-color: #3a3a44;
+      color: #adadb8;
+      cursor: not-allowed;
+    }
+    #status {
+      margin-top: 20px;
+      font-weight: bold;
+      min-height: 24px;
+    }
+    .success { color: #00ff7f; }
+    .error { color: #ff4a4a; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Restore Database</h1>
+  <p>Upload a SQLite backup file (.sqlite or .db) to instantly replace your current database.</p>
+  
+  <div class="upload-area">
+    <label class="file-label" for="dbFile">Choose Database File</label>
+    <input type="file" id="dbFile" accept=".sqlite,.db">
+    <div id="fileName">No file chosen</div>
+  </div>
+
+  <button id="uploadDbBtn" disabled>Upload Database</button>
+
+  <div id="status"></div>
+</div>
+
+<script>
+  const dbFileInput = document.getElementById('dbFile');
+  const dbFileNameDisplay = document.getElementById('fileName');
+  const uploadDbBtn = document.getElementById('uploadDbBtn');
+  const dbStatusDiv = document.getElementById('status');
+
+  dbFileInput.addEventListener('change', () => {
+    dbStatusDiv.textContent = '';
+    if (dbFileInput.files.length > 0) {
+      const file = dbFileInput.files[0];
+      dbFileNameDisplay.textContent = file.name;
+      uploadDbBtn.disabled = false;
+    } else {
+      dbFileNameDisplay.textContent = 'No file chosen';
+      uploadDbBtn.disabled = true;
+    }
+  });
+
+  uploadDbBtn.addEventListener('click', async () => {
+    if (dbFileInput.files.length === 0) return;
+
+    if (!confirm('WARNING: This will instantly replace your entire active database with the uploaded file! This cannot be undone. Are you sure?')) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('database', dbFileInput.files[0]);
+
+    uploadDbBtn.disabled = true;
+    uploadDbBtn.textContent = 'Restoring...';
+    dbStatusDiv.textContent = '';
+
+    try {
+      const response = await fetch('/api/upload-database', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        dbStatusDiv.textContent = 'Success! Database restored and reloaded.';
+        dbStatusDiv.className = 'success';
+        dbFileInput.value = '';
+        dbFileNameDisplay.textContent = 'No file chosen';
+      } else {
+        dbStatusDiv.textContent = 'Error: ' + result.error;
+        dbStatusDiv.className = 'error';
+        uploadDbBtn.disabled = false;
+      }
+    } catch (err) {
+      dbStatusDiv.textContent = 'Error: Connection failed.';
+      dbStatusDiv.className = 'error';
+      uploadDbBtn.disabled = false;
+    }
+
+    uploadDbBtn.textContent = 'Upload Database';
+  });
+</script>
+
+</body>
+</html>

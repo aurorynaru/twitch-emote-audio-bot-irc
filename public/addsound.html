@@ -104,21 +104,6 @@
   <button id="uploadBtn" disabled>Upload Sound</button>
 
   <div id="status"></div>
-
-  <hr style="border-color: #3a3a44; width: 100%; margin: 30px 0;">
-
-  <h1>Restore Database</h1>
-  <p>Upload a SQLite backup file (.sqlite or .db) to instantly replace your current database.</p>
-  
-  <div class="upload-area">
-    <label class="file-label" for="dbFile">Choose Database File</label>
-    <input type="file" id="dbFile" accept=".sqlite,.db">
-    <div id="dbFileName">No file chosen</div>
-  </div>
-
-  <button id="uploadDbBtn" disabled style="background-color: #ffaa00; color: black;">Upload Database</button>
-
-  <div id="dbStatus" style="margin-top: 20px; font-weight: bold; min-height: 24px;"></div>
 </div>
 
 <script>
@@ -191,65 +176,6 @@
     }
 
     uploadBtn.textContent = 'Upload Sound';
-  });
-
-  // Database Upload Logic
-  const dbFileInput = document.getElementById('dbFile');
-  const dbFileNameDisplay = document.getElementById('dbFileName');
-  const uploadDbBtn = document.getElementById('uploadDbBtn');
-  const dbStatusDiv = document.getElementById('dbStatus');
-
-  dbFileInput.addEventListener('change', () => {
-    dbStatusDiv.textContent = '';
-    if (dbFileInput.files.length > 0) {
-      const file = dbFileInput.files[0];
-      dbFileNameDisplay.textContent = file.name;
-      uploadDbBtn.disabled = false;
-    } else {
-      dbFileNameDisplay.textContent = 'No file chosen';
-      uploadDbBtn.disabled = true;
-    }
-  });
-
-  uploadDbBtn.addEventListener('click', async () => {
-    if (dbFileInput.files.length === 0) return;
-
-    if (!confirm('WARNING: This will instantly replace your entire active database with the uploaded file! This cannot be undone. Are you sure?')) {
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('database', dbFileInput.files[0]);
-
-    uploadDbBtn.disabled = true;
-    uploadDbBtn.textContent = 'Restoring...';
-    dbStatusDiv.textContent = '';
-
-    try {
-      const response = await fetch('/api/upload-database', {
-        method: 'POST',
-        body: formData
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        dbStatusDiv.textContent = 'Success! Database restored and reloaded.';
-        dbStatusDiv.className = 'success';
-        dbFileInput.value = '';
-        dbFileNameDisplay.textContent = 'No file chosen';
-      } else {
-        dbStatusDiv.textContent = 'Error: ' + result.error;
-        dbStatusDiv.className = 'error';
-        uploadDbBtn.disabled = false;
-      }
-    } catch (err) {
-      dbStatusDiv.textContent = 'Error: Connection failed.';
-      dbStatusDiv.className = 'error';
-      uploadDbBtn.disabled = false;
-    }
-
-    uploadDbBtn.textContent = 'Upload Database';
   });
 </script>
 

@@ -70,6 +70,10 @@ export function setupRoutes(app, {
     res.sendFile(path.join(__dirname, 'public', 'addsound.html'));
   });
 
+  app.get('/upload-database', adminAuth, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'upload-database.html'));
+  });
+
   app.post('/api/upload-sound', adminAuth, upload.array('soundFiles', 50), (req, res) => {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No files uploaded or files were not .ogg, .mp3, or .zip!' });

@@ -224,6 +224,7 @@
     <button class="tab-btn" data-target="tab-users">User Management</button>
     <button class="tab-btn" data-target="tab-system">System Actions</button>
     <button class="tab-btn" data-target="tab-routes">Routes</button>
+    <button class="tab-btn" data-target="tab-reference">Command Reference</button>
   </div>
 
   <div id="tab-global" class="tab-pane active">
@@ -390,9 +391,14 @@
             <td style="padding: 15px 10px;">The main URL to put into your OBS Browser Source for !showemote and !playsound to work.</td>
           </tr>
           <tr style="background: rgba(255,255,255,0.02);">
-            <td style="padding: 15px 10px; font-weight: bold;">Upload Files UI</td>
+            <td style="padding: 15px 10px; font-weight: bold;">Upload Audio Files UI</td>
             <td style="padding: 15px 10px;"><a href="/addsound" target="_blank" class="route-link">Open /addsound</a></td>
-            <td style="padding: 15px 10px;">The page used to upload new playsound audio files and restore SQLite database files.</td>
+            <td style="padding: 15px 10px;">The page used to upload new playsound audio files (.mp3 or .ogg).</td>
+          </tr>
+          <tr>
+            <td style="padding: 15px 10px; font-weight: bold;">Restore Database UI</td>
+            <td style="padding: 15px 10px;"><a href="/upload-database" target="_blank" class="route-link" style="color: #ffaa00;">Open /upload-database</a></td>
+            <td style="padding: 15px 10px;">The page used to restore a SQLite database backup.</td>
           </tr>
           <tr>
             <td style="padding: 15px 10px; font-weight: bold;">Export Database</td>
@@ -409,9 +415,82 @@
     </div>
   </div>
 
+  <div id="tab-reference" class="tab-pane">
+    <h2>Command Reference</h2>
+    <p style="color: #adadb8;">A full list of all available commands, their instructions, and their current cooldown/cost.</p>
+    <div class="grid" id="referenceGrid">
+      <!-- Command Reference cards injected here -->
+    </div>
+  </div>
+
 </div>
 
 <script>
+  // Static Reference Data
+  const commandInstructions = {
+    '!playsound': 'Play an audio file. Usage: !playsound <sound_name>',
+    '!showemote': 'Display an emote on the overlay. Usage: !showemote <emote>',
+    '!betstart': 'Start a betting session. Usage: !betstart <Description> <choice1,choice2> <time_in_seconds> ',
+    '!betstop': 'Resolve a bet. Usage: !betstop <winning_choice>',
+    '!betstatus': 'Check current bet info. Usage: !betstatus',
+    '!betcancel': 'Cancel a bet and refund points (Admin). Usage: !betcancel',
+    '!bet': 'Place a bet on an active betting session. Usage: !bet <choice> <amount>',
+    '!points': 'Check your points. Usage: !points',
+    '!gamble': 'Gamble your points. Usage: !gamble <amount>',
+    '!chatwar': 'Start a chat war. Usage: !chatwar <emote1> <emote2> <cost> <time_in_minutes>',
+    '!chatwarcancel': 'Cancel the chat war. Usage: !chatwarcancel',
+    '!global': 'Global command settings (cooldown).',
+    '!commandlist': 'Show all commands.',
+    '!addcommand': 'Add a custom command (Admin). Usage: !addcommand <cmd> <action>',
+    '!removecommand': 'Remove a custom command (Admin). Usage: !removecommand <cmd>',
+    '!editcommand': 'Edit custom command cost/cooldown (Admin). Usage: !editcommand <cmd> <setting> <value>',
+    '!duel': 'Challenge another user for points! Usage: !duel @user <amount>',
+    '!acceptduel': 'Accept a pending duel request.',
+    '!declineduel': 'Decline a pending duel request.',
+    '!disable': '!disable a command. Usage !disable  <cmd> optional<time>. sample !disable !playsound 10m',
+    '!enable': 'Enable a command. Usage !enable <cmd>.  sample !enable !playsound',
+    '!subonly': 'Make a command subscriber-only (Admin). Usage: !subonly <cmd> <true/false>. sample: !subonly !playsound true',
+    '!raffle': 'Start a raffle. Usage !raffle <points amount> <time_in_minutes>. Use -<amount> to deduct points.',
+    '!multiraffle': 'Start a multi-winner raffle. Usage !multiraffle <points amount> <time_in_minutes> <number_of_winners>. Use -<amount> to deduct points.',
+    '!join': 'Join a raffle. Usage !join',
+    '!toppoints': 'Display the top point earners. Usage: !toppoints [number] (default: 5)',
+    '!editpoints': 'Edit user points. Usage: !editpoints <username> <amount>',
+    '!masspointsadd': 'Add points to all users who chatted in the last <time>. Usage !masspointsadd <amount> <time>. sample !masspointsadd 1000 10m',
+    '!masspointssub': 'Remove points from all users who chatted in the last <time>. Usage !masspointssub <amount> <time>. sample !masspointssub 1000 10m',
+    '!chatcooldown': 'set global cooldown for chat commands. Usage: !chatcooldown <time>. sample !chatcooldown 10s or !chatcooldown !playsound 10s',
+    '!givepoints': 'Give points to users. Usage !givepoints <amount> <username>. sample !givepoints 50 username',
+    '!removepoints': 'Remove points from users (Admin). Usage: !removepoints <amount> <username>',
+    '!deleteplaysound': 'Delete a playsound. Usage !deleteplaysound <soundname>. sample !deleteplaysound 5dollars',
+    '!editrewards': 'Edit rewards. Usage !editrewards <type> <val1> [val2]. Types: sub, giftsub, watchstreak, raffle, multiraffle | !editrewards raffle 5000 50000 | !editrewards multiraffle 5 20 | !editrewards sub 10000',
+    '!lvlup': 'Level up using points. Usage: !lvlup <amount>, !lvlup 30%, or !lvlup all',
+    '!use': 'Use an item from your inventory. Usage: !use <item> [qty] or !use all <item>',
+    '!fish': 'Go fishing to earn items. Usage: !fish',
+    '!inventory': 'Check your items. Usage: !inventory or !inv',
+    '!buffs': 'Check your active buffs and effects. Usage: !buffs',
+    '!emotesize': 'Set the size of emotes on the overlay (Admin). Usage: !emotesize <size>',
+    '!emoteduration': 'Set how long emotes stay on the overlay (Admin). Usage: !emoteduration <seconds>',
+    '!clearoverlay': 'Clear all emotes and sounds from the screen (Admin). Usage: !clearoverlay',
+    '!editconfig': 'Edit configuration variables (Admin). Usage: !editconfig <key> <value>',
+    '!refreshemotes': 'Refresh third party emotes (Admin). Usage: !refreshemotes',
+    '!dueltax': 'Check or set the duel tax percentage (Admin). Usage: !dueltax [percentage]',
+    '!giveitem': 'Give an item to a user (Admin). Usage: !giveitem <username> <item name> [amount]',
+    '!reloaditems': 'Reload items from items.json (Admin). Usage: !reloaditems',
+  };
+
+  const builtInAliases = {
+    '!point': '!points', '!pts': '!points', '!givepoint': '!givepoints',
+    '!givept': '!givepoints', '!givepts': '!givepoints', '!startbet': '!betstart',
+    '!stopbet': '!betstop', '!checkbet': '!betstatus', '!statusbet': '!betstatus',
+    '!editpoint': '!editpoints', '!toppoint': '!toppoints', '!top': '!toppoints',
+    '!leaderboard': '!toppoints', '!addpoint': '!masspointsadd', '!subpoint': '!masspointssub',
+    '!delcommand': '!removecommand', '!deletecommand': '!removecommand', '!commands': '!commandlist',
+    '!cmds': '!commandlist', '!cmdlist': '!commandlist', '!roulette': '!gamble',
+    '!roll': '!gamble', '!setrewards': '!editrewards', '!buylvl': '!lvlup',
+    '!buylevel': '!lvlup', '!buylevels': '!lvlup', '!levelup': '!lvlup',
+    '!inv': '!inventory', '!redeem': '!use'
+  };
+
+  // State
   const globalKeys = [
     { key: 'chat_wide_cooldown', label: 'Chat Wide Cooldown (ms)', type: 'number', def: 1500 },
     { key: 'cmd_!global_cooldown', label: 'Global Default Cooldown (ms)', type: 'number', def: 1000 },
@@ -604,6 +683,10 @@
     // Render Command Configs
     const commandsGrid = document.getElementById('commandsGrid');
     commandsGrid.innerHTML = '';
+    
+    // Render Reference Grid
+    const refGrid = document.getElementById('referenceGrid');
+    refGrid.innerHTML = '';
 
     for (const [cmdName, schema] of Object.entries(configData.commandConfigSchema)) {
       if (cmdName === '!global') continue;
@@ -647,6 +730,41 @@
 
       card.innerHTML = html;
       commandsGrid.appendChild(card);
+
+      // --- Reference Card (Command Reference) ---
+      const aliases = Object.keys(builtInAliases).filter(alias => builtInAliases[alias] === cmdName);
+      const refCard = document.createElement('div');
+      refCard.className = 'card';
+      
+      let refHtml = `
+        <h3 style="color: #00ff7f; margin-bottom: 5px; margin-top: 0;">${cmdName}</h3>
+        ${commandInstructions[cmdName] ? `<p style="margin-top: 0; margin-bottom: 10px; font-size: 0.95em; line-height: 1.4;">${commandInstructions[cmdName]}</p>` : ''}
+        ${aliases.length > 0 ? `<p style="margin-top: 0; margin-bottom: 10px; font-size: 0.85em; color: #adadb8;"><strong>Aliases:</strong> ${aliases.join(', ')}</p>` : ''}
+        <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 4px; border: 1px solid #3a3a44;">
+      `;
+      
+      // Add current sub_only status
+      refHtml += `
+        <div class="stat-row" style="margin-bottom: 5px; display: flex; justify-content: space-between;">
+          <span class="stat-label" style="color: #adadb8;">sub_only:</span>
+          <span class="stat-value" style="font-weight: bold;">${isSubOnly ? 'true' : 'false'}</span>
+        </div>
+      `;
+      
+      schema.forEach(field => {
+        const configKey = `cmd_${cmdName}_${field}`;
+        const def = commandDefaults[`${cmdName}_${field}`] !== undefined ? commandDefaults[`${cmdName}_${field}`] : '0';
+        const val = configData.globalConfig[configKey] !== undefined && configData.globalConfig[configKey] !== '' ? configData.globalConfig[configKey] : def;
+        refHtml += `
+          <div class="stat-row" style="margin-bottom: 5px; display: flex; justify-content: space-between;">
+            <span class="stat-label" style="color: #adadb8;">${field}:</span>
+            <span class="stat-value" style="font-weight: bold;">${val}</span>
+          </div>
+        `;
+      });
+      refHtml += `</div>`;
+      refCard.innerHTML = refHtml;
+      refGrid.appendChild(refCard);
     }
 
     renderBlacklistedItems();
