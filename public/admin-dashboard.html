@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - IRC Overlay</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #18181b;
+      color: #efeff1;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background-color: #1f1f23;
+      padding: 20px;
+      text-align: center;
+      border-bottom: 1px solid #3a3a44;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header h1 {
+      margin: 0;
+      color: #bf94ff;
+    }
+    button.save-btn {
+      background-color: #9146ff;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 4px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    button.save-btn:hover {
+      background-color: #772ce8;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h2 {
+      border-bottom: 1px solid #3a3a44;
+      padding-bottom: 10px;
+      color: #adadb8;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background-color: #1f1f23;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      border: 1px solid #3a3a44;
+    }
+    .card h3 {
+      margin-top: 0;
+      color: #00ff7f;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .form-group {
+      margin-bottom: 15px;
+      display: flex;
+      flex-direction: column;
+    }
+    .form-group.row {
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+    }
+    label {
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #adadb8;
+    }
+    input[type="number"], input[type="text"] {
+      background-color: #0e0e10;
+      border: 1px solid #4f4f5a;
+      color: #efeff1;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    input[type="number"]:focus, input[type="text"]:focus {
+      outline: none;
+      border-color: #bf94ff;
+    }
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #bf94ff;
+    }
+    #status {
+      margin-top: 10px;
+      font-weight: bold;
+      text-align: right;
+    }
+    .success { color: #00ff7f; }
+    .error { color: #ff4a4a; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Admin Dashboard</h1>
+  <div>
+    <div id="status"></div>
+    <button class="save-btn" id="saveBtn">Save Changes</button>
+  </div>
+</header>
+
+<div class="container">
+  <h2>Global Settings</h2>
+  <div class="grid" id="globalSettingsGrid">
+    <!-- Global config inputs injected here -->
+  </div>
+
+  <h2>Command Configuration</h2>
+  <div class="grid" id="commandsGrid">
+    <!-- Command cards injected here -->
+  </div>
+</div>
+
+<script>
+  const globalKeys = [
+    { key: 'chat_wide_cooldown', label: 'Chat Wide Cooldown (ms)', type: 'number' },
+    { key: 'cmd_!global_cooldown', label: 'Global Default Cooldown (ms)', type: 'number' },
+    { key: 'cmd_!fish_time', label: 'Base Fish Time (minutes)', type: 'number' },
+    { key: 'level_base_cost', label: 'Level Base Cost', type: 'number' },
+    { key: 'points_to_xp_rate', label: 'Points to XP Rate', type: 'text' },
+    { key: 'leg_bonus_rate', label: 'Legendary Bonus Rate', type: 'text' },
+    { key: 'rare_bonus_rate', label: 'Rare Bonus Rate', type: 'text' },
+    { key: 'lvl_bonus_rate', label: 'Level Bonus Rate', type: 'text' },
+    { key: 'reward_chat_sub', label: 'Reward: Sub', type: 'number' },
+    { key: 'reward_chat_sub_gift', label: 'Reward: Gift Sub', type: 'number' },
+    { key: 'reward_chat_bits', label: 'Reward: Bits', type: 'number' }
+  ];
+
+  let configData = {};
+  
+  async function loadConfig() {
+    try {
+      const res = await fetch('/api/admin/config');
+      const data = await res.json();
+      if (data.success) {
+        configData = data;
+        renderDashboard();
+      } else {
+        alert('Failed to load config');
+      }
+    } catch (e) {
+      alert('Error loading config: ' + e.message);
+    }
+  }
+
+  function renderDashboard() {
+    const globalGrid = document.getElementById('globalSettingsGrid');
+    globalGrid.innerHTML = '';
+    
+    // Render Global Settings
+    globalKeys.forEach(g => {
+      const value = configData.globalConfig[g.key] !== undefined ? configData.globalConfig[g.key] : '';
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <div class="form-group">
+          <label>${g.label}</label>
+          <input type="${g.type}" data-key="${g.key}" value="${value}">
+        </div>
+      `;
+      globalGrid.appendChild(card);
+    });
+
+    // Render Command Configs
+    const commandsGrid = document.getElementById('commandsGrid');
+    commandsGrid.innerHTML = '';
+
+    for (const [cmdName, schema] of Object.entries(configData.commandConfigSchema)) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      
+      let html = `<h3>${cmdName}</h3>`;
+      
+      // Sub Only toggle
+      const isSubOnly = configData.globalConfig[`cmd_${cmdName}_sub_only`] === 'true';
+      html += `
+        <div class="form-group row">
+          <label>Subscribers Only</label>
+          <input type="checkbox" data-key="cmd_${cmdName}_sub_only" ${isSubOnly ? 'checked' : ''}>
+        </div>
+      `;
+
+      // Disabled toggle
+      const disabledRaw = configData.globalConfig[`cmd_${cmdName}_disabled_until`];
+      const isDisabled = disabledRaw === 'forever' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw));
+      html += `
+        <div class="form-group row">
+          <label>Disable Command</label>
+          <input type="checkbox" data-key="cmd_${cmdName}_disabled" ${isDisabled ? 'checked' : ''}>
+        </div>
+      `;
+
+      // Schema fields (cost, cooldown, duration, size)
+      schema.forEach(field => {
+        const configKey = `cmd_${cmdName}_${field}`;
+        const val = configData.globalConfig[configKey] !== undefined ? configData.globalConfig[configKey] : '';
+        html += `
+          <div class="form-group">
+            <label>${field.charAt(0).toUpperCase() + field.slice(1)}</label>
+            <input type="number" data-key="${configKey}" value="${val}">
+          </div>
+        `;
+      });
+
+      card.innerHTML = html;
+      commandsGrid.appendChild(card);
+    }
+  }
+
+  document.getElementById('saveBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('saveBtn');
+    const status = document.getElementById('status');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    status.textContent = '';
+
+    const updates = [];
+
+    // Collect global text/number inputs
+    document.querySelectorAll('input[type="text"], input[type="number"]').forEach(input => {
+      const key = input.getAttribute('data-key');
+      if (key) {
+        updates.push({ key, value: input.value });
+      }
+    });
+
+    // Collect checkboxes
+    document.querySelectorAll('input[type="checkbox"]').forEach(input => {
+      const key = input.getAttribute('data-key');
+      if (key) {
+        if (key.endsWith('_disabled')) {
+          const realKey = key.replace('_disabled', '_disabled_until');
+          updates.push({ key: realKey, value: input.checked ? 'forever' : '0' });
+        } else {
+          updates.push({ key, value: input.checked ? 'true' : 'false' });
+        }
+      }
+    });
+
+    try {
+      const res = await fetch('/api/admin/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates })
+      });
+      const data = await res.json();
+      if (data.success) {
+        status.textContent = 'Saved successfully!';
+        status.className = 'success';
+      } else {
+        status.textContent = 'Error: ' + data.error;
+        status.className = 'error';
+      }
+    } catch (e) {
+      status.textContent = 'Error: ' + e.message;
+      status.className = 'error';
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Save Changes';
+    
+    setTimeout(() => {
+      status.textContent = '';
+    }, 3000);
+  });
+
+  // Load config on startup
+  loadConfig();
+</script>
+
+</body>
+</html>

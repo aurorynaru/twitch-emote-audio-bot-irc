@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { ZipArchive } from 'archiver';
 import multer from 'multer';
 import AdmZip from 'adm-zip';
+import express from 'express';
 import { adminAuth } from './utils.js';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -109,6 +110,40 @@ export function setupRoutes(app, {
     } catch (e) {
       console.error(e);
       res.status(500).json({ success: false, error: 'Error swapping database: ' + e.message });
+    }
+  });
+
+  app.get('/admin-dashboard', adminAuth, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin-dashboard.html'));
+  });
+
+  app.get('/api/admin/config', adminAuth, (req, res) => {
+    res.json({
+      success: true,
+      globalConfig,
+      commandConfigSchema
+    });
+  });
+
+  app.post('/api/admin/config', adminAuth, express.json(), async (req, res) => {
+    try {
+      const updates = req.body.updates;
+      if (!Array.isArray(updates)) {
+         return res.status(400).json({ success: false, error: 'Invalid payload' });
+      }
+
+      const db = getDb();
+      for (const update of updates) {
+        if (!update.key) continue;
+        const val = update.value == null ? '' : String(update.value);
+        await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [update.key, val, val]);
+        globalConfig[update.key] = val;
+      }
+      
+      res.json({ success: true });
+    } catch (e) {
+      console.error('Error updating config from dashboard:', e);
+      res.status(500).json({ success: false, error: e.message });
     }
   });
 
