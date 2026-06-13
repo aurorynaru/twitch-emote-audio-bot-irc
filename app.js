@@ -24,7 +24,7 @@ let USER_ACCESS_TOKEN = '';
 let BOT_USERNAME = ''
 const TOKEN_FILE = path.join(__dirname, 'data', 'tokens.json');
 let COMMAND_COOLDOWN=process.env.COMMAND_COOLDOWN || 1000
-let currentDuelTax = 0.05;
+const getDuelTax = () => parseFloat(globalConfig['duel_tax'] || '0.05');
 
 const DB_PATH = path.join(__dirname, 'data', 'database.sqlite');
 if (!fs.existsSync(path.join(__dirname, 'data'))) {
@@ -1615,7 +1615,7 @@ async function start() {
           const winner = challengerWins ? chatterName : target;
           const loser = challengerWins ? target : chatterName;
           
-          const taxAmount = Math.floor(actualBet * currentDuelTax);
+          const taxAmount = Math.floor(actualBet * getDuelTax());
           const finalProfit = actualBet - taxAmount;
           const reward = actualBet + finalProfit;
 
@@ -1732,7 +1732,7 @@ async function start() {
            loserPenalty -= refund;
         }
 
-        const taxAmount = Math.floor(profit * currentDuelTax);
+        const taxAmount = Math.floor(profit * getDuelTax());
         const finalProfit = profit - taxAmount;
         
         await db.run('UPDATE users SET points = points + ? WHERE username = ?', [duel.amount + finalProfit, winner]); // refund original bet + profit
@@ -1780,14 +1780,17 @@ async function start() {
         if (!isMod) return;
 
         if (args.length === 0) {
-          await sendChatMessage(`Current duel tax is ${currentDuelTax * 100}%.`, chatterName);
+          await sendChatMessage(`Current duel tax is ${getDuelTax() * 100}%.`, chatterName);
           return;
         }
 
         let newTaxStr = args[0].replace('%', '');
         let newTax = parseFloat(newTaxStr);
         if (!isNaN(newTax) && newTax >= 0 && newTax <= 100) {
-          currentDuelTax = newTax / 100;
+          globalConfig['duel_tax'] = (newTax / 100).toString();
+          broadcastConfig(globalConfig);
+          // Also save to DB for persistence
+          db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', ['duel_tax', globalConfig['duel_tax'], globalConfig['duel_tax']]);
           await sendChatMessage(`Duel tax is now set to ${newTax}%.`, chatterName);
         } else {
           await sendChatMessage(`Invalid tax amount. Use a percentage from 0 to 100.`, chatterName);

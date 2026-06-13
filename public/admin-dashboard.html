@@ -293,6 +293,38 @@
       <button class="save-btn" id="updatePointsBtn">Update Points</button>
     </div>
   </div>
+
+  <div class="card" style="margin-bottom: 20px;">
+    <h3 style="margin-top: 0;">Mass Add Points (!masspointsadd)</h3>
+    <p style="color: #adadb8; margin-top: 0; margin-bottom: 10px; font-size: 14px;">Give points to everyone who chatted recently.</p>
+    <div style="display: flex; gap: 10px; align-items: flex-end;">
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Amount</label>
+        <input type="number" id="massAddAmount" placeholder="e.g. 1000">
+      </div>
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Time Window</label>
+        <input type="text" id="massAddTime" placeholder="e.g. 5m or 10m">
+      </div>
+      <button class="save-btn" style="background-color: #2e8b57;" id="massAddBtn">Mass Add</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom: 20px;">
+    <h3 style="margin-top: 0;">Mass Subtract Points (!masspointssub)</h3>
+    <p style="color: #adadb8; margin-top: 0; margin-bottom: 10px; font-size: 14px;">Remove points from everyone who chatted recently.</p>
+    <div style="display: flex; gap: 10px; align-items: flex-end;">
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Amount</label>
+        <input type="number" id="massSubAmount" placeholder="e.g. 1000">
+      </div>
+      <div class="form-group" style="flex: 1; margin: 0;">
+        <label>Time Window</label>
+        <input type="text" id="massSubTime" placeholder="e.g. 5m or 10m">
+      </div>
+      <button class="save-btn" style="background-color: #ff4a4a;" id="massSubBtn">Mass Subtract</button>
+    </div>
+  </div>
   </div>
 
   <div id="tab-system" class="tab-pane">
@@ -1000,6 +1032,44 @@
         document.getElementById('blacklistEmoteInput').value = '';
         document.getElementById('blacklistEmoteDuration').value = '';
         loadConfig();
+      } else alert('Error: ' + data.error);
+    } catch (e) { alert(e.message); }
+  });
+
+  document.getElementById('massAddBtn').addEventListener('click', async () => {
+    const amount = document.getElementById('massAddAmount').value;
+    const timeStr = document.getElementById('massAddTime').value;
+    if (!amount) return alert('Amount required.');
+    try {
+      const res = await fetch('/api/admin/masspointsadd', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount, timeStr })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Mass points added!');
+        document.getElementById('massAddAmount').value = '';
+        document.getElementById('massAddTime').value = '';
+      } else alert('Error: ' + data.error);
+    } catch (e) { alert(e.message); }
+  });
+
+  document.getElementById('massSubBtn').addEventListener('click', async () => {
+    const amount = document.getElementById('massSubAmount').value;
+    const timeStr = document.getElementById('massSubTime').value;
+    if (!amount) return alert('Amount required.');
+    try {
+      const res = await fetch('/api/admin/masspointssub', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount, timeStr })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Mass points subtracted!');
+        document.getElementById('massSubAmount').value = '';
+        document.getElementById('massSubTime').value = '';
       } else alert('Error: ' + data.error);
     } catch (e) { alert(e.message); }
   });

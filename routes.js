@@ -5,7 +5,7 @@ import { ZipArchive } from 'archiver';
 import multer from 'multer';
 import AdmZip from 'adm-zip';
 import express from 'express';
-import { adminAuth } from './utils.js';
+import { adminAuth, parseTime } from './utils.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -195,9 +195,37 @@ export function setupRoutes(app, {
       const db = getDb();
       await db.run('UPDATE users SET points = ? WHERE username = ?', [parseInt(points, 10), username.toLowerCase()]);
       res.json({ success: true });
-    } catch (e) {
-      res.status(500).json({ success: false, error: e.message });
-    }
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  app.post('/api/admin/masspointsadd', adminAuth, express.json(), async (req, res) => {
+    try {
+      const { amount, timeStr } = req.body;
+      const parsedAmount = parseInt(amount, 10);
+      if (isNaN(parsedAmount) || parsedAmount <= 0) return res.status(400).json({ success: false, error: 'Invalid amount' });
+      const durationMs = parseTime(timeStr || '5m');
+      const threshold = Date.now() - durationMs;
+      const ignoredBots = ['nightbot', 'streamelements', 'streamlabs', 'moobot', 'dotabod', 'wizebot', 'fossabot', 'kofibot', 'soundalerts'];
+      const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
+      const db = getDb();
+      await db.run(`UPDATE users SET points = points + ? WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [parsedAmount, threshold]);
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  app.post('/api/admin/masspointssub', adminAuth, express.json(), async (req, res) => {
+    try {
+      const { amount, timeStr } = req.body;
+      const parsedAmount = parseInt(amount, 10);
+      if (isNaN(parsedAmount) || parsedAmount <= 0) return res.status(400).json({ success: false, error: 'Invalid amount' });
+      const durationMs = parseTime(timeStr || '5m');
+      const threshold = Date.now() - durationMs;
+      const ignoredBots = ['nightbot', 'streamelements', 'streamlabs', 'moobot', 'dotabod', 'wizebot', 'fossabot', 'kofibot', 'soundalerts'];
+      const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
+      const db = getDb();
+      await db.run(`UPDATE users SET points = MAX(0, points - ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [parsedAmount, threshold]);
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
   });
 
   app.post('/api/admin/actions/clear', adminAuth, (req, res) => {
