@@ -397,7 +397,10 @@ export function setupRoutes(app, {
         const files = fs.readdirSync(soundsDir).filter(f => f.endsWith('.mp3') || f.endsWith('.ogg'));
         sounds = files.map(f => {
           const stats = fs.statSync(path.join(soundsDir, f));
-          return { filename: f, uploadedAt: stats.mtimeMs };
+          const nameOnly = f.split('.').slice(0, -1).join('.');
+          const cost = globalConfig[`cost_playsound_${nameOnly}`];
+          const cooldown = globalConfig[`cooldown_playsound_${nameOnly}`];
+          return { filename: f, uploadedAt: stats.mtimeMs, customCost: cost, customCooldown: cooldown };
         });
       }
       res.json({ success: true, sounds });

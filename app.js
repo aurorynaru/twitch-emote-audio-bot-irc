@@ -1229,17 +1229,50 @@ async function start() {
     },
     '!playsound': {
       cost: 1,
+      manualCost: true,
       execute: async (args, chatterName, event, hasPermission) => {
         // if (!await isStreamerLive()) return;
         args = [args[0]]
-        const dynamicCostRaw = globalConfig['cmd_!playsound_cost'];
-        const activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
 
         const filename = args.join('').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
         if (filename) {
+          const customCooldownRaw = globalConfig[`cooldown_playsound_${filename}`];
+          if (customCooldownRaw !== undefined && customCooldownRaw !== '') {
+            const cooldownMs = parseInt(customCooldownRaw, 10);
+            if (cooldownMs > 0) {
+              const lastPlayed = playsoundCooldowns.get(filename) || 0;
+              const now = Date.now();
+              if (now - lastPlayed < cooldownMs) {
+                console.log(`[PLAYSOUND] Sound '${filename}' is on custom cooldown. Ignoring.`);
+                return;
+              }
+            }
+          }
+
+          const customCostRaw = globalConfig[`cost_playsound_${filename}`];
+          const dynamicCostRaw = globalConfig['cmd_!playsound_cost'];
+          let activeCost = 0;
+          if (customCostRaw !== undefined && customCostRaw !== '') {
+            activeCost = parseInt(customCostRaw, 10);
+          } else {
+            activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
+          }
+
+          if (activeCost > 0) {
+            const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+            if (!user || user.points < activeCost) {
+              console.log(`[PLAYSOUND] ${chatterName} lacks points for ${filename}`);
+              return;
+            }
+            await db.run('UPDATE users SET points = points - ? WHERE username = ?', [activeCost, chatterName]);
+          }
+
           const disabledRaw = globalConfig[`disabled_playsound_${filename}`];
           if (disabledRaw === 'true' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw))) {
             console.log(`[PLAYSOUND] Sound '${filename}' is disabled.`);
+            if (activeCost > 0) {
+              await db.run('UPDATE users SET points = points + ? WHERE username = ?', [activeCost, chatterName]);
+            }
             return;
           }
 
@@ -1249,9 +1282,11 @@ async function start() {
           if (fs.existsSync(oggPath) || fs.existsSync(mp3Path)) {
             if (fs.existsSync(oggPath)) {
               broadcastAudio(filename + '.ogg');
+              playsoundCooldowns.set(filename, Date.now());
               console.log(`[PLAYSOUND] ${chatterName} played audio: ${filename}.ogg (-${activeCost} point(s))`);
             } else {
               broadcastAudio(filename + '.mp3');
+              playsoundCooldowns.set(filename, Date.now());
               console.log(`[PLAYSOUND] ${chatterName} played audio: ${filename}.mp3 (-${activeCost} point(s))`);
             }
           } else {
@@ -1259,10 +1294,6 @@ async function start() {
             if (activeCost > 0) {
               await db.run('UPDATE users SET points = points + ? WHERE username = ?', [activeCost, chatterName]);
             }
-          }
-        } else {
-          if (activeCost > 0) {
-            await db.run('UPDATE users SET points = points + ? WHERE username = ?', [activeCost, chatterName]);
           }
         }
       }
@@ -2719,6 +2750,58 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         await sendChatMessage(`Successfully updated ${targetCmd} ${setting} to ${finalValue}!`);
       }
     },
+    '!editplaysound': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+        if (!isMod) return;
+
+        if (args.length < 3) {
+          await sendChatMessage(`Usage: !editplaysound <playsound_name> cost/cooldown <value|default>`);
+          return;
+        }
+
+        const psName = args[0].toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '');
+        const setting = args[1].toLowerCase();
+        let value = args[2].toLowerCase();
+
+        if (setting !== 'cost' && setting !== 'cooldown') {
+          await sendChatMessage(`Invalid setting. Use 'cost' or 'cooldown'`);
+          return;
+        }
+
+        if (value === 'default' || value === 'clear' || value === 'none') {
+          value = '';
+        } else {
+          if (setting === 'cooldown') {
+            const parsedTime = parseFlexibleTime(value);
+            if (isNaN(parsedTime) || parsedTime < 0) {
+              await sendChatMessage(`Invalid cooldown time! Use ms (1000), or 10s, 5m, 1h.`);
+              return;
+            }
+            value = parsedTime.toString();
+          } else {
+            value = parseInt(value, 10);
+            if (isNaN(value) || value < 0) {
+              await sendChatMessage(`Value must be a valid number or 'default'`);
+              return;
+            }
+            value = value.toString();
+          }
+        }
+
+        const configKey = setting === 'cost' ? `cost_playsound_${psName}` : `cooldown_playsound_${psName}`;
+        
+        await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, value, value]);
+        globalConfig[configKey] = value;
+
+        if (value === '') {
+          await sendChatMessage(`Playsound '${psName}' ${setting} has been reset to default.`);
+        } else {
+          await sendChatMessage(`Playsound '${psName}' ${setting} updated to ${value}.`);
+        }
+      }
+    },
     '!addcommand': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
@@ -3341,6 +3424,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
   let activeWs = null;
   const userCooldowns = new Map();
   const commandCooldowns = new Map();
+  const playsoundCooldowns = new Map();
   const activeBets = new Map();
   let activeChatWar = null;
   let activeRaffle = null;
