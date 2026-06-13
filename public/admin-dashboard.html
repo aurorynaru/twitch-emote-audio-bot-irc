@@ -209,6 +209,50 @@
       background-color: #bf94ff;
       color: #000;
     }
+    
+    /* Tooltip CSS */
+    .tooltip-icon {
+      display: inline-block;
+      margin-left: 8px;
+      color: #adadb8;
+      cursor: help;
+      position: relative;
+      font-size: 16px;
+      font-family: sans-serif;
+    }
+    .tooltip-icon:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 130%;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #18181b;
+      color: #efeff1;
+      padding: 10px 14px;
+      border-radius: 6px;
+      border: 1px solid #3f3f46;
+      width: max-content;
+      max-width: 250px;
+      white-space: normal;
+      font-size: 13px;
+      font-weight: normal;
+      line-height: 1.4;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      z-index: 1000;
+      pointer-events: none;
+    }
+    .tooltip-icon:hover::before {
+      content: '';
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border-width: 6px;
+      border-style: solid;
+      border-color: #18181b transparent transparent transparent;
+      z-index: 1001;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -255,7 +299,7 @@
   <div id="tab-custom" class="tab-pane">
     <h2>Custom Commands</h2>
   <div class="card" style="margin-bottom: 20px;">
-    <h3>Add / Update Custom Command</h3>
+    <h3>Add / Update Custom Command <span class="tooltip-icon" data-tooltip="Create or update custom commands that respond with simple text messages.">ⓘ</span></h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Command (e.g. !bot)</label>
@@ -280,6 +324,7 @@
   <div id="tab-users" class="tab-pane">
     <h2>User Management (Edit Points)</h2>
   <div class="card" style="margin-bottom: 20px;">
+    <h3 style="margin-top: 0; margin-bottom: 15px;">Edit Single User Points <span class="tooltip-icon" data-tooltip="Set a specific user's point balance manually.">ⓘ</span></h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Username</label>
@@ -295,8 +340,7 @@
   </div>
 
   <div class="card" style="margin-bottom: 20px;">
-    <h3 style="margin-top: 0;">Mass Add Points (!masspointsadd)</h3>
-    <p style="color: #adadb8; margin-top: 0; margin-bottom: 10px; font-size: 14px;">Give points to everyone who chatted recently.</p>
+    <h3 style="margin-top: 0;">Mass Add Points (!masspointsadd) <span class="tooltip-icon" data-tooltip="Give points to everyone who chatted recently.">ⓘ</span></h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Amount</label>
@@ -311,8 +355,7 @@
   </div>
 
   <div class="card" style="margin-bottom: 20px;">
-    <h3 style="margin-top: 0;">Mass Subtract Points (!masspointssub)</h3>
-    <p style="color: #adadb8; margin-top: 0; margin-bottom: 10px; font-size: 14px;">Remove points from everyone who chatted recently.</p>
+    <h3 style="margin-top: 0;">Mass Subtract Points (!masspointssub) <span class="tooltip-icon" data-tooltip="Remove points from everyone who chatted recently.">ⓘ</span></h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Amount</label>
@@ -331,16 +374,13 @@
     <h2>System Actions</h2>
 
     <div class="card" style="border-color: #ff4a4a; margin-bottom: 20px;">
-      <h3 style="color: #ff4a4a; margin-bottom: 10px;">Clear Overlay</h3>
-      <p style="color: #adadb8; margin-top: 0; margin-bottom: 20px;">This will instantly wipe all active emotes, hide active bets, and stop any chat wars currently showing on the screen.</p>
+      <h3 style="color: #ff4a4a; margin-bottom: 10px;">Clear Overlay <span class="tooltip-icon" data-tooltip="Instantly clears all active visual and audio overlay elements, hiding bets, and stopping chat wars.">ⓘ</span></h3>
       <button class="save-btn" style="background-color: #ff4a4a; width: 100%;" id="clearOverlayBtn">Instant Clear All</button>
     </div>
 
-
-      <div class="card" style="margin-bottom: 20px;">
-    <h3>Temporarily Disable Command</h3>
-    <p style="color: #adadb8; margin-top: 0; margin-bottom: 10px; font-size: 14px;">Leave Duration MS empty or 0 to disable forever.</p>
-    <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
+    <div class="card" style="margin-bottom: 20px;">
+      <h3>Temporarily Disable Command <span class="tooltip-icon" data-tooltip="Prevent a specific command from being used for a set duration. Leave Duration empty to disable forever.">ⓘ</span></h3>
+      <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Command</label>
         <input type="text" id="disableCmdName" placeholder="!command" autocomplete="off">
@@ -353,8 +393,7 @@
       <button class="save-btn" style="background-color: #ffaa00; color: black;" id="disableCmdBtn">Disable Command</button>
     </div>
 
-    <h3 style="margin-top: 30px;">Enable Command</h3>
-    <p style="color: #adadb8; margin-top: 0; margin-bottom: 10px; font-size: 14px;">Select a currently disabled command to re-enable it.</p>
+    <h3 style="margin-top: 30px;">Enable Command <span class="tooltip-icon" data-tooltip="Re-enable a command that was previously disabled.">ⓘ</span></h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Disabled Command</label>
@@ -366,9 +405,8 @@
   </div>
 
 
-    <div class="card" style="margin-bottom: 20px;">
-    <h3>Blacklist Specific Playsound / Emote</h3>
-    <p style="color: #adadb8; margin-top: 0; margin-bottom: 20px; font-size: 14px;">Prevent specific playsounds or emotes from being used, without deleting them.</p>
+  <div class="card" style="margin-bottom: 20px;">
+    <h3>Blacklist Specific Playsound / Emote <span class="tooltip-icon" data-tooltip="Prevent a playsound or emote from being triggered without deleting the file.">ⓘ</span></h3>
     
     <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
       <div class="form-group" style="flex: 1; margin: 0;">
@@ -401,7 +439,7 @@
 
 
   <div class="card" style="margin-bottom: 20px;">
-    <h3>Delete Playsound</h3>
+    <h3>Delete Playsound <span class="tooltip-icon" data-tooltip="Permanently delete a playsound audio file from the server.">ⓘ</span></h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Sound Name</label>
@@ -534,24 +572,25 @@
 
   // State
   const globalKeys = [
-    { key: 'chat_wide_cooldown', label: 'Chat Wide Cooldown (ms)', type: 'number', def: 1500 },
-    { key: 'cmd_!global_cooldown', label: 'Global Default Cooldown (ms)', type: 'number', def: 1000 },
-    { key: 'cmd_!fish_time', label: 'Base Fish Time (minutes)', type: 'number', def: 5 },
-    { key: 'level_base_cost', label: 'Level Base Cost', type: 'number', def: 200 },
-    { key: 'points_to_xp_rate', label: 'Points to XP Rate', type: 'text', def: 1 },
-    { key: 'leg_bonus_rate', label: 'Legendary Bonus Rate', type: 'text', def: 0.01 },
-    { key: 'rare_bonus_rate', label: 'Rare Bonus Rate', type: 'text', def: 0.05 },
-    { key: 'lvl_bonus_rate', label: 'Level Bonus Rate', type: 'text', def: 0.001 },
-    { key: 'reward_sub', label: 'Reward: Sub', type: 'number', def: 5000 },
-    { key: 'reward_giftsub', label: 'Reward: Gift Sub', type: 'number', def: 5000 },
-    { key: 'reward_watchstreak', label: 'Reward: Watch Streak', type: 'number', def: 1000 },
-    { key: 'reward_chat_sub', label: 'Reward: Chat (Sub)', type: 'number', def: 750 },
-    { key: 'reward_chat_nonsub', label: 'Reward: Chat (Non-Sub)', type: 'number', def: 500 },
-    { key: 'reward_chat_cooldown', label: 'Reward: Chat Cooldown (mins)', type: 'number', def: 25 },
-    { key: 'reward_raffle_min', label: 'Reward: Raffle Min', type: 'number', def: 1500 },
-    { key: 'reward_raffle_max', label: 'Reward: Raffle Max', type: 'number', def: 25000 },
-    { key: 'reward_multiraffle_min', label: 'Reward: Multi-Raffle Min', type: 'number', def: 3 },
-    { key: 'reward_multiraffle_max', label: 'Reward: Multi-Raffle Max', type: 'number', def: 12 }
+    { key: 'chat_wide_cooldown', label: 'Chat Wide Cooldown (ms)', type: 'number', def: 1500, tooltip: 'Global delay between any chat commands being processed' },
+    { key: 'cmd_!global_cooldown', label: 'Global Default Cooldown (ms)', type: 'number', def: 1000, tooltip: 'Default cooldown applied to commands that don\\'t have a specific cooldown set' },
+    { key: 'cmd_!fish_time', label: 'Base Fish Time (minutes)', type: 'number', def: 5, tooltip: 'Base duration for the fishing minigame' },
+    { key: 'level_base_cost', label: 'Level Base Cost', type: 'number', def: 200, tooltip: 'Points required to reach the first level' },
+    { key: 'points_to_xp_rate', label: 'Points to XP Rate', type: 'text', def: 1, tooltip: 'Multiplier for converting points to XP' },
+    { key: 'leg_bonus_rate', label: 'Legendary Bonus Rate', type: 'text', def: 0.01, tooltip: 'Bonus multiplier for legendary items' },
+    { key: 'rare_bonus_rate', label: 'Rare Bonus Rate', type: 'text', def: 0.05, tooltip: 'Bonus multiplier for rare items' },
+    { key: 'lvl_bonus_rate', label: 'Level Bonus Rate', type: 'text', def: 0.001, tooltip: 'Additional multiplier gained per user level' },
+    { key: 'reward_sub', label: 'Reward: Sub', type: 'number', def: 5000, tooltip: 'Points rewarded when someone subscribes' },
+    { key: 'reward_giftsub', label: 'Reward: Gift Sub', type: 'number', def: 5000, tooltip: 'Points rewarded to the gifter per gift sub' },
+    { key: 'reward_watchstreak', label: 'Reward: Watch Streak', type: 'number', def: 1000, tooltip: 'Points rewarded for consecutive streams watched' },
+    { key: 'reward_chat_sub', label: 'Reward: Chat (Sub)', type: 'number', def: 750, tooltip: 'Points rewarded to subscribers for chatting (respects cooldown)' },
+    { key: 'reward_chat_nonsub', label: 'Reward: Chat (Non-Sub)', type: 'number', def: 500, tooltip: 'Points rewarded to non-subscribers for chatting (respects cooldown)' },
+    { key: 'reward_chat_cooldown', label: 'Reward: Chat Cooldown (mins)', type: 'number', def: 25, tooltip: 'Minutes between chat rewards' },
+    { key: 'reward_raffle_min', label: 'Reward: Raffle Min', type: 'number', def: 1500, tooltip: 'Minimum points won in a normal raffle' },
+    { key: 'reward_raffle_max', label: 'Reward: Raffle Max', type: 'number', def: 25000, tooltip: 'Maximum points won in a normal raffle' },
+    { key: 'reward_multiraffle_min', label: 'Reward: Multi-Raffle Min', type: 'number', def: 3, tooltip: 'Minimum winners in a multi-raffle' },
+    { key: 'reward_multiraffle_max', label: 'Reward: Multi-Raffle Max', type: 'number', def: 12, tooltip: 'Maximum winners in a multi-raffle' },
+    { key: 'duel_tax', label: 'Duel Tax Rate (0 to 1)', type: 'text', def: 0.05, tooltip: 'Percentage of points taken from winning duels (e.g. 0.05 for 5%)' }
   ];
 
   const commandDefaults = {
@@ -715,7 +754,7 @@
       card.className = 'card';
       card.innerHTML = `
         <div class="form-group">
-          <label>${g.label}</label>
+          <label>${g.label} <span class="tooltip-icon" data-tooltip="${g.tooltip || 'Global configuration setting'}">ⓘ</span></label>
           <input type="${g.type}" data-key="${g.key}" value="${value}">
         </div>
       `;
@@ -736,7 +775,7 @@
       const card = document.createElement('div');
       card.className = 'card';
       
-      let html = `<h3>${cmdName}</h3>`;
+      let html = `<h3>${cmdName} <span class="tooltip-icon" data-tooltip="Configure execution rules and costs for the ${cmdName} command.">ⓘ</span></h3>`;
       
       // Sub Only toggle
       const isSubOnly = configData.globalConfig[`cmd_${cmdName}_sub_only`] === 'true';
@@ -779,7 +818,7 @@
       refCard.className = 'card';
       
       let refHtml = `
-        <h3 style="color: #00ff7f; margin-bottom: 5px; margin-top: 0;">${cmdName}</h3>
+        <h3 style="color: #00ff7f; margin-bottom: 5px; margin-top: 0;">${cmdName} <span class="tooltip-icon" data-tooltip="Command usage and aliasing info for ${cmdName}">ⓘ</span></h3>
         ${commandInstructions[cmdName] ? `<p style="margin-top: 0; margin-bottom: 10px; font-size: 0.95em; line-height: 1.4;">${commandInstructions[cmdName]}</p>` : ''}
         ${aliases.length > 0 ? `<p style="margin-top: 0; margin-bottom: 10px; font-size: 0.85em; color: #adadb8;"><strong>Aliases:</strong> ${aliases.join(', ')}</p>` : ''}
         <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 4px; border: 1px solid #3a3a44;">
