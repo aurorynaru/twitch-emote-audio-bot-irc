@@ -149,6 +149,46 @@
     }
     .success { color: #00ff7f; }
     .error { color: #ff4a4a; }
+    
+    /* Tabs CSS */
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #3a3a44;
+      padding-bottom: 10px;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      color: #adadb8;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      padding: 10px 20px;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover {
+      background: #1f1f23;
+      color: #efeff1;
+    }
+    .tab-btn.active {
+      background: #bf94ff;
+      color: #000;
+    }
+    .tab-pane {
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+    .tab-pane.active {
+      display: block;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 </head>
 <body>
@@ -157,22 +197,40 @@
   <h1>Admin Dashboard</h1>
   <div>
     <div id="status"></div>
-    <button class="save-btn" id="saveBtn">Save Changes</button>
   </div>
 </header>
 
 <div class="container">
-  <h2>Global Settings</h2>
-  <div class="grid" id="globalSettingsGrid">
-    <!-- Global config inputs injected here -->
+  <div class="tabs">
+    <button class="tab-btn active" data-target="tab-global">Global Settings</button>
+    <button class="tab-btn" data-target="tab-commands">Command Config</button>
+    <button class="tab-btn" data-target="tab-custom">Custom Commands</button>
+    <button class="tab-btn" data-target="tab-users">User Management</button>
+    <button class="tab-btn" data-target="tab-system">System Actions</button>
   </div>
 
-  <h2>Command Configuration</h2>
-  <div class="grid" id="commandsGrid">
-    <!-- Command cards injected here -->
+  <div id="tab-global" class="tab-pane active">
+    <h2>Global Settings</h2>
+    <div class="grid" id="globalSettingsGrid">
+      <!-- Global config inputs injected here -->
+    </div>
+    <div style="margin-top: 30px; text-align: right;">
+      <button class="save-btn save-global-btn">Save Global Settings</button>
+    </div>
   </div>
 
-  <h2>Custom Commands</h2>
+  <div id="tab-commands" class="tab-pane">
+    <h2>Command Configuration</h2>
+    <div class="grid" id="commandsGrid">
+      <!-- Command cards injected here -->
+    </div>
+    <div style="margin-top: 30px; text-align: right;">
+      <button class="save-btn save-commands-btn">Save Command Config</button>
+    </div>
+  </div>
+
+  <div id="tab-custom" class="tab-pane">
+    <h2>Custom Commands</h2>
   <div class="card" style="margin-bottom: 20px;">
     <h3>Add / Update Custom Command</h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
@@ -195,7 +253,8 @@
     <!-- Custom commands injected here -->
   </div>
 
-  <h2 style="margin-top: 40px;">User Management (Edit Points)</h2>
+  <div id="tab-users" class="tab-pane">
+    <h2>User Management (Edit Points)</h2>
   <div class="card" style="margin-bottom: 20px;">
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
@@ -210,8 +269,10 @@
       <button class="save-btn" id="updatePointsBtn">Update Points</button>
     </div>
   </div>
+  </div>
 
-  <h2 style="margin-top: 40px;">System Actions</h2>
+  <div id="tab-system" class="tab-pane">
+    <h2>System Actions</h2>
   <div class="card" style="margin-bottom: 20px;">
     <h3>Delete Playsound</h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
@@ -289,7 +350,9 @@
   <div class="card" style="border-color: #ff4a4a;">
     <h3 style="color: #ff4a4a; margin-bottom: 10px;">Clear Overlay</h3>
     <p style="color: #adadb8; margin-top: 0; margin-bottom: 20px;">This will instantly wipe all active emotes, hide active bets, and stop any chat wars currently showing on the screen.</p>
-    <button class="save-btn" style="background-color: #ff4a4a;" id="clearOverlayBtn">Clear Overlay</button>
+      <button class="save-btn" style="background-color: #ff4a4a; width: 100%;" id="clearOverlayBtn">Instant Clear All</button>
+    </div>
+  </div>
   </div>
 </div>
 
@@ -591,61 +654,43 @@
     } catch (e) { alert(e.message); }
   }
 
-  document.getElementById('saveBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('saveBtn');
-    const status = document.getElementById('status');
-    btn.disabled = true;
-    btn.textContent = 'Saving...';
-    status.textContent = '';
-
-    const updates = [];
-
-    // Collect global text/number inputs
-    document.querySelectorAll('input[type="text"], input[type="number"]').forEach(input => {
-      const key = input.getAttribute('data-key');
-      if (key) {
-        updates.push({ key, value: input.value });
-      }
-    });
-
-    // Collect checkboxes
-    document.querySelectorAll('input[type="checkbox"]').forEach(input => {
-      const key = input.getAttribute('data-key');
-      if (key) {
-        if (key.endsWith('_disabled')) {
-          const realKey = key.replace('_disabled', '_disabled_until');
-          updates.push({ key: realKey, value: input.checked ? 'forever' : '0' });
+  // Handle saving Global and Command config
+  document.querySelectorAll('.save-global-btn, .save-commands-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const inputs = document.querySelectorAll('input[data-key]');
+      const updates = {};
+      inputs.forEach(input => {
+        if (input.type === 'checkbox') {
+          updates[input.dataset.key] = input.checked ? 'true' : 'false';
         } else {
-          updates.push({ key, value: input.checked ? 'true' : 'false' });
+          updates[input.dataset.key] = input.value;
         }
+      });
+
+      const statusEl = document.getElementById('status');
+      statusEl.textContent = 'Saving...';
+      statusEl.className = '';
+
+      try {
+        const res = await fetch('/api/admin/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updates)
+        });
+        const data = await res.json();
+        if (data.success) {
+          statusEl.textContent = 'Changes saved successfully!';
+          statusEl.className = 'success';
+          setTimeout(() => statusEl.textContent = '', 3000);
+        } else {
+          statusEl.textContent = 'Error saving changes.';
+          statusEl.className = 'error';
+        }
+      } catch (e) {
+        statusEl.textContent = 'Network error.';
+        statusEl.className = 'error';
       }
     });
-
-    try {
-      const res = await fetch('/api/admin/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ updates })
-      });
-      const data = await res.json();
-      if (data.success) {
-        status.textContent = 'Saved successfully!';
-        status.className = 'success';
-      } else {
-        status.textContent = 'Error: ' + data.error;
-        status.className = 'error';
-      }
-    } catch (e) {
-      status.textContent = 'Error: ' + e.message;
-      status.className = 'error';
-    }
-
-    btn.disabled = false;
-    btn.textContent = 'Save Changes';
-    
-    setTimeout(() => {
-      status.textContent = '';
-    }, 3000);
   });
 
   // Custom Commands
@@ -826,7 +871,18 @@
     } catch (e) { alert(e.message); }
   });
 
-  // Load config on startup
+  // Tab Logic
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.target).classList.add('active');
+    });
+  });
+
+  // Initialize
   loadConfig();
 </script>
 
