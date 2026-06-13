@@ -213,13 +213,13 @@
 </head>
 <body>
 
-<header>
-  <div class="header-top" style="justify-content: flex-start; gap: 20px; width: 100%;">
+<header style="display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 15px 20px;">
+  <div style="display: flex; align-items: center; gap: 20px;">
     <h1 style="margin: 0;">Admin Dashboard</h1>
     <button onclick="window.location.reload()" style="background: #3a3a44; color: #00ff7f; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#bf94ff'; this.style.color='#000';" onmouseout="this.style.background='#3a3a44'; this.style.color='#00ff7f';">↻ Refresh</button>
-    <div id="status" style="margin-left: auto;"></div>
+    <div id="status"></div>
   </div>
-  <div class="tabs" style="width: 100%;">
+  <div class="tabs" style="padding-bottom: 0; margin: 0; flex-wrap: nowrap;">
     <button class="tab-btn active" data-target="tab-global">Global Settings</button>
     <button class="tab-btn" data-target="tab-commands">Command Config</button>
     <button class="tab-btn" data-target="tab-custom">Custom Commands</button>
