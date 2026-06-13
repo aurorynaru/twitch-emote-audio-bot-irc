@@ -244,7 +244,7 @@ export function setupRoutes(app, {
       if (!command) return res.status(400).json({ success: false, error: 'Command required' });
       
       const val = durationMs > 0 ? (Date.now() + durationMs).toString() : 'forever';
-      const key = 'disabled_' + command;
+      const key = `cmd_${command}_disabled_until`;
       
       const db = getDb();
       await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [key, val, val]);
@@ -258,7 +258,7 @@ export function setupRoutes(app, {
       const { command } = req.body;
       if (!command) return res.status(400).json({ success: false, error: 'Command required' });
       
-      const key = 'disabled_' + command;
+      const key = `cmd_${command}_disabled_until`;
       
       const db = getDb();
       await db.run('DELETE FROM app_config WHERE key = ?', [key]);
@@ -271,9 +271,9 @@ export function setupRoutes(app, {
     try {
       const disabled = [];
       for (const [key, val] of Object.entries(globalConfig)) {
-        if (key.startsWith('disabled_')) {
-          const cmd = key.replace('disabled_', '');
-          if (val === 'true' || val === 'forever') {
+        if (key.startsWith('cmd_') && key.endsWith('_disabled_until')) {
+          const cmd = key.replace('cmd_', '').replace('_disabled_until', '');
+          if (val === 'forever') {
             disabled.push(cmd);
           } else if (!isNaN(val) && parseInt(val, 10) > Date.now()) {
             disabled.push(cmd);

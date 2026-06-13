@@ -579,7 +579,7 @@
 
   window.unblacklist = async function(key) {
     try {
-      const res = await fetch('/api/dashboard/config', {
+      const res = await fetch('/api/admin/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [key]: '' })
@@ -737,7 +737,7 @@
     }
 
     try {
-      const res = await fetch('/api/dashboard/config', {
+      const res = await fetch('/api/admin/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ['disabled_playsound_' + item]: disableValue })
@@ -762,7 +762,7 @@
     }
 
     try {
-      const res = await fetch('/api/dashboard/config', {
+      const res = await fetch('/api/admin/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ['disabled_emote_' + item]: disableValue })
