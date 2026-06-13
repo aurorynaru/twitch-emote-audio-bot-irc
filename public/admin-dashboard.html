@@ -207,6 +207,7 @@
     <button class="tab-btn" data-target="tab-custom">Custom Commands</button>
     <button class="tab-btn" data-target="tab-users">User Management</button>
     <button class="tab-btn" data-target="tab-system">System Actions</button>
+    <button class="tab-btn" data-target="tab-routes">Routes</button>
   </div>
 
   <div id="tab-global" class="tab-pane active">
@@ -214,8 +215,8 @@
     <div class="grid" id="globalSettingsGrid">
       <!-- Global config inputs injected here -->
     </div>
-    <div style="position: sticky; bottom: 20px; text-align: right; background: rgba(31, 31, 35, 0.95); padding: 15px; border-radius: 8px; border: 1px solid #bf94ff; box-shadow: 0 -4px 15px rgba(0,0,0,0.5); z-index: 90; margin-top: 20px;">
-      <button class="save-btn save-global-btn">Save Global Settings</button>
+    <div style="position: sticky; bottom: 20px; text-align: right; z-index: 90; margin-top: 20px; pointer-events: none;">
+      <button class="save-btn save-global-btn" style="pointer-events: auto; box-shadow: 0 4px 15px rgba(145, 70, 255, 0.4);">Save Global Settings</button>
     </div>
   </div>
 
@@ -224,8 +225,8 @@
     <div class="grid" id="commandsGrid">
       <!-- Command cards injected here -->
     </div>
-    <div style="position: sticky; bottom: 20px; text-align: right; background: rgba(31, 31, 35, 0.95); padding: 15px; border-radius: 8px; border: 1px solid #bf94ff; box-shadow: 0 -4px 15px rgba(0,0,0,0.5); z-index: 90; margin-top: 20px;">
-      <button class="save-btn save-commands-btn">Save Command Config</button>
+    <div style="position: sticky; bottom: 20px; text-align: right; z-index: 90; margin-top: 20px; pointer-events: none;">
+      <button class="save-btn save-commands-btn" style="pointer-events: auto; box-shadow: 0 4px 15px rgba(145, 70, 255, 0.4);">Save Command Config</button>
     </div>
   </div>
 
@@ -355,6 +356,43 @@
     <div id="blacklistedItemsList" style="margin-top: 10px;"></div>
   </div>
   </div>
+  <div id="tab-routes" class="tab-pane">
+    <h2>Important Links & Routes</h2>
+    <div class="card" style="margin-bottom: 20px; overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px;">
+        <thead>
+          <tr style="border-bottom: 1px solid #3a3a44;">
+            <th style="padding: 10px; color: #bf94ff;">Name</th>
+            <th style="padding: 10px; color: #00ff7f;">Route / URL</th>
+            <th style="padding: 10px; color: #adadb8;">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 10px; font-weight: bold;">OBS Overlay URL</td>
+            <td style="padding: 10px;"><a href="/overlay" target="_blank" style="color: #00ff7f; text-decoration: none;">/overlay</a></td>
+            <td style="padding: 10px;">The main URL to put into your OBS Browser Source for !showemote and !playsound to work.</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; font-weight: bold;">Upload Files UI</td>
+            <td style="padding: 10px;"><a href="/addsound" target="_blank" style="color: #00ff7f; text-decoration: none;">/addsound</a></td>
+            <td style="padding: 10px;">The page used to upload new playsound audio files and restore SQLite database files.</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; font-weight: bold;">Export Database</td>
+            <td style="padding: 10px;"><a href="/export-database" target="_blank" style="color: #00ff7f; text-decoration: none;">/export-database</a></td>
+            <td style="padding: 10px;">Click to instantly download a backup copy of your current SQLite database.</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px; font-weight: bold;">Export Playsounds</td>
+            <td style="padding: 10px;"><a href="/export-playsounds" target="_blank" style="color: #00ff7f; text-decoration: none;">/export-playsounds</a></td>
+            <td style="padding: 10px;">Click to instantly download a ZIP file containing all your uploaded audio files.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
 
 <script>
