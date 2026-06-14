@@ -499,6 +499,7 @@
             <th>Description</th>
             <th>Effect</th>
             <th>Value</th>
+            <th>Duration</th>
             <th>Uses</th>
             <th>Global</th>
             <th>Actions</th>
@@ -1524,6 +1525,7 @@
           <td style="font-size: 0.9em; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.description.replace(/"/g, '&quot;')}">${item.description}</td>
           <td>${item.effectType}</td>
           <td>${item.effectValue}</td>
+          <td>${item.effectDurationMinutes ? item.effectDurationMinutes + 'm' : '-'}</td>
           <td>${item.uses}</td>
           <td>${item.isGlobal === 1 ? 'Yes' : 'No'}</td>
           <td>
