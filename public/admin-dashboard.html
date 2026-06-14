@@ -148,9 +148,22 @@
       accent-color: #bf94ff;
     }
     #status {
-      margin-top: 10px;
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 12px 24px;
+      border-radius: 8px;
       font-weight: bold;
-      text-align: right;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      background: #18181b;
+      border: 1px solid #3f3f46;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    #status:not(:empty) {
+      opacity: 1;
     }
     .success { color: #00ff7f; }
     .error { color: #ff4a4a; }
