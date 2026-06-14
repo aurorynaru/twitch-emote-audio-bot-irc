@@ -155,6 +155,12 @@
     .success { color: #00ff7f; }
     .error { color: #ff4a4a; }
     
+    .rarity-badge { text-transform: uppercase; letter-spacing: 0.5px; border-radius: 4px; padding: 4px 8px; font-size: 0.85rem; font-weight: 700; display: inline-block; }
+    .rarity-legendary { color: #ffb700; background: rgba(255, 165, 0, 0.2); border: 1px solid rgba(255, 165, 0, 0.4); }
+    .rarity-rare { color: #c97cff; background: rgba(138, 43, 226, 0.2); border: 1px solid rgba(138, 43, 226, 0.4); }
+    .rarity-uncommon { color: #4db8ff; background: rgba(30, 144, 255, 0.2); border: 1px solid rgba(30, 144, 255, 0.4); }
+    .rarity-common { color: #ccc; background: rgba(128, 128, 128, 0.2); border: 1px solid rgba(128, 128, 128, 0.4); }
+
     /* Tabs CSS */
     .tabs {
       display: flex;
@@ -1514,7 +1520,7 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${item.name}</td>
-          <td>${item.rarity}</td>
+          <td><span class="rarity-badge rarity-${item.rarity.toLowerCase()}">${item.rarity.toUpperCase()}</span></td>
           <td style="font-size: 0.9em; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.description.replace(/"/g, '&quot;')}">${item.description}</td>
           <td>${item.effectType}</td>
           <td>${item.effectValue}</td>
