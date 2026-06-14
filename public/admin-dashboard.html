@@ -1527,7 +1527,7 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${item.name}</td>
-          <td><span class="rarity-badge rarity-${item.rarity.toLowerCase()}" title="Drop Chance: ${chance}%" style="cursor: help;">${item.rarity.toUpperCase()}</span></td>
+          <td><span class="rarity-badge rarity-${item.rarity.toLowerCase()}" title="Base Drop Chance: ${chance}%" style="cursor: help;">${item.rarity.toUpperCase()}</span></td>
           <td style="font-size: 0.9em; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.description.replace(/"/g, '&quot;')}">${item.description}</td>
           <td>${item.effectType}</td>
           <td>${item.effectValue}</td>
