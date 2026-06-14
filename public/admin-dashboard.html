@@ -130,7 +130,7 @@
       margin-bottom: 5px;
       color: #adadb8;
     }
-    input[type="number"], input[type="text"] {
+    input[type="number"], input[type="text"], select {
       background-color: #0e0e10;
       border: 1px solid #4f4f5a;
       color: #efeff1;
@@ -138,7 +138,7 @@
       border-radius: 4px;
       font-size: 14px;
     }
-    input[type="number"]:focus, input[type="text"]:focus {
+    input[type="number"]:focus, input[type="text"]:focus, select:focus {
       outline: none;
       border-color: #bf94ff;
     }
@@ -253,6 +253,28 @@
       z-index: 1001;
       pointer-events: none;
     }
+
+    /* Data Table CSS */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    .data-table th, .data-table td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid #3a3a44;
+      color: #efeff1;
+    }
+    .data-table th {
+      background-color: #0e0e10;
+      color: #bf94ff;
+      font-weight: bold;
+      border-bottom: 2px solid #3a3a44;
+    }
+    .data-table tbody tr:hover {
+      background-color: #2a2a30;
+    }
   </style>
 </head>
 <body>
@@ -268,6 +290,7 @@
     <button class="tab-btn" data-target="tab-commands">Command Config</button>
     <button class="tab-btn" data-target="tab-custom">Custom Commands</button>
     <button class="tab-btn" data-target="tab-users">User Management</button>
+    <button class="tab-btn" data-target="tab-items">Items</button>
     <button class="tab-btn" data-target="tab-system">System Actions</button>
     <button class="tab-btn" data-target="tab-routes">Links</button>
     <button class="tab-btn" data-target="tab-reference">Command Reference</button>
@@ -369,7 +392,118 @@
     </div>
   </div>
   </div>
+  <div id="tab-items" class="tab-pane">
+    <h2>Items Management</h2>
+    
+    <div class="card" style="margin-bottom: 20px;">
+      <h3>Add / Edit Item <span class="tooltip-icon" data-tooltip="Create a new item or edit an existing one. Using an existing name will update it.">ⓘ</span></h3>
+      <div class="grid">
+        <div class="form-group">
+          <label>Item Name <span class="tooltip-icon" data-tooltip="Unique name of the item.">ⓘ</span></label>
+          <input type="text" id="itemName" placeholder="e.g. radioactive fish">
+        </div>
+        <div class="form-group">
+          <label>Rarity <span class="tooltip-icon" data-tooltip="Rarity tier of the item.">ⓘ</span></label>
+          <select id="itemRarity">
+            <option value="Common">Common</option>
+            <option value="Uncommon">Uncommon</option>
+            <option value="Rare">Rare</option>
+            <option value="Legendary">Legendary</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Effect Type <span class="tooltip-icon" id="effectTypeTooltip" data-tooltip="Select an effect to see its description.">ⓘ</span></label>
+          <select id="itemEffectType" onchange="updateEffectTooltip()">
+            <option value="none">none</option>
+            <option value="instant_points">instant_points</option>
+            <option value="global_point_drain">global_point_drain</option>
+            <option value="global_point_boost">global_point_boost</option>
+            <option value="personal_point_boost">personal_point_boost</option>
+            <option value="fishing_time_reduction">fishing_time_reduction</option>
+            <option value="tax_collector">tax_collector</option>
+            <option value="global_point_debuff">global_point_debuff</option>
+            <option value="gamble_guaranteed_win">gamble_guaranteed_win</option>
+            <option value="mirror_shield">mirror_shield</option>
+            <option value="bomb">bomb</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Effect Value <span class="tooltip-icon" data-tooltip="Numeric magnitude of the effect (e.g., points to give/take, multiplier value).">ⓘ</span></label>
+          <input type="number" id="itemEffectValue" placeholder="e.g. 100">
+        </div>
+        <div class="form-group">
+          <label style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="enableItemDuration" onchange="document.getElementById('itemDuration').disabled = !this.checked; if(!this.checked) document.getElementById('itemDuration').value = '';" style="margin:0; width: 14px; height: 14px;">
+            Duration (Minutes) <span class="tooltip-icon" data-tooltip="How long the effect lasts in minutes (for continuous effects).">ⓘ</span>
+          </label>
+          <input type="number" id="itemDuration" placeholder="e.g. 30" disabled>
+        </div>
+        <div class="form-group">
+          <label>Uses <span class="tooltip-icon" data-tooltip="How many times this item can be used before being destroyed.">ⓘ</span></label>
+          <input type="number" id="itemUses" placeholder="e.g. 1" value="1">
+        </div>
+        <div class="form-group">
+          <label style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="enableItemMaxGambleLimit" onchange="document.getElementById('itemMaxGambleLimit').disabled = !this.checked; if(!this.checked) document.getElementById('itemMaxGambleLimit').value = '';" style="margin:0; width: 14px; height: 14px;">
+            Max Gamble Limit <span class="tooltip-icon" data-tooltip="Limit for guaranteed gamble wins.">ⓘ</span>
+          </label>
+          <input type="number" id="itemMaxGambleLimit" placeholder="e.g. 1000" disabled>
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Description <span class="tooltip-icon" data-tooltip="What does this item do? Displayed to users in chat/UI.">ⓘ</span></label>
+          <input type="text" id="itemDescription" placeholder="What does this item do?">
+        </div>
+        <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" id="itemIsGlobal" style="width: 20px; height: 20px; cursor: pointer;">
+          <label style="margin: 0; cursor: pointer;" for="itemIsGlobal">Is Global Effect? <span class="tooltip-icon" data-tooltip="Does this affect everyone in the chat?">ⓘ</span></label>
+        </div>
+        <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" id="itemAutoConsume" style="width: 20px; height: 20px; cursor: pointer;">
+          <label style="margin: 0; cursor: pointer;" for="itemAutoConsume">Auto Consume? <span class="tooltip-icon" data-tooltip="Should this item be consumed immediately upon receiving?">ⓘ</span></label>
+        </div>
+        <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" id="itemIsPercentage" style="width: 20px; height: 20px; cursor: pointer;">
+          <label style="margin: 0; cursor: pointer;" for="itemIsPercentage">Is Percentage? <span class="tooltip-icon" data-tooltip="Is the effect value a percentage multiplier?">ⓘ</span></label>
+        </div>
+      </div>
+      <button class="save-btn" style="margin-top: 15px;" id="saveItemBtn">Save Item</button>
+    </div>
 
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h3 style="margin: 0;">Existing Items</h3>
+        <div style="display: flex; gap: 15px; align-items: center;">
+          <div>
+            <input type="text" id="itemSearchFilter" placeholder="Search items..." oninput="loadItems()" style="padding: 6px; border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff;">
+          </div>
+          <div>
+            <label style="color: #adadb8; margin-right: 10px;">Sort by:</label>
+            <select id="itemSortSelect" style="padding: 6px; background: #18181b; color: #fff; border: 1px solid #3f3f46; border-radius: 4px;" onchange="loadItems()">
+              <option value="rarity">Rarity (Legendary -> Common)</option>
+              <option value="name">Name (A -> Z)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <table class="data-table" id="itemsTable">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Rarity</th>
+            <th>Description</th>
+            <th>Effect</th>
+            <th>Value</th>
+            <th>Uses</th>
+            <th>Global</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Injected via JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
   <div id="tab-system" class="tab-pane">
     <h2>System Actions</h2>
 
@@ -1007,7 +1141,10 @@
     if (!hasItems) {
       list.innerHTML = '<p style="color: #888; margin: 0; font-style: italic;">No specific playsounds, emotes, or modifiers are blacklisted.</p>';
     }
+    
+    loadItems();
   }
+
 
   window.unblacklist = async function(key) {
     try {
@@ -1340,6 +1477,166 @@
       const data = await res.json();
       if (data.success) alert('Overlay cleared successfully!');
       else alert('Error: ' + data.error);
+    } catch (e) { alert(e.message); }
+  });
+
+  // --- Items Management ---
+  async function loadItems() {
+    try {
+      const res = await fetch('/api/admin/items');
+      const data = await res.json();
+      if (!data.success) return console.error('Failed to load items:', data.error);
+      
+      const tbody = document.querySelector('#itemsTable tbody');
+      tbody.innerHTML = '';
+
+      const rarityOrder = { 'Legendary': 1, 'Rare': 2, 'Uncommon': 3, 'Common': 4 };
+      const sortMode = document.getElementById('itemSortSelect') ? document.getElementById('itemSortSelect').value : 'rarity';
+      const searchFilter = document.getElementById('itemSearchFilter') ? document.getElementById('itemSearchFilter').value.toLowerCase() : '';
+      
+      let filteredItems = data.items;
+      if (searchFilter) {
+        filteredItems = filteredItems.filter(item => item.name.toLowerCase().includes(searchFilter));
+      }
+
+      filteredItems.sort((a, b) => {
+        if (sortMode === 'rarity') {
+          const rA = rarityOrder[a.rarity] || 99;
+          const rB = rarityOrder[b.rarity] || 99;
+          if (rA !== rB) return rA - rB;
+          return a.name.localeCompare(b.name);
+        } else {
+          return a.name.localeCompare(b.name);
+        }
+      });
+      
+      filteredItems.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${item.name}</td>
+          <td>${item.rarity}</td>
+          <td style="font-size: 0.9em; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.description.replace(/"/g, '&quot;')}">${item.description}</td>
+          <td>${item.effectType}</td>
+          <td>${item.effectValue}</td>
+          <td>${item.uses}</td>
+          <td>${item.isGlobal === 1 ? 'Yes' : 'No'}</td>
+          <td>
+            <button class="save-btn" style="background-color: #3b82f6; padding: 4px 8px; font-size: 12px; margin-right: 5px; margin-bottom: 0;" onclick="editItem('${item.name.replace(/'/g, "\\'")}')">Edit</button>
+            <button class="save-btn" style="background-color: #ef4444; padding: 4px 8px; font-size: 12px; margin-bottom: 0;" onclick="deleteItem('${item.name.replace(/'/g, "\\'")}')">Delete</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      
+      // Store globally for edit function
+      window.allItems = data.items;
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  window.editItem = function(name) {
+    const item = window.allItems.find(i => i.name === name);
+    if (!item) return;
+    
+    window.editingItemOriginalName = item.name;
+    document.getElementById('itemName').value = item.name;
+    document.getElementById('itemRarity').value = item.rarity;
+    document.getElementById('itemEffectType').value = item.effectType;
+    document.getElementById('itemEffectValue').value = item.effectValue;
+    
+    if (item.effectDurationMinutes && item.effectDurationMinutes > 0) {
+      document.getElementById('enableItemDuration').checked = true;
+      document.getElementById('itemDuration').disabled = false;
+      document.getElementById('itemDuration').value = item.effectDurationMinutes;
+    } else {
+      document.getElementById('enableItemDuration').checked = false;
+      document.getElementById('itemDuration').disabled = true;
+      document.getElementById('itemDuration').value = '';
+    }
+
+    document.getElementById('itemUses').value = item.uses;
+
+    if (item.maxGambleLimit && item.maxGambleLimit > 0) {
+      document.getElementById('enableItemMaxGambleLimit').checked = true;
+      document.getElementById('itemMaxGambleLimit').disabled = false;
+      document.getElementById('itemMaxGambleLimit').value = item.maxGambleLimit;
+    } else {
+      document.getElementById('enableItemMaxGambleLimit').checked = false;
+      document.getElementById('itemMaxGambleLimit').disabled = true;
+      document.getElementById('itemMaxGambleLimit').value = '';
+    }
+
+    document.getElementById('itemDescription').value = item.description;
+    document.getElementById('itemIsGlobal').checked = item.isGlobal === 1;
+    document.getElementById('itemAutoConsume').checked = item.autoConsume === 1;
+    document.getElementById('itemIsPercentage').checked = item.isPercentage === 1;
+  };
+
+  window.deleteItem = async function(name) {
+    if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+    try {
+      const res = await fetch(`/api/admin/items/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        alert('Item deleted.');
+        loadItems();
+      } else alert('Error: ' + data.error);
+    } catch (e) { alert(e.message); }
+  };
+
+  window.updateEffectTooltip = function() {
+    const type = document.getElementById('itemEffectType').value;
+    const tooltipIcon = document.getElementById('effectTypeTooltip');
+    const descriptions = {
+      'none': 'No programmatic effect.',
+      'instant_points': 'Grants or subtracts a specific amount of points immediately.',
+      'global_point_drain': 'Drains points from all users in chat.',
+      'global_point_boost': 'Applies a multiplier to points gained globally.',
+      'personal_point_boost': 'Applies a multiplier to points gained for the user.',
+      'fishing_time_reduction': 'Reduces the time it takes to fish.',
+      'tax_collector': 'Collects a portion of points gained from duels.',
+      'global_point_debuff': 'Reduces points gained globally.',
+      'gamble_guaranteed_win': 'Guarantees a win on the next gamble up to the Max Gamble Limit.',
+      'mirror_shield': 'Reflects negative effects back at attackers.',
+      'bomb': 'Explodes and causes a random effect.'
+    };
+    tooltipIcon.setAttribute('data-tooltip', descriptions[type] || 'Select an effect to see its description.');
+  };
+
+  // Initialize tooltip on load
+  setTimeout(updateEffectTooltip, 500);
+
+  document.getElementById('saveItemBtn').addEventListener('click', async () => {
+    const payload = {
+      originalName: window.editingItemOriginalName || null,
+      name: document.getElementById('itemName').value,
+      rarity: document.getElementById('itemRarity').value,
+      effectType: document.getElementById('itemEffectType').value,
+      effectValue: document.getElementById('itemEffectValue').value,
+      effectDurationMinutes: document.getElementById('enableItemDuration').checked ? document.getElementById('itemDuration').value : 0,
+      uses: document.getElementById('itemUses').value,
+      maxGambleLimit: document.getElementById('enableItemMaxGambleLimit').checked ? document.getElementById('itemMaxGambleLimit').value : 0,
+      description: document.getElementById('itemDescription').value,
+      isGlobal: document.getElementById('itemIsGlobal').checked,
+      autoConsume: document.getElementById('itemAutoConsume').checked,
+      isPercentage: document.getElementById('itemIsPercentage').checked,
+    };
+    
+    if (!payload.name) return alert('Item Name is required.');
+    
+    try {
+      const res = await fetch('/api/admin/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Item saved!');
+        window.editingItemOriginalName = null;
+        loadItems();
+      } else alert('Error: ' + data.error);
     } catch (e) { alert(e.message); }
   });
 

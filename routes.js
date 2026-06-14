@@ -22,7 +22,8 @@ export function setupRoutes(app, {
   FISHING_ITEMS,
   FISHING_RARITIES,
   swapDatabase,
-  clearOverlaySystem
+  clearOverlaySystem,
+  loadItemsConfig
 }) {
   const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -196,6 +197,59 @@ export function setupRoutes(app, {
       await db.run('UPDATE users SET points = ? WHERE username = ?', [parseInt(points, 10), username.toLowerCase()]);
       res.json({ success: true });
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  app.get('/api/admin/items', adminAuth, async (req, res) => {
+    try {
+      const db = getDb();
+      const items = await db.all('SELECT * FROM items');
+      res.json({ success: true, items });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post('/api/admin/items', adminAuth, express.json(), async (req, res) => {
+    try {
+      const { originalName, name, rarity, description, effectType, effectValue, effectDurationMinutes, isGlobal, uses, autoConsume, isPercentage, maxGambleLimit } = req.body;
+      if (!name) return res.status(400).json({ success: false, error: 'Name is required' });
+      
+      const db = getDb();
+      
+      if (originalName && originalName !== name) {
+        await db.run('DELETE FROM items WHERE name = ?', [originalName]);
+      }
+
+      await db.run(`
+        INSERT INTO items (name, rarity, description, effectType, effectValue, effectDurationMinutes, isGlobal, uses, autoConsume, isPercentage, maxGambleLimit)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(name) DO UPDATE SET 
+          rarity=excluded.rarity, description=excluded.description, effectType=excluded.effectType,
+          effectValue=excluded.effectValue, effectDurationMinutes=excluded.effectDurationMinutes,
+          isGlobal=excluded.isGlobal, uses=excluded.uses, autoConsume=excluded.autoConsume,
+          isPercentage=excluded.isPercentage, maxGambleLimit=excluded.maxGambleLimit
+      `, [
+        name, rarity, description, effectType, parseFloat(effectValue) || 0,
+        parseInt(effectDurationMinutes) || 0, isGlobal ? 1 : 0, parseInt(uses) || 1, autoConsume ? 1 : 0,
+        isPercentage ? 1 : 0, parseInt(maxGambleLimit) || 0
+      ]);
+      
+      if (loadItemsConfig) await loadItemsConfig();
+      res.json({ success: true, message: 'Item saved.' });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.delete('/api/admin/items/:name', adminAuth, async (req, res) => {
+    try {
+      const db = getDb();
+      await db.run('DELETE FROM items WHERE name = ?', [req.params.name]);
+      if (loadItemsConfig) await loadItemsConfig();
+      res.json({ success: true, message: 'Item deleted.' });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
   });
 
   app.post('/api/admin/masspointsadd', adminAuth, express.json(), async (req, res) => {

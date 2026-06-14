@@ -156,32 +156,59 @@ let FISHING_ITEMS = {
 };
 let ITEMS_REGISTRY = {};
 
-function loadItemsConfig() {
+async function loadItemsConfig() {
   try {
-    if (fs.existsSync('./items.json')) {
+    let itemsFromDb = await db.all('SELECT * FROM items');
+    
+    // Migration logic
+    if (itemsFromDb.length === 0 && fs.existsSync('./items.json')) {
+      console.log('* Migrating items from items.json to database...');
       const data = fs.readFileSync('./items.json', 'utf8');
       const parsed = JSON.parse(data);
-      for (let key in ITEMS_REGISTRY) delete ITEMS_REGISTRY[key];
-      
-      FISHING_ITEMS = { common: [], uncommon: [], rare: [], legendary: [] };
-      
       for (const [name, info] of Object.entries(parsed)) {
-        const lowerName = name.toLowerCase();
-        ITEMS_REGISTRY[lowerName] = info;
-        const rarity = info.rarity.toLowerCase();
-        if (FISHING_ITEMS[rarity]) {
-          FISHING_ITEMS[rarity].push({ name: lowerName, originalName: name, rarity: info.rarity, description: info.description });
-        }
+        await db.run(`
+          INSERT INTO items (name, rarity, description, effectType, effectValue, effectDurationMinutes, isGlobal, uses, autoConsume, isPercentage, maxGambleLimit)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          name, info.rarity || 'Common', info.description || '', info.effectType || '', info.effectValue || 0,
+          info.effectDurationMinutes || 0, info.isGlobal ? 1 : 0, info.uses || 1, info.autoConsume ? 1 : 0,
+          info.isPercentage ? 1 : 0, info.maxGambleLimit || 0
+        ]);
       }
-      console.log(`* Loaded ${Object.keys(ITEMS_REGISTRY).length} items from items.json`);
-    } else {
-      console.log('* items.json not found, using empty item pool');
+      itemsFromDb = await db.all('SELECT * FROM items');
     }
+
+    for (let key in ITEMS_REGISTRY) delete ITEMS_REGISTRY[key];
+    FISHING_ITEMS = { common: [], uncommon: [], rare: [], legendary: [] };
+
+    for (const row of itemsFromDb) {
+      const lowerName = row.name.toLowerCase();
+      // Reconstruct object in memory
+      const info = {
+        name: row.name,
+        rarity: row.rarity,
+        description: row.description,
+        effectType: row.effectType,
+        effectValue: row.effectValue,
+        effectDurationMinutes: row.effectDurationMinutes,
+        isGlobal: row.isGlobal === 1,
+        uses: row.uses,
+        autoConsume: row.autoConsume === 1,
+        isPercentage: row.isPercentage === 1,
+        maxGambleLimit: row.maxGambleLimit
+      };
+      
+      ITEMS_REGISTRY[lowerName] = info;
+      const rarity = info.rarity.toLowerCase();
+      if (FISHING_ITEMS[rarity]) {
+        FISHING_ITEMS[rarity].push({ name: lowerName, originalName: row.name, rarity: info.rarity, description: info.description });
+      }
+    }
+    console.log(`* Loaded ${Object.keys(ITEMS_REGISTRY).length} items from database`);
   } catch (err) {
-    console.error('Error loading items.json:', err);
+    console.error('Error loading items:', err);
   }
 }
-loadItemsConfig();
 
 const FISHING_RARITIES = [
   { rarity: 'legendary', threshold: 0.7 },
@@ -277,6 +304,22 @@ async function initDb() {
     )
   `);
 
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS items (
+      name TEXT PRIMARY KEY,
+      rarity TEXT,
+      description TEXT,
+      effectType TEXT,
+      effectValue REAL,
+      effectDurationMinutes INTEGER,
+      isGlobal INTEGER,
+      uses INTEGER,
+      autoConsume INTEGER,
+      isPercentage INTEGER,
+      maxGambleLimit INTEGER
+    )
+  `);
+
   try {
     await db.exec('ALTER TABLE emote_stats ADD COLUMN chatwar_points_spent INTEGER DEFAULT 0');
   } catch (err) { }
@@ -348,6 +391,7 @@ async function swapDatabase() {
     fs.renameSync(stagingPath, actualPath);
   }
   await initDb();
+  await loadItemsConfig();
 }
 
 
@@ -498,7 +542,8 @@ setupRoutes(app, {
   FISHING_ITEMS,
   FISHING_RARITIES,
   swapDatabase,
-  clearOverlaySystem
+  clearOverlaySystem,
+  loadItemsConfig
 });
 
 app.listen(PORT, () => {
@@ -575,6 +620,7 @@ async function loadThirdPartyEmotes(broadcasterId) {
 
 async function start() {
   await initDb();
+  await loadItemsConfig();
   console.log('* SQLite Database Initialized!');
 
   try {
@@ -3088,31 +3134,11 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         if (!isMod) return;
 
         try {
-          const fs = await import('fs');
-          const path = await import('path');
-          const __dirname = path.dirname(new URL(import.meta.url).pathname).replace(/^\/([A-Za-z]:)/, '$1');
-          
-          const itemsData = fs.readFileSync(path.join(__dirname, 'items.json'), 'utf8');
-          const parsed = JSON.parse(itemsData);
-          
-          // Clear and reload
-          for (let key in ITEMS_REGISTRY) delete ITEMS_REGISTRY[key];
-          
-          FISHING_ITEMS = { common: [], uncommon: [], rare: [], legendary: [] };
-          
-          for (const [name, info] of Object.entries(parsed)) {
-            const lowerName = name.toLowerCase();
-            ITEMS_REGISTRY[lowerName] = info;
-            const rarity = info.rarity.toLowerCase();
-            if (FISHING_ITEMS[rarity]) {
-              FISHING_ITEMS[rarity].push({ name: lowerName, originalName: name, rarity: info.rarity, description: info.description });
-            }
-          }
-
-          await sendChatMessage(`items.json has been reloaded successfully!`);
+          await loadItemsConfig();
+          await sendChatMessage(`Items have been reloaded successfully from the database!`);
         } catch (e) {
-          console.error("Failed to reload items:", e);
-          await sendChatMessage(`Failed to reload items.json: ${e.message}`);
+          console.error(e);
+          await sendChatMessage(`Failed to reload items: ${e.message}`);
         }
       }
     },
