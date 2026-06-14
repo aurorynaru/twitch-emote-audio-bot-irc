@@ -179,7 +179,10 @@ async function loadItemsConfig() {
     }
 
     for (let key in ITEMS_REGISTRY) delete ITEMS_REGISTRY[key];
-    FISHING_ITEMS = { common: [], uncommon: [], rare: [], legendary: [] };
+    FISHING_ITEMS.common = [];
+    FISHING_ITEMS.uncommon = [];
+    FISHING_ITEMS.rare = [];
+    FISHING_ITEMS.legendary = [];
 
     for (const row of itemsFromDb) {
       const lowerName = row.name.toLowerCase();
@@ -201,7 +204,17 @@ async function loadItemsConfig() {
       ITEMS_REGISTRY[lowerName] = info;
       const rarity = info.rarity.toLowerCase();
       if (FISHING_ITEMS[rarity]) {
-        FISHING_ITEMS[rarity].push({ name: lowerName, originalName: row.name, rarity: info.rarity, description: info.description });
+        FISHING_ITEMS[rarity].push({ 
+          name: lowerName, 
+          originalName: row.name, 
+          rarity: info.rarity, 
+          description: info.description,
+          effectType: info.effectType,
+          effectValue: info.effectValue,
+          uses: info.uses,
+          effectDurationMinutes: info.effectDurationMinutes,
+          isGlobal: info.isGlobal ? 1 : 0
+        });
       }
     }
     console.log(`* Loaded ${Object.keys(ITEMS_REGISTRY).length} items from database`);
