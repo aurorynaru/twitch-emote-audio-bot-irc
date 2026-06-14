@@ -483,6 +483,12 @@
             <input type="text" id="itemSearchFilter" placeholder="Search items..." oninput="loadItems()" style="padding: 6px; border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff;">
           </div>
           <div>
+            <label style="color: #adadb8; margin-right: 10px;">Filter Effect:</label>
+            <select id="itemEffectFilter" style="padding: 6px; background: #18181b; color: #fff; border: 1px solid #3f3f46; border-radius: 4px;" onchange="loadItems()">
+              <option value="">All Effects</option>
+            </select>
+          </div>
+          <div>
             <label style="color: #adadb8; margin-right: 10px;">Sort by:</label>
             <select id="itemSortSelect" style="padding: 6px; background: #18181b; color: #fff; border: 1px solid #3f3f46; border-radius: 4px;" onchange="loadItems()">
               <option value="rarity">Rarity (Legendary -> Common)</option>
@@ -1500,10 +1506,26 @@
       const rarityOrder = { 'Legendary': 1, 'Rare': 2, 'Uncommon': 3, 'Common': 4 };
       const sortMode = document.getElementById('itemSortSelect') ? document.getElementById('itemSortSelect').value : 'rarity';
       const searchFilter = document.getElementById('itemSearchFilter') ? document.getElementById('itemSearchFilter').value.toLowerCase() : '';
+      const effectFilterSelect = document.getElementById('itemEffectFilter');
+      const effectFilter = effectFilterSelect ? effectFilterSelect.value : '';
+
+      if (effectFilterSelect && effectFilterSelect.options.length <= 1) {
+        const uniqueEffects = [...new Set(data.items.map(item => item.effectType))].filter(Boolean).sort();
+        uniqueEffects.forEach(effect => {
+          const option = document.createElement('option');
+          option.value = effect;
+          option.textContent = effect;
+          effectFilterSelect.appendChild(option);
+        });
+        effectFilterSelect.value = effectFilter;
+      }
       
       let filteredItems = data.items;
       if (searchFilter) {
         filteredItems = filteredItems.filter(item => item.name.toLowerCase().includes(searchFilter));
+      }
+      if (effectFilter) {
+        filteredItems = filteredItems.filter(item => item.effectType === effectFilter);
       }
 
       filteredItems.sort((a, b) => {
