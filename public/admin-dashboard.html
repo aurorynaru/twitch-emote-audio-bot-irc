@@ -562,7 +562,10 @@
           <label style="margin: 0; cursor: pointer;" for="itemIsPercentage">Is Percentage? <span class="tooltip-icon" data-tooltip="Is the effect value a percentage multiplier?">ⓘ</span></label>
         </div>
       </div>
-      <button class="save-btn" style="margin-top: 15px;" id="saveItemBtn">Save Item</button>
+      <div style="display: flex; gap: 10px; margin-top: 15px;">
+        <button class="save-btn" id="saveItemBtn">Save Item</button>
+        <button class="save-btn" id="cancelEditItemBtn" style="display: none; background: #3f3f46;" onclick="clearItemForm()">Cancel / Clear</button>
+      </div>
     </div>
 
     <div class="card">
@@ -1884,6 +1887,28 @@
     }
   }
 
+  window.clearItemForm = function() {
+    window.editingItemOriginalName = null;
+    document.getElementById('itemName').value = '';
+    document.getElementById('itemRarity').value = 'Common';
+    document.getElementById('itemEffectType').value = 'none';
+    document.getElementById('itemEffectValue').value = '';
+    document.getElementById('enableItemDuration').checked = false;
+    document.getElementById('itemDuration').disabled = true;
+    document.getElementById('itemDuration').value = '';
+    document.getElementById('itemUses').value = '1';
+    document.getElementById('enableItemMaxGambleLimit').checked = false;
+    document.getElementById('itemMaxGambleLimit').disabled = true;
+    document.getElementById('itemMaxGambleLimit').value = '';
+    document.getElementById('itemDescription').value = '';
+    document.getElementById('itemIsGlobal').checked = false;
+    document.getElementById('itemAutoConsume').checked = false;
+    document.getElementById('itemIsPercentage').checked = false;
+    
+    document.getElementById('saveItemBtn').textContent = 'Save Item';
+    document.getElementById('cancelEditItemBtn').style.display = 'none';
+  };
+
   window.editItem = function(name) {
     const item = window.allItems.find(i => i.name === name);
     if (!item) return;
@@ -1920,6 +1945,9 @@
     document.getElementById('itemIsGlobal').checked = item.isGlobal === 1;
     document.getElementById('itemAutoConsume').checked = item.autoConsume === 1;
     document.getElementById('itemIsPercentage').checked = item.isPercentage === 1;
+
+    document.getElementById('saveItemBtn').textContent = 'Update Item';
+    document.getElementById('cancelEditItemBtn').style.display = 'block';
   };
 
   window.deleteItem = async function(name) {
@@ -1993,7 +2021,7 @@
       const data = await res.json();
       if (data.success) {
         showToast('Item saved!', 'success');
-        window.editingItemOriginalName = null;
+        clearItemForm();
         loadItems();
       } else showToast('Error: ' + data.error, 'error');
     } catch (e) { showToast(e.message, 'error'); }
