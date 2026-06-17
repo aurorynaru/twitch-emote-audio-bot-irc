@@ -1118,6 +1118,17 @@ async function start() {
           
           if (!isLegacy && (!itemConfig || !itemConfig.effectType || itemConfig.effectType === 'none')) continue;
 
+          if (!isLegacy) {
+             const effType = itemConfig.effectType;
+             if (['fishing_debuff_target', 'steal_points', 'destroy_points_target', 'personal_point_debuff_target'].includes(effType)) {
+                 const actualTarget = useTarget || chatterName;
+                 if (actualTarget === chatterName) {
+                     chatMsgs.push(`⚠️ You must specify another user as a target to use ${itemName}!`);
+                     continue;
+                 }
+             }
+          }
+
           await db.run('UPDATE user_inventory SET quantity = quantity - ? WHERE username = ? AND item_name = ?', [amountToUse, chatterName, itemName]);
 
           if (isLegacy) {
@@ -1212,10 +1223,10 @@ async function start() {
              const pendingFish = await db.get('SELECT * FROM pending_fish WHERE username = ?', [actualTarget]);
              if (pendingFish) {
                 await db.run('UPDATE pending_fish SET catch_time = catch_time + ? WHERE username = ?', [timeToAddMs, actualTarget]);
-                chatMsgs.push(`🎣 ${chatterName} used ${amountToUse}x items to sabotage ${actualTarget}'s fishing trip! Added ${timeToAddMinutes} minutes to their wait time!`);
+                chatMsgs.push(`🎣 ${chatterName} used ${amountToUse}x ${itemName} to sabotage ${actualTarget}'s fishing trip! Added ${timeToAddMinutes} minutes to their wait time!`);
              } else {
                 await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [actualTarget, 'delayed_fish', timeToAddMs, timeToAddMs]);
-                chatMsgs.push(`${chatterName} used ${amountToUse}x items to curse ${actualTarget}'s fishing rod! Their next trip will take ${timeToAddMinutes} minutes longer!`);
+                chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} to curse ${actualTarget}'s fishing rod! Their next trip will take ${timeToAddMinutes} minutes longer!`);
              }
           } else if (effectType === 'steal_points') {
              const actualTarget = useTarget || chatterName;
@@ -1224,35 +1235,54 @@ async function start() {
              } else {
                 const targetRow = await db.get('SELECT points FROM users WHERE username = ?', [actualTarget]);
                 if (targetRow && targetRow.points > 0) {
-                    let isShielded = false;
+                    let remainingAttacks = amountToUse;
+                    let shieldedAttacks = 0;
+                    let defendedAttacks = 0;
                     let defenseMultiplier = 1;
-                    
+
                     const pointShields = await getActiveEffects(actualTarget, 'point_shield');
                     if (pointShields.length > 0) {
                         const shield = pointShields[0];
-                        await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [shield.id]);
-                        isShielded = true;
-                        chatMsgs.push(`🛡️ ${actualTarget}'s POINT SHIELD completely blocked ${chatterName}'s steal attack!`);
-                    }
-
-                    if (!isShielded) {
-                        const pointDefenses = await getActiveEffects(actualTarget, 'point_defense');
-                        if (pointDefenses.length > 0) {
-                            const defense = pointDefenses[0];
-                            await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [defense.id]);
-                            defenseMultiplier = Math.max(0, 1 - defense.effect_value);
-                            chatMsgs.push(`🛡️ ${actualTarget}'s POINT DEFENSE reduced the steal amount by ${Math.round(defense.effect_value * 100)}%!`);
+                        shieldedAttacks = Math.min(shield.uses_left, remainingAttacks);
+                        if (shieldedAttacks > 0) {
+                            await db.run('UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?', [shieldedAttacks, shield.id]);
+                            remainingAttacks -= shieldedAttacks;
+                            if (remainingAttacks === 0) {
+                                chatMsgs.push(`🛡️ ${actualTarget}'s POINT SHIELD completely blocked ${chatterName}'s steal attack!`);
+                            } else {
+                                chatMsgs.push(`🛡️ ${actualTarget}'s POINT SHIELD blocked ${shieldedAttacks} of ${chatterName}'s steal attacks, but broke!`);
+                            }
                         }
                     }
 
-                    if (!isShielded) {
-                        let calcAmount = baseValue * amountToUse;
-                        if (itemConfig.isPercentage) calcAmount = targetRow.points * baseValue * amountToUse;
-                        calcAmount = calcAmount * defenseMultiplier;
-                        const stealAmount = Math.floor(Math.min(targetRow.points, calcAmount));
+                    if (remainingAttacks > 0) {
+                        const pointDefenses = await getActiveEffects(actualTarget, 'point_defense');
+                        if (pointDefenses.length > 0) {
+                            const defense = pointDefenses[0];
+                            defendedAttacks = Math.min(defense.uses_left, remainingAttacks);
+                            if (defendedAttacks > 0) {
+                                await db.run('UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?', [defendedAttacks, defense.id]);
+                                defenseMultiplier = Math.max(0, 1 - defense.effect_value);
+                                chatMsgs.push(`🛡️ ${actualTarget}'s POINT DEFENSE reduced ${defendedAttacks} of ${chatterName}'s steal attacks by ${Math.round(defense.effect_value * 100)}%!`);
+                            }
+                        }
+                    }
+
+                    if (remainingAttacks > 0) {
+                        const undefendedAttacks = remainingAttacks - defendedAttacks;
+                        let totalCalcAmount = 0;
+                        if (itemConfig.isPercentage) {
+                            const perAttack = targetRow.points * baseValue;
+                            totalCalcAmount = (defendedAttacks * perAttack * defenseMultiplier) + (undefendedAttacks * perAttack);
+                        } else {
+                            const perAttack = baseValue;
+                            totalCalcAmount = (defendedAttacks * perAttack * defenseMultiplier) + (undefendedAttacks * perAttack);
+                        }
+                        
+                        const stealAmount = Math.floor(Math.min(targetRow.points, totalCalcAmount));
                         await db.run('UPDATE users SET points = points - ? WHERE username = ?', [stealAmount, actualTarget]);
                         await addPointsWithBonus(chatterName, stealAmount);
-                        chatMsgs.push(`${chatterName} used ${amountToUse}x items to steal ${stealAmount} points from ${actualTarget}!`);
+                        chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} to steal ${stealAmount} points from ${actualTarget}!`);
                     }
                  } else {
                    chatMsgs.push(`⚠️ ${chatterName} tried to steal points from ${actualTarget}, but they are broke!`);
@@ -1265,34 +1295,53 @@ async function start() {
               } else {
                  const targetRow = await db.get('SELECT points FROM users WHERE username = ?', [actualTarget]);
                  if (targetRow && targetRow.points > 0) {
-                    let isShielded = false;
+                    let remainingAttacks = amountToUse;
+                    let shieldedAttacks = 0;
+                    let defendedAttacks = 0;
                     let defenseMultiplier = 1;
-                    
+
                     const pointShields = await getActiveEffects(actualTarget, 'point_shield');
                     if (pointShields.length > 0) {
                         const shield = pointShields[0];
-                        await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [shield.id]);
-                        isShielded = true;
-                        chatMsgs.push(`🛡️ ${actualTarget}'s POINT SHIELD completely blocked ${chatterName}'s destroy attack!`);
-                    }
-
-                    if (!isShielded) {
-                        const pointDefenses = await getActiveEffects(actualTarget, 'point_defense');
-                        if (pointDefenses.length > 0) {
-                            const defense = pointDefenses[0];
-                            await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [defense.id]);
-                            defenseMultiplier = Math.max(0, 1 - defense.effect_value);
-                            chatMsgs.push(`🛡️ ${actualTarget}'s POINT DEFENSE reduced the destroy amount by ${Math.round(defense.effect_value * 100)}%!`);
+                        shieldedAttacks = Math.min(shield.uses_left, remainingAttacks);
+                        if (shieldedAttacks > 0) {
+                            await db.run('UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?', [shieldedAttacks, shield.id]);
+                            remainingAttacks -= shieldedAttacks;
+                            if (remainingAttacks === 0) {
+                                chatMsgs.push(`🛡️ ${actualTarget}'s POINT SHIELD completely blocked ${chatterName}'s attack!`);
+                            } else {
+                                chatMsgs.push(`🛡️ ${actualTarget}'s POINT SHIELD blocked ${shieldedAttacks} of ${chatterName}'s attacks, but broke!`);
+                            }
                         }
                     }
 
-                    if (!isShielded) {
-                        let calcAmount = baseValue * amountToUse;
-                        if (itemConfig.isPercentage) calcAmount = targetRow.points * baseValue * amountToUse;
-                        calcAmount = calcAmount * defenseMultiplier;
-                        const destroyAmount = Math.floor(Math.min(targetRow.points, calcAmount));
+                    if (remainingAttacks > 0) {
+                        const pointDefenses = await getActiveEffects(actualTarget, 'point_defense');
+                        if (pointDefenses.length > 0) {
+                            const defense = pointDefenses[0];
+                            defendedAttacks = Math.min(defense.uses_left, remainingAttacks);
+                            if (defendedAttacks > 0) {
+                                await db.run('UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?', [defendedAttacks, defense.id]);
+                                defenseMultiplier = Math.max(0, 1 - defense.effect_value);
+                                chatMsgs.push(`🛡️ ${actualTarget}'s POINT DEFENSE reduced ${defendedAttacks} of ${chatterName}'s attacks by ${Math.round(defense.effect_value * 100)}%!`);
+                            }
+                        }
+                    }
+
+                    if (remainingAttacks > 0) {
+                        const undefendedAttacks = remainingAttacks - defendedAttacks;
+                        let totalCalcAmount = 0;
+                        if (itemConfig.isPercentage) {
+                            const perAttack = targetRow.points * baseValue;
+                            totalCalcAmount = (defendedAttacks * perAttack * defenseMultiplier) + (undefendedAttacks * perAttack);
+                        } else {
+                            const perAttack = baseValue;
+                            totalCalcAmount = (defendedAttacks * perAttack * defenseMultiplier) + (undefendedAttacks * perAttack);
+                        }
+                        
+                        const destroyAmount = Math.floor(Math.min(targetRow.points, totalCalcAmount));
                         await db.run('UPDATE users SET points = points - ? WHERE username = ?', [destroyAmount, actualTarget]);
-                        chatMsgs.push(`${chatterName} used ${amountToUse}x items to destroy ${destroyAmount} of ${actualTarget}'s points!`);
+                        chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} to destroy ${destroyAmount} of ${actualTarget}'s points!`);
                     }
                  } else {
                     chatMsgs.push(`⚠️ ${chatterName} tried to destroy points from ${actualTarget}, but they are already broke!`);
@@ -1307,7 +1356,7 @@ async function start() {
                'INSERT INTO active_effects (target_user, effect_type, effect_value, expires_at, caster) VALUES (?, ?, ?, ?, ?)',
                [actualTarget, 'global_point_debuff', combinedValue, now + durationMs, chatterName]
              );
-             chatMsgs.push(`📉 ${chatterName} used ${amountToUse}x items to curse ${actualTarget} with a ${Math.round(combinedValue * 100)}% point gain debuff for ${itemConfig.effectDurationMinutes} minutes!`);
+             chatMsgs.push(`📉 ${chatterName} used ${amountToUse}x ${itemName} to curse ${actualTarget} with a ${Math.round(combinedValue * 100)}% point gain debuff for ${itemConfig.effectDurationMinutes} minutes!`);
           } else {
 
             const uses = itemConfig.uses * amountToUse;
@@ -1322,11 +1371,15 @@ async function start() {
             }
           }
           
-          totalUsed.push(`${amountToUse}x ${itemName}`);
+          if (!['fishing_debuff_target', 'steal_points', 'destroy_points_target', 'personal_point_debuff_target'].includes(effectType)) {
+             totalUsed.push(`${amountToUse}x ${itemName}`);
+          }
         }
 
-        if (totalUsed.length > 0) {
-          await sendChatMessage(`✨ ${chatterName} redeemed: ${totalUsed.join(', ')}!${totalPointsGained > 0 ? ` (Gained ${totalPointsGained} pts)` : ''}`, chatterName);
+        if (totalUsed.length > 0 || chatMsgs.length > 0) {
+          if (totalUsed.length > 0) {
+            await sendChatMessage(`${chatterName} redeemed: ${totalUsed.join(', ')}!${totalPointsGained > 0 ? ` (Gained ${totalPointsGained} pts)` : ''}`, chatterName);
+          }
           for (const msg of chatMsgs) {
              await sendChatMessage(msg);
           }

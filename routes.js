@@ -311,7 +311,7 @@ export function setupRoutes(app, {
       
       const inventory = await db.all('SELECT item_name, quantity FROM user_inventory WHERE username = ? AND quantity > 0', [username]);
       const now = Date.now();
-      const activeEffects = await db.all('SELECT * FROM active_effects WHERE target_user = ? AND (expires_at IS NULL OR expires_at > ?)', [username, now]);
+      const activeEffects = await db.all('SELECT * FROM active_effects WHERE target_user = ? AND (expires_at > ? OR uses_left > 0)', [username, now]);
       const modifiers = await db.all('SELECT * FROM user_modifiers WHERE username = ?', [username]);
       
       res.json({ success: true, points: userRow.points, xp: userRow.xp || 0, level, inventory, activeEffects, modifiers });
