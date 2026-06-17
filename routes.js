@@ -299,6 +299,72 @@ export function setupRoutes(app, {
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
   });
 
+  app.get('/api/admin/user-details/:username', adminAuth, async (req, res) => {
+    try {
+      const db = getDb();
+      const username = req.params.username.toLowerCase();
+      const userRow = await db.get('SELECT points, xp FROM users WHERE username = ?', [username]);
+      if (!userRow) return res.status(404).json({ success: false, error: 'User not found' });
+      
+      const levelBase = parseInt(globalConfig['level_base_cost'] || '200', 10);
+      const level = Math.floor(Math.sqrt((userRow.xp || 0) / levelBase)) + 1;
+      
+      const inventory = await db.all('SELECT item_name, quantity FROM user_inventory WHERE username = ? AND quantity > 0', [username]);
+      const now = Date.now();
+      const activeEffects = await db.all('SELECT * FROM active_effects WHERE target_user = ? AND (expires_at IS NULL OR expires_at > ?)', [username, now]);
+      const modifiers = await db.all('SELECT * FROM user_modifiers WHERE username = ?', [username]);
+      
+      res.json({ success: true, points: userRow.points, xp: userRow.xp || 0, level, inventory, activeEffects, modifiers });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  app.delete('/api/admin/users/:username/effect/:id', adminAuth, async (req, res) => {
+    try {
+      const db = getDb();
+      await db.run('DELETE FROM active_effects WHERE target_user = ? AND id = ?', [req.params.username.toLowerCase(), req.params.id]);
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  app.delete('/api/admin/users/:username/modifier/:modifier', adminAuth, async (req, res) => {
+    try {
+      const db = getDb();
+      await db.run('DELETE FROM user_modifiers WHERE username = ? AND modifier = ?', [req.params.username.toLowerCase(), req.params.modifier]);
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  app.post('/api/admin/users/xp', adminAuth, express.json(), async (req, res) => {
+    try {
+      const { username, xp } = req.body;
+      if (!username || xp === undefined) return res.status(400).json({ success: false, error: 'Invalid input' });
+      const db = getDb();
+      await db.run('UPDATE users SET xp = ? WHERE username = ?', [parseInt(xp, 10), username.toLowerCase()]);
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
+  app.post('/api/admin/users/inventory', adminAuth, express.json(), async (req, res) => {
+    try {
+      const { username, itemName, quantityChange } = req.body;
+      if (!username || !itemName || quantityChange === undefined) return res.status(400).json({ success: false, error: 'Invalid input' });
+      const db = getDb();
+      const uname = username.toLowerCase();
+      const item = itemName.toLowerCase();
+      
+      const currentItem = await db.get('SELECT quantity FROM user_inventory WHERE username = ? AND item_name = ?', [uname, item]);
+      const currentQty = currentItem ? currentItem.quantity : 0;
+      const newQty = Math.max(0, currentQty + parseInt(quantityChange, 10));
+      
+      if (currentItem) {
+        await db.run('UPDATE user_inventory SET quantity = ? WHERE username = ? AND item_name = ?', [newQty, uname, item]);
+      } else if (newQty > 0) {
+        await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, ?)', [uname, item, newQty]);
+      }
+      res.json({ success: true, newQuantity: newQty });
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+  });
+
   app.get('/api/admin/playsounds', adminAuth, (req, res) => {
     try {
       const dir = path.join(__dirname, 'data', 'playsounds');

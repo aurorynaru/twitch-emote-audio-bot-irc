@@ -364,22 +364,87 @@
   </div>
 
   <div id="tab-users" class="tab-pane">
-    <h2>User Management (Edit Points)</h2>
-  <div class="card" style="margin-bottom: 20px;">
-    <h3 style="margin-top: 0; margin-bottom: 15px;">Edit Single User Points <span class="tooltip-icon" data-tooltip="Set a specific user's point balance manually.">ⓘ</span></h3>
-    <div style="display: flex; gap: 10px; align-items: flex-end;">
-      <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Username</label>
-        <input type="text" id="editUsername" placeholder="username" autocomplete="off">
-        <ul id="usersSuggestions" class="autocomplete-list"></ul>
+    <h2>User Management</h2>
+    
+    <div class="card" style="margin-bottom: 20px;">
+      <h3 style="margin-top: 0; margin-bottom: 15px;">Search & Edit User Data <span class="tooltip-icon" data-tooltip="Search for a user to edit their points, XP, and inventory.">ⓘ</span></h3>
+      <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
+        <div class="form-group" style="flex: 1; margin: 0;">
+          <label>Search Username</label>
+          <input type="text" id="userSearchInput" placeholder="username" autocomplete="off">
+          <ul id="userSearchSuggestions" class="autocomplete-list"></ul>
+        </div>
+        <button class="save-btn" id="loadUserBtn">Load User Data</button>
       </div>
-      <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Set Points To</label>
-        <input type="number" id="editPoints" placeholder="1000">
+
+      <div id="userDataSection" style="display: none; border-top: 1px solid #3a3a44; padding-top: 20px;">
+        <h4 style="margin-top: 0; color: #bf94ff; font-size: 18px;" id="loadedUsernameDisplay">Username</h4>
+        
+        <div class="grid" style="margin-bottom: 20px;">
+          <div class="form-group">
+            <label>Points</label>
+            <div style="display: flex; gap: 10px;">
+              <input type="number" id="editUserPoints" style="flex: 1;">
+              <button class="save-btn" id="saveUserPointsBtn">Save</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>XP (Level: <span id="editUserLevelDisplay">0</span>)</label>
+            <div style="display: flex; gap: 10px;">
+              <input type="number" id="editUserXp" style="flex: 1;">
+              <button class="save-btn" id="saveUserXpBtn">Save</button>
+            </div>
+          </div>
+        </div>
+
+        <h4 style="margin-bottom: 10px; color: #adadb8;">Inventory</h4>
+        <div style="max-height: 300px; overflow-y: auto; border: 1px solid #3a3a44; border-radius: 4px;">
+          <table class="data-table" id="userInventoryTable" style="margin: 0; border: none;">
+            <thead style="position: sticky; top: 0; z-index: 1;">
+              <tr>
+                <th>Item Name</th>
+                <th>Quantity</th>
+                <th style="width: 200px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <h4 style="margin-bottom: 10px; margin-top: 20px; color: #adadb8;">Active Effects / Modifiers</h4>
+        <div style="max-height: 200px; overflow-y: auto; border: 1px solid #3a3a44; border-radius: 4px;">
+          <table class="data-table" id="userEffectsTable" style="margin: 0; border: none;">
+            <thead style="position: sticky; top: 0; z-index: 1;">
+              <tr>
+                <th>Type</th>
+                <th>Value</th>
+                <th>Expires / Uses</th>
+                <th>Caster</th>
+                <th style="width: 100px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin-top: 15px; display: flex; gap: 10px; align-items: flex-end; background: #18181b; padding: 10px; border-radius: 4px; border: 1px solid #3a3a44;">
+          <div class="form-group" style="flex: 2; margin: 0; position: relative;">
+            <label>Add Item</label>
+            <input type="text" id="addUserItemInput" autocomplete="off" placeholder="Type to search item..." style="width: 100%; padding: 8px; background: #2f2f36; color: #efeff1; border: 1px solid #4a4a55; border-radius: 4px; box-sizing: border-box;">
+            <div id="addUserItemSuggestions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: #2f2f36; border: 1px solid #4a4a55; border-radius: 4px; z-index: 1000; max-height: 200px; overflow-y: auto;"></div>
+          </div>
+          <div class="form-group" style="flex: 1; margin: 0;">
+            <label>Quantity</label>
+            <input type="number" id="addUserItemQty" value="1" min="1">
+          </div>
+          <button class="save-btn" style="background-color: #2e8b57;" id="addUserItemBtn">Add</button>
+        </div>
       </div>
-      <button class="save-btn" id="updatePointsBtn">Update Points</button>
     </div>
-  </div>
 
   <div class="card" style="margin-bottom: 20px;">
     <h3 style="margin-top: 0;">Mass Add Points (!masspointsadd) <span class="tooltip-icon" data-tooltip="Give points to everyone who chatted recently.">ⓘ</span></h3>
@@ -444,6 +509,18 @@
             <option value="gamble_guaranteed_win">gamble_guaranteed_win</option>
             <option value="mirror_shield">mirror_shield</option>
             <option value="bomb">bomb</option>
+            <option value="rarity_boost">rarity_boost</option>
+            <option value="instant_catch">instant_catch</option>
+            <option value="multi_catch">multi_catch</option>
+            <option value="personal_xp_boost">personal_xp_boost</option>
+            <option value="gamble_shield">gamble_shield</option>
+            <option value="fishing_debuff_target">fishing_debuff_target</option>
+            <option value="tax_evader">tax_evader</option>
+            <option value="steal_points">steal_points</option>
+            <option value="destroy_points_target">destroy_points_target</option>
+            <option value="personal_point_debuff_target">personal_point_debuff_target</option>
+            <option value="point_shield">point_shield</option>
+            <option value="point_defense">point_defense</option>
           </select>
         </div>
         <div class="form-group">
@@ -909,7 +986,7 @@
       const data = await res.json();
       if (data.success) {
         globalUsers = data.users;
-        setupAutocomplete('editUsername', 'usersSuggestions', globalUsers);
+        setupAutocomplete('userSearchInput', 'userSearchSuggestions', globalUsers);
       }
     } catch (e) { console.error(e); }
   }
@@ -1249,24 +1326,201 @@
   });
 
   // User Management
-  document.getElementById('updatePointsBtn').addEventListener('click', async () => {
-    const user = document.getElementById('editUsername').value;
-    const points = document.getElementById('editPoints').value;
-    if (!user || points === '') return alert('Username and Points are required.');
+  function showToast(msg, type) {
+    const statusEl = document.getElementById('status');
+    statusEl.textContent = msg;
+    statusEl.className = type;
+    setTimeout(() => statusEl.textContent = '', 3000);
+  }
 
+  let loadedUser = null;
+  document.getElementById('loadUserBtn').addEventListener('click', async () => {
+    const user = document.getElementById('userSearchInput').value.trim();
+    if (!user) return showToast('Enter a username to search.', 'error');
+    
+    try {
+      const res = await fetch(`/api/admin/user-details/${encodeURIComponent(user)}`);
+      const data = await res.json();
+      if (data.success) {
+        loadedUser = user;
+        document.getElementById('userDataSection').style.display = 'block';
+        document.getElementById('loadedUsernameDisplay').textContent = user;
+        document.getElementById('editUserPoints').value = data.points;
+        document.getElementById('editUserXp').value = data.xp;
+        document.getElementById('editUserLevelDisplay').textContent = data.level;
+        renderUserInventory(data.inventory);
+        renderUserEffects(data.activeEffects, data.modifiers);
+      } else {
+        showToast('Error: ' + data.error, 'error');
+        document.getElementById('userDataSection').style.display = 'none';
+      }
+    } catch (e) { showToast(e.message, 'error'); }
+  });
+
+  document.getElementById('saveUserPointsBtn').addEventListener('click', async () => {
+    if (!loadedUser) return;
+    const points = document.getElementById('editUserPoints').value;
     try {
       const res = await fetch('/api/admin/users/points', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: user, points })
+        body: JSON.stringify({ username: loadedUser, points })
+      });
+      const data = await res.json();
+      if (data.success) showToast('Points updated successfully!', 'success');
+      else showToast('Error: ' + data.error, 'error');
+    } catch (e) { showToast(e.message, 'error'); }
+  });
+
+  document.getElementById('saveUserXpBtn').addEventListener('click', async () => {
+    if (!loadedUser) return;
+    const xp = document.getElementById('editUserXp').value;
+    try {
+      const res = await fetch('/api/admin/users/xp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loadedUser, xp })
       });
       const data = await res.json();
       if (data.success) {
-        alert('Points updated successfully!');
-        document.getElementById('editUsername').value = '';
-        document.getElementById('editPoints').value = '';
-      } else alert('Error: ' + data.error);
-    } catch (e) { alert(e.message); }
+        showToast('XP updated successfully!', 'success');
+        document.getElementById('loadUserBtn').click();
+      }
+      else showToast('Error: ' + data.error, 'error');
+    } catch (e) { showToast(e.message, 'error'); }
+  });
+
+  function renderUserInventory(inventory) {
+    const tbody = document.querySelector('#userInventoryTable tbody');
+    tbody.innerHTML = '';
+    if (!inventory || inventory.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #adadb8;">Empty inventory</td></tr>';
+      return;
+    }
+    inventory.forEach(item => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${item.item_name}</td>
+        <td>${item.quantity}</td>
+        <td>
+          <button style="background: #ff4a4a; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; margin-right: 5px;" onclick="updateUserInventory('${item.item_name}', -1)">-1</button>
+          <button style="background: #2e8b57; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; margin-right: 5px;" onclick="updateUserInventory('${item.item_name}', 1)">+1</button>
+          <button style="background: #ff4a4a; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;" onclick="updateUserInventory('${item.item_name}', -${item.quantity})">Remove All</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  window.updateUserInventory = async function(itemName, quantityChange) {
+    if (!loadedUser) return;
+    try {
+      const res = await fetch('/api/admin/users/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loadedUser, itemName, quantityChange })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Inventory updated!', 'success');
+        document.getElementById('loadUserBtn').click(); // Reload to refresh table
+      } else {
+        showToast('Error: ' + data.error, 'error');
+      }
+    } catch (e) { showToast(e.message, 'error'); }
+  };
+
+  function renderUserEffects(activeEffects, modifiers) {
+    const tbody = document.querySelector('#userEffectsTable tbody');
+    tbody.innerHTML = '';
+    
+    if ((!activeEffects || activeEffects.length === 0) && (!modifiers || modifiers.length === 0)) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #adadb8;">No active effects</td></tr>';
+      return;
+    }
+
+    if (activeEffects) {
+      activeEffects.forEach(effect => {
+        const tr = document.createElement('tr');
+        let expiresText = 'N/A';
+        if (effect.expires_at) {
+          const leftMs = effect.expires_at - Date.now();
+          if (leftMs > 0) expiresText = Math.ceil(leftMs / 60000) + ' min left';
+          else expiresText = 'Expired';
+        } else if (effect.uses_left !== null) {
+          expiresText = effect.uses_left + ' uses';
+        }
+        
+        tr.innerHTML = `
+          <td>${effect.effect_type}</td>
+          <td>${effect.effect_value}</td>
+          <td>${expiresText}</td>
+          <td>${effect.caster || 'System'}</td>
+          <td>
+            <button style="background: #ff4a4a; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;" onclick="deleteUserEffect('effect', ${effect.id})">Delete</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    if (modifiers) {
+      modifiers.forEach(mod => {
+        const tr = document.createElement('tr');
+        const displayValue = mod.modifier === 'delayed_fish' ? `+${Math.round(mod.value / 60000)} mins` : mod.value;
+        tr.innerHTML = `
+          <td>Mod: ${mod.modifier}</td>
+          <td>${displayValue}</td>
+          <td>Permanent</td>
+          <td>System</td>
+          <td>
+            <button style="background: #ff4a4a; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;" onclick="deleteUserEffect('modifier', '${mod.modifier}')">Delete</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+  }
+
+  window.deleteUserEffect = async function(type, id) {
+    if (!loadedUser) return;
+    if (!confirm('Are you sure you want to delete this effect/modifier?')) return;
+    
+    try {
+      const url = type === 'effect' 
+        ? `/api/admin/users/${encodeURIComponent(loadedUser)}/effect/${id}`
+        : `/api/admin/users/${encodeURIComponent(loadedUser)}/modifier/${encodeURIComponent(id)}`;
+        
+      const res = await fetch(url, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Effect deleted!', 'success');
+        document.getElementById('loadUserBtn').click(); // Reload
+      } else {
+        showToast('Error: ' + data.error, 'error');
+      }
+    } catch (e) { showToast(e.message, 'error'); }
+  };
+
+  document.getElementById('addUserItemBtn').addEventListener('click', async () => {
+    if (!loadedUser) return;
+    const itemName = document.getElementById('addUserItemInput').value.trim();
+    const qty = document.getElementById('addUserItemQty').value;
+    if (!itemName || qty <= 0) return showToast('Select an item and enter a valid quantity.', 'error');
+    try {
+      const res = await fetch('/api/admin/users/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loadedUser, itemName, quantityChange: qty })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Item added!', 'success');
+        document.getElementById('loadUserBtn').click(); // Reload
+      } else {
+        showToast('Error: ' + data.error, 'error');
+      }
+    } catch (e) { showToast(e.message, 'error'); }
   });
 
   // System Actions
@@ -1532,6 +1786,52 @@
         });
         effectFilterSelect.value = effectFilter;
       }
+
+      window._allAdminItems = data.items;
+      if (!window._initAutocomplete) {
+        window._initAutocomplete = true;
+        const addUserItemInput = document.getElementById('addUserItemInput');
+        const addUserItemSuggestions = document.getElementById('addUserItemSuggestions');
+        
+        const renderSuggestions = () => {
+          const val = addUserItemInput.value.toLowerCase();
+          addUserItemSuggestions.innerHTML = '';
+          const itemsToSearch = window._allAdminItems || [];
+          
+          let matches = itemsToSearch;
+          if (val) {
+            matches = itemsToSearch.filter(item => item.name.toLowerCase().includes(val));
+          }
+          
+          if (matches.length > 0) {
+             matches.sort((a,b) => a.name.localeCompare(b.name)).forEach(item => {
+                const div = document.createElement('div');
+                div.textContent = item.name;
+                div.style.padding = '8px';
+                div.style.cursor = 'pointer';
+                div.onmouseover = () => div.style.background = '#4a4a55';
+                div.onmouseout = () => div.style.background = 'transparent';
+                div.onclick = () => {
+                   addUserItemInput.value = item.name;
+                   addUserItemSuggestions.style.display = 'none';
+                };
+                addUserItemSuggestions.appendChild(div);
+             });
+             addUserItemSuggestions.style.display = 'block';
+          } else {
+             addUserItemSuggestions.style.display = 'none';
+          }
+        };
+
+        addUserItemInput.addEventListener('focus', renderSuggestions);
+        addUserItemInput.addEventListener('input', renderSuggestions);
+        
+        document.addEventListener('click', function(e) {
+          if (e.target !== addUserItemInput && !addUserItemSuggestions.contains(e.target)) {
+             addUserItemSuggestions.style.display = 'none';
+          }
+        });
+      }
       
       let filteredItems = data.items;
       if (searchFilter) {
@@ -1648,7 +1948,17 @@
       'global_point_debuff': 'Reduces points gained globally.',
       'gamble_guaranteed_win': 'Guarantees a win on the next gamble up to the Max Gamble Limit.',
       'mirror_shield': 'Reflects negative effects back at attackers.',
-      'bomb': 'Explodes and causes a random effect.'
+      'bomb': 'Explodes and causes a random effect.',
+      'rarity_boost': 'Boosts chances for rare/legendary catches while fishing.',
+      'instant_catch': 'Bypasses the fishing timer for instant catch.',
+      'multi_catch': 'Grants extra items when fishing.',
+      'personal_xp_boost': 'Multiplies XP gained from spending points.',
+      'gamble_shield': 'Refunds points if you lose a gamble.',
+      'fishing_debuff_target': 'Increases the fishing timer of a targeted user.',
+      'tax_evader': 'Makes you immune to the next point debuff or tax.',
+      'steal_points': 'Steals points from a targeted user and gives them to you.',
+      'destroy_points_target': 'Destroys/deletes points from a targeted user without giving them to anyone.',
+      'personal_point_debuff_target': 'Places a point gain debuff on a targeted user.'
     };
     tooltipIcon.setAttribute('data-tooltip', descriptions[type] || 'Select an effect to see its description.');
   };
@@ -1682,11 +1992,11 @@
       });
       const data = await res.json();
       if (data.success) {
-        alert('Item saved!');
+        showToast('Item saved!', 'success');
         window.editingItemOriginalName = null;
         loadItems();
-      } else alert('Error: ' + data.error);
-    } catch (e) { alert(e.message); }
+      } else showToast('Error: ' + data.error, 'error');
+    } catch (e) { showToast(e.message, 'error'); }
   });
 
   // Tab Logic
