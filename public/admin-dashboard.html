@@ -521,6 +521,11 @@
             <option value="personal_point_debuff_target">personal_point_debuff_target</option>
             <option value="point_shield">point_shield</option>
             <option value="point_defense">point_defense</option>
+            <option value="duel_shield">duel_shield</option>
+            <option value="duel_win_boost">duel_win_boost</option>
+            <option value="gamble_multiplier">gamble_multiplier</option>
+            <option value="golden_ticket">golden_ticket</option>
+            <option value="raffle_ticket_multiplier">raffle_ticket_multiplier</option>
           </select>
         </div>
         <div class="form-group">
@@ -1984,9 +1989,14 @@
       'gamble_shield': 'Refunds points if you lose a gamble.',
       'fishing_debuff_target': 'Increases the fishing timer of a targeted user.',
       'tax_evader': 'Makes you immune to the next point debuff or tax.',
-      'steal_points': 'Steals points from a targeted user and gives them to you.',
+      'steal_points': 'Steals points from a targeted user and gives them to the caster.',
       'destroy_points_target': 'Destroys/deletes points from a targeted user without giving them to anyone.',
-      'personal_point_debuff_target': 'Places a point gain debuff on a targeted user.'
+      'personal_point_debuff_target': 'Places a point gain debuff on a targeted user.',
+      'duel_shield': 'Reduces points lost when losing a duel.',
+      'duel_win_boost': 'Increases points gained when winning a duel.',
+      'gamble_multiplier': 'Multiplies points gained from a gamble win.',
+      'golden_ticket': 'Increases chances or guarantees a win in special events like raffles.',
+      'raffle_ticket_multiplier': 'Multiplies the weight/amount of raffle tickets purchased.'
     };
     tooltipIcon.setAttribute('data-tooltip', descriptions[type] || 'Select an effect to see its description.');
   };
