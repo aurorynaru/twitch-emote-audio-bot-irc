@@ -329,7 +329,10 @@
   </div>
 
   <div id="tab-commands" class="tab-pane">
-    <h2>Command Configuration</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+      <h2 style="margin: 0;">Command Configuration</h2>
+      <input type="text" id="commandConfigSearch" placeholder="Search commands..." oninput="filterCommandCards('commandsGrid', this.value)" style="padding: 6px; border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff; width: 250px;">
+    </div>
     <div class="grid" id="commandsGrid">
       <!-- Command cards injected here -->
     </div>
@@ -809,7 +812,10 @@
   </div>
 
   <div id="tab-reference" class="tab-pane">
-    <h2>Command Reference</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+      <h2 style="margin: 0;">Command Reference</h2>
+      <input type="text" id="commandReferenceSearch" placeholder="Search reference..." oninput="filterCommandCards('referenceGrid', this.value)" style="padding: 6px; border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff; width: 250px;">
+    </div>
     <p style="color: #adadb8;">A full list of all available commands, their instructions, and their current cooldown/cost.</p>
     <div class="grid" id="referenceGrid">
       <!-- Command Reference cards injected here -->
@@ -1066,6 +1072,21 @@
       if (data.success) loadCustomCommands();
       else alert('Failed to delete');
     } catch (e) { alert(e); }
+  }
+
+  function filterCommandCards(gridId, searchTerm) {
+    const term = searchTerm.toLowerCase();
+    const grid = document.getElementById(gridId);
+    if (!grid) return;
+    const cards = grid.querySelectorAll('.card');
+    cards.forEach(card => {
+      const title = card.querySelector('h3');
+      if (title && title.textContent.toLowerCase().includes(term)) {
+        card.style.display = 'block';
+      } else {
+        card.style.display = 'none';
+      }
+    });
   }
 
   function renderDashboard() {
