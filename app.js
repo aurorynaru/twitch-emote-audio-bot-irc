@@ -896,7 +896,7 @@ async function start() {
           let parts = [];
           if (allItemsCaught.length > 0) parts.push(`caught ${allItemsCaught.join(', ')}`);
           if (autoConsumedMsgs.length > 0) parts.push(`(${autoConsumedMsgs.join(' | ')})`);
-          await sendChatMessage(`🎣 ${fish.username} reeled in their line and ${parts.join(' ')}!`, fish.username);
+          await sendChatMessage(`🎣 ${fish.username} reeled in their line and ${parts.join(' ')}`, fish.username);
         }
       }
 
