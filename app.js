@@ -387,8 +387,16 @@ async function initDb() {
   try {
     await db.run('UPDATE users SET points = CAST(points AS INTEGER)');
     console.log('* Ensured all user points are integers.');
+
+    // Migrate bomb to rng_effect
+    await db.run("UPDATE items SET effectType = 'rng_effect' WHERE effectType = 'bomb'");
+    await db.run("UPDATE active_effects SET effect_type = 'rng_effect' WHERE effect_type = 'bomb'");
+    
+    // Refresh items config after migration
+    if (loadItemsConfig) await loadItemsConfig();
+    
   } catch (err) {
-    console.error('Error cleaning up points decimals:', err);
+    console.error('Error cleaning up database / migrating:', err);
   }
 }
 
@@ -1113,10 +1121,69 @@ async function start() {
           const amountToUse = req.amountReq === 'all' ? inventoryRow.quantity : Math.min(req.amountReq, inventoryRow.quantity);
           if (amountToUse <= 0) continue;
 
-          const itemConfig = ITEMS_REGISTRY[itemName];
+          const chatMsgCountBefore = chatMsgs.length;
+          let itemConfig = { ...ITEMS_REGISTRY[itemName] };
           const isLegacy = (itemName === 'fishing ticket' || itemName === 'knife');
           
           if (!isLegacy && (!itemConfig || !itemConfig.effectType || itemConfig.effectType === 'none')) continue;
+
+          if (!isLegacy && itemConfig.effectType === 'rng_effect') {
+              const possibleEffects = [
+                  'instant_points', 'global_point_drain', 'global_point_boost', 'personal_point_boost', 
+                  'fishing_time_reduction', 'tax_collector', 'global_point_debuff', 'gamble_guaranteed_win', 
+                  'mirror_shield', 'rarity_boost', 'instant_catch', 'multi_catch', 'personal_xp_boost', 
+                  'gamble_shield', 'fishing_debuff_target', 'tax_evader', 'steal_points', 
+                  'destroy_points_target', 'personal_point_debuff_target', 'point_shield', 'point_defense', 
+                  'duel_shield', 'duel_win_boost', 'gamble_multiplier', 'golden_ticket', 'raffle_ticket_multiplier'
+              ];
+              itemConfig.effectType = possibleEffects[Math.floor(Math.random() * possibleEffects.length)];
+              
+             
+              const rolledEffect = itemConfig.effectType;
+              if (['instant_points', 'global_point_drain', 'global_point_boost', 'tax_collector', 'steal_points', 'destroy_points_target'].includes(rolledEffect)) {
+
+                  itemConfig.effectValue = Math.floor(Math.random() * 3401) + 100;
+                  itemConfig.isPercentage = false;
+              } else if (['point_defense', 'duel_shield', 'point_shield', 'global_point_debuff', 'personal_point_debuff_target'].includes(rolledEffect)) {
+                  
+                  itemConfig.effectValue = Number(((Math.random() * 0.4) + 0.1).toFixed(2));
+                  itemConfig.isPercentage = false; 
+              } else if (['personal_point_boost', 'duel_win_boost', 'gamble_multiplier', 'raffle_ticket_multiplier', 'personal_xp_boost'].includes(rolledEffect)) {
+                  itemConfig.effectValue = Number(((Math.random() * 1.5) + 1.5).toFixed(2));
+                  itemConfig.isPercentage = false;
+              } else if (['fishing_time_reduction', 'fishing_debuff_target'].includes(rolledEffect)) {
+      
+                  itemConfig.effectValue = Math.floor(Math.random() * 10) + 1;
+                  itemConfig.isPercentage = false;
+              } else {
+       
+                  itemConfig.effectValue = 1;
+              }
+              
+              let rngPrefix = `🎲 `;
+              
+          
+              if (['global_point_debuff', 'personal_point_debuff_target', 'personal_point_boost', 'fishing_time_reduction', 'rarity_boost', 'personal_xp_boost'].includes(itemConfig.effectType)) {
+                  if (!itemConfig.effectDurationMinutes || itemConfig.effectDurationMinutes <= 0) {
+                      itemConfig.effectDurationMinutes = 5;
+                  }
+              }
+              
+        
+              if (['fishing_debuff_target', 'steal_points', 'destroy_points_target', 'personal_point_debuff_target'].includes(itemConfig.effectType)) {
+                  if (!useTarget || useTarget === chatterName) {
+                      const randomRow = await db.get('SELECT username FROM users WHERE username != ? AND points > 0 ORDER BY RANDOM() LIMIT 1', [chatterName]);
+                      if (randomRow) {
+                          useTarget = randomRow.username;
+                      } else {
+                          useTarget = globalConfig['target_channel'];
+                      }
+                      rngPrefix += `🎯 `;
+                  }
+              }
+              
+              itemConfig.rngPrefix = rngPrefix;
+          }
 
           if (!isLegacy) {
              const effType = itemConfig.effectType;
@@ -1371,8 +1438,16 @@ async function start() {
             }
           }
           
-          if (!['fishing_debuff_target', 'steal_points', 'destroy_points_target', 'personal_point_debuff_target'].includes(effectType)) {
+          if (!['fishing_debuff_target', 'steal_points', 'destroy_points_target', 'personal_point_debuff_target'].includes(effectType) && !(itemConfig && itemConfig.rngPrefix)) {
              totalUsed.push(`${amountToUse}x ${itemName}`);
+          }
+          
+          if (itemConfig && itemConfig.rngPrefix) {
+              if (chatMsgs.length > chatMsgCountBefore) {
+                  chatMsgs[chatMsgCountBefore] = itemConfig.rngPrefix + chatMsgs[chatMsgCountBefore];
+              } else {
+                  chatMsgs.push(itemConfig.rngPrefix + `${chatterName} used ${amountToUse}x ${itemName} and got a **${effectType}** effect!`);
+              }
           }
         }
 
