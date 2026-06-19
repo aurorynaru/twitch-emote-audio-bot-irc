@@ -59,16 +59,16 @@ function displayEmote(url, isZeroWidth = false, messageId = null, customX = null
   img.style.width = 'auto'; 
   img.style.display = 'block';
 
-  // Apply visual modifiers ONLY if not a zero-width emote
+
   if (!isZeroWidth) {
     if (modifiers.includes('cursed')) img.classList.add('mod-cursed');
     if (modifiers.includes('hyper')) img.classList.add('mod-hyper');
     if (modifiers.includes('rainbow')) img.classList.add('mod-rainbow');
     
     let transforms = [];
-    if (modifiers.includes('wide')) transforms.push('scaleX(3)');
+    if (modifiers.includes('wide')) transforms.push('scaleX(2)');
     if (modifiers.includes('flipx') && !modifiers.includes('wide')) transforms.push('scaleX(-1)');
-    if (modifiers.includes('flipx') && modifiers.includes('wide')) transforms.push('scaleX(-3)');
+    if (modifiers.includes('flipx') && modifiers.includes('wide')) transforms.push('scaleX(-2)');
     if (modifiers.includes('flipy')) transforms.push('scaleY(-1)');
     
     if (transforms.length > 0) {

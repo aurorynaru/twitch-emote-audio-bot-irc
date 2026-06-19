@@ -146,6 +146,7 @@ export function setupRoutes(app, {
         globalConfig[update.key] = val;
       }
       
+      broadcastConfig(globalConfig);
       res.json({ success: true });
     } catch (e) {
       console.error('Error updating config from dashboard:', e);
