@@ -49,16 +49,26 @@ let lastEmoteX = null;
 let lastEmoteY = null;
 
 function displayEmote(url, isZeroWidth = false, messageId = null, customX = null, customY = null, modifiers = []) {
-  const wrapper = document.createElement('div');
-  wrapper.style.position = 'absolute';
-  wrapper.style.pointerEvents = 'none';
+  // 1. Outer Wrapper (Controls screen positioning and Arrive/Leave)
+  const outerWrapper = document.createElement('div');
+  outerWrapper.style.position = 'absolute';
+  outerWrapper.style.pointerEvents = 'none';
 
+  // 2. Bounce Wrapper (Controls up/down bouncing)
+  const bounceWrapper = document.createElement('div');
+  
+  // 3. Jam Wrapper (Controls tilting and vibrating)
+  const jamWrapper = document.createElement('div');
+  
+  // 4. Hyper Wrapper (Controls violent shaking)
+  const hyperWrapper = document.createElement('div');
+
+  // 5. The Image itself (Controls static transforms and color filters)
   const img = document.createElement('img');
   img.src = url;
   img.style.height = `${sizePx}px`;
   img.style.width = 'auto'; 
   img.style.display = 'block';
-
 
   if (!isZeroWidth) {
     if (modifiers.includes('cursed')) img.classList.add('mod-cursed');
@@ -76,16 +86,34 @@ function displayEmote(url, isZeroWidth = false, messageId = null, customX = null
     }
   }
   
-  // Combine movement animations for the wrapper
-  let wrapperAnims = [`fadeEffect ${durationMs}ms ease-in-out forwards`];
-  if (!isZeroWidth && modifiers.includes('leave')) wrapperAnims = [`leaveAnim ${durationMs}ms linear forwards`];
-  if (!isZeroWidth && modifiers.includes('arrive')) wrapperAnims = [`arriveAnim ${durationMs}ms linear forwards`];
+  // --- Animation Assignments ---
   
-  if (modifiers.includes('bounce')) wrapperAnims.push(`bounceAnim 0.5s cubic-bezier(0.28, 0.84, 0.42, 1) infinite alternate`);
-  if (modifiers.includes('jam')) wrapperAnims.push(`jamAnim 0.15s linear infinite alternate`);
-  if (!isZeroWidth && modifiers.includes('hyper')) wrapperAnims.push(`hyperAnim 0.1s linear infinite`);
-  
-  wrapper.style.animation = wrapperAnims.join(', ');
+  // Outer Wrapper Animations
+  let outerAnims = [`fadeEffect ${durationMs}ms ease-in-out forwards`];
+  const hasLeave = modifiers.includes('leave');
+  const hasArrive = modifiers.includes('arrive');
+
+  if (!isZeroWidth) {
+    if (hasLeave && hasArrive) {
+      outerAnims = [`arriveLeaveAnim ${durationMs}ms linear forwards`];
+    } else if (hasLeave) {
+      outerAnims = [`leaveAnim ${durationMs}ms linear forwards`];
+    } else if (hasArrive) {
+      outerAnims = [`arriveAnim ${durationMs}ms linear forwards`];
+    }
+  }
+  outerWrapper.style.animation = outerAnims.join(', ');
+
+  // Inner Wrapper Animations
+  if (modifiers.includes('bounce')) bounceWrapper.style.animation = `bounceAnim 0.5s cubic-bezier(0.28, 0.84, 0.42, 1) infinite alternate`;
+  if (modifiers.includes('jam')) jamWrapper.style.animation = `jamAnim 0.15s linear infinite alternate`;
+  if (!isZeroWidth && modifiers.includes('hyper')) hyperWrapper.style.animation = `hyperAnim 0.1s linear infinite`;
+
+  // Nest the elements like Russian dolls
+  hyperWrapper.appendChild(img);
+  jamWrapper.appendChild(hyperWrapper);
+  bounceWrapper.appendChild(jamWrapper);
+  outerWrapper.appendChild(bounceWrapper);
 
   let x, y;
   const margin = sizePx; 
@@ -93,7 +121,7 @@ function displayEmote(url, isZeroWidth = false, messageId = null, customX = null
   if (customX !== null && customY !== null) {
     x = (customX / 100) * (window.innerWidth - margin);
     y = (customY / 100) * (window.innerHeight - margin);
-    wrapper.style.zIndex = '5'; 
+    outerWrapper.style.zIndex = '5'; 
     
     lastMessageId = messageId;
     lastEmoteX = x;
@@ -101,7 +129,7 @@ function displayEmote(url, isZeroWidth = false, messageId = null, customX = null
   } else if (isZeroWidth && lastMessageId === messageId && lastEmoteX !== null && lastEmoteY !== null) {
     x = lastEmoteX;
     y = lastEmoteY;
-    wrapper.style.zIndex = '10';
+    outerWrapper.style.zIndex = '10'; 
   } else {
     x = Math.random() * (window.innerWidth - margin);
     y = Math.random() * (window.innerHeight - margin);
@@ -109,19 +137,16 @@ function displayEmote(url, isZeroWidth = false, messageId = null, customX = null
     lastMessageId = messageId;
     lastEmoteX = x;
     lastEmoteY = y;
-    wrapper.style.zIndex = '1';
+    outerWrapper.style.zIndex = '5';
   }
-  
-  wrapper.style.left = `${x}px`;
-  wrapper.style.top = `${y}px`;
 
-  wrapper.appendChild(img);
-  document.body.appendChild(wrapper);
+  outerWrapper.style.left = `${x}px`;
+  outerWrapper.style.top = `${y}px`;
+
+  document.body.appendChild(outerWrapper);
 
   setTimeout(() => {
-    if (wrapper.parentNode) {
-      wrapper.parentNode.removeChild(wrapper);
-    }
+    outerWrapper.remove();
   }, durationMs);
 }
 
