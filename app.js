@@ -859,27 +859,50 @@ async function start() {
             
             if (itemConfig && itemConfig.autoConsume) {
                if (itemConfig.effectType === 'instant_points') {
+                  const prefix = rarityTier !== 'common' ? `[${item.rarity}] ` : '';
                   const isPercent = itemConfig.isPercentage || (Math.abs(itemConfig.effectValue) > 0 && Math.abs(itemConfig.effectValue) < 1);
-                  if (isPercent) {
-                     const user = await db.get('SELECT points FROM users WHERE username = ?', [fish.username]);
-                     const currPoints = user ? user.points : 0;
-                     const modifier = Math.floor(currPoints * Math.abs(itemConfig.effectValue));
-                     if (itemConfig.effectValue < 0) {
-                        await db.run('UPDATE users SET points = MAX(0, CAST(points - ? AS INTEGER)) WHERE username = ?', [modifier, fish.username]);
-                        autoConsumedMsgs.push(`${item.originalName} drained ${modifier} points`);
+                  
+                  if (itemConfig.isGlobal) {
+                     await isStreamerLive();
+                     const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
+                     if (isPercent) {
+                        const modifier = itemConfig.effectValue;
+                        if (modifier < 0) {
+                           await db.run(`UPDATE users SET points = MAX(0, points + (points * ?)) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [modifier, streamStartTime]);
+                        } else {
+                           await db.run(`UPDATE users SET points = points + (points * ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [modifier, streamStartTime]);
+                        }
                      } else {
-                        const addedAmount = await addPointsWithBonus(fish.username, modifier);
-                        autoConsumedMsgs.push(`${item.originalName} granted ${addedAmount} points`);
+                        const pts = Math.floor(itemConfig.effectValue);
+                        if (pts < 0) {
+                           await db.run(`UPDATE users SET points = MAX(0, points + ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [pts, streamStartTime]);
+                        } else {
+                           await db.run(`UPDATE users SET points = points + ? WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [pts, streamStartTime]);
+                        }
                      }
+                     autoConsumedMsgs.push(`${prefix}${item.originalName} ${itemConfig.description}`);
                   } else {
-                      const pts = Math.floor(itemConfig.effectValue);
-                      if (pts < 0) {
-                         await db.run('UPDATE users SET points = MAX(0, CAST(points + ? AS INTEGER)) WHERE username = ?', [Math.abs(pts), fish.username]);
-                         autoConsumedMsgs.push(`${item.originalName} drained ${Math.abs(pts)} points`);
-                      } else {
-                         const addedAmount = await addPointsWithBonus(fish.username, pts);
-                         autoConsumedMsgs.push(`${item.originalName} granted ${addedAmount} points`);
-                      }
+                     if (isPercent) {
+                        const user = await db.get('SELECT points FROM users WHERE username = ?', [fish.username]);
+                        const currPoints = user ? user.points : 0;
+                        const modifier = Math.floor(currPoints * Math.abs(itemConfig.effectValue));
+                        if (itemConfig.effectValue < 0) {
+                           await db.run('UPDATE users SET points = MAX(0, CAST(points - ? AS INTEGER)) WHERE username = ?', [modifier, fish.username]);
+                           autoConsumedMsgs.push(`${prefix}${item.originalName} drained ${modifier} points`);
+                        } else {
+                           const addedAmount = await addPointsWithBonus(fish.username, modifier);
+                           autoConsumedMsgs.push(`${prefix}${item.originalName} granted ${addedAmount} points`);
+                        }
+                     } else {
+                         const pts = Math.floor(itemConfig.effectValue);
+                         if (pts < 0) {
+                            await db.run('UPDATE users SET points = MAX(0, CAST(points + ? AS INTEGER)) WHERE username = ?', [Math.abs(pts), fish.username]);
+                            autoConsumedMsgs.push(`${prefix}${item.originalName} drained ${Math.abs(pts)} points`);
+                         } else {
+                            const addedAmount = await addPointsWithBonus(fish.username, pts);
+                            autoConsumedMsgs.push(`${prefix}${item.originalName} granted ${addedAmount} points`);
+                         }
+                     }
                   }
                }
             } else {
