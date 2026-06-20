@@ -866,26 +866,26 @@ async function start() {
                      const modifier = Math.floor(currPoints * Math.abs(itemConfig.effectValue));
                      if (itemConfig.effectValue < 0) {
                         await db.run('UPDATE users SET points = MAX(0, CAST(points - ? AS INTEGER)) WHERE username = ?', [modifier, fish.username]);
-                        autoConsumedMsgs.push(` ${item.name} drained ${modifier} points`);
+                        autoConsumedMsgs.push(`${item.originalName} drained ${modifier} points`);
                      } else {
                         const addedAmount = await addPointsWithBonus(fish.username, modifier);
-                        autoConsumedMsgs.push(` ${item.name} granted ${addedAmount} points`);
+                        autoConsumedMsgs.push(`${item.originalName} granted ${addedAmount} points`);
                      }
                   } else {
                       const pts = Math.floor(itemConfig.effectValue);
                       if (pts < 0) {
                          await db.run('UPDATE users SET points = MAX(0, CAST(points + ? AS INTEGER)) WHERE username = ?', [Math.abs(pts), fish.username]);
-                         autoConsumedMsgs.push(` ${item.name} drained ${Math.abs(pts)} points`);
+                         autoConsumedMsgs.push(`${item.originalName} drained ${Math.abs(pts)} points`);
                       } else {
                          const addedAmount = await addPointsWithBonus(fish.username, pts);
-                         autoConsumedMsgs.push(` ${item.name} granted ${addedAmount} points`);
+                         autoConsumedMsgs.push(`${item.originalName} granted ${addedAmount} points`);
                       }
                   }
                }
             } else {
-               await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, 1) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + 1', [fish.username, item.name]);
+               await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, 1) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + 1', [fish.username, item.originalName]);
                const prefix = rarityTier !== 'common' ? `[${item.rarity}] ` : '';
-               allItemsCaught.push(`${prefix}${item.name} `);
+               allItemsCaught.push(`${prefix}${item.originalName}`);
             }
         }
         
@@ -2669,7 +2669,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           return a.item_name.localeCompare(b.item_name);
         });
 
-        const displayItems = items.slice(0, 3).map(i => `${i.item_name} (${i.quantity}x)`);
+        const displayItems = items.slice(0, 3).map(i => `${i.item_name}(${i.quantity}x)`);
         let msg = `@${chatterName} inv: ${displayItems.join(', ')}`;
         if (items.length > 3) {
           msg += `... visit {site} to see more`;

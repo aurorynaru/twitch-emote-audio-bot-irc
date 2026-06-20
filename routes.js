@@ -602,7 +602,14 @@ export function setupRoutes(app, {
 
   app.get('/api/dashboard/items', (req, res) => {
     try {
-      res.json({ success: true, items: FISHING_ITEMS, rarities: FISHING_RARITIES });
+      const mappedItems = {};
+      for (const [rarity, list] of Object.entries(FISHING_ITEMS)) {
+        mappedItems[rarity] = list.map(item => ({
+          ...item,
+          name: item.originalName
+        }));
+      }
+      res.json({ success: true, items: mappedItems, rarities: FISHING_RARITIES });
     } catch (error) {
       res.status(500).json({ success: false, error: error.message });
     }
