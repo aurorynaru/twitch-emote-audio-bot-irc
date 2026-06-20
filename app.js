@@ -885,7 +885,7 @@ async function start() {
             } else {
                await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, 1) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + 1', [fish.username, item.name]);
                const prefix = rarityTier !== 'common' ? `[${item.rarity}] ` : '';
-               allItemsCaught.push(`${prefix}${item.name}`);
+               allItemsCaught.push(`${prefix}${item.name} `);
             }
         }
         
@@ -1190,7 +1190,7 @@ async function start() {
              if (['fishing_debuff_target', 'steal_points', 'destroy_points_target', 'personal_point_debuff_target'].includes(effType)) {
                  const actualTarget = useTarget || chatterName;
                  if (actualTarget === chatterName) {
-                     chatMsgs.push(`⚠️ You must specify another user as a target to use ${itemName}!`);
+                     chatMsgs.push(`⚠️ You must specify another user as a target to use ${itemName} !`);
                      continue;
                  }
              }
@@ -1204,7 +1204,7 @@ async function start() {
             } else if (itemName === 'knife') {
               await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [chatterName, 'auto_duel', amountToUse, amountToUse]);
             }
-            totalUsed.push(`${amountToUse}x ${itemName}`);
+            totalUsed.push(`${amountToUse}x ${itemName} `);
             continue;
           }
 
@@ -1439,7 +1439,7 @@ async function start() {
           }
           
           if (!['fishing_debuff_target', 'steal_points', 'destroy_points_target', 'personal_point_debuff_target'].includes(effectType) && !(itemConfig && itemConfig.rngPrefix)) {
-             totalUsed.push(`${amountToUse}x ${itemName}`);
+             totalUsed.push(`${amountToUse}x ${itemName} `);
           }
           
           if (itemConfig && itemConfig.rngPrefix) {
@@ -1453,7 +1453,7 @@ async function start() {
 
         if (totalUsed.length > 0 || chatMsgs.length > 0) {
           if (totalUsed.length > 0) {
-            await sendChatMessage(`${chatterName} redeemed: ${totalUsed.join(', ')}!${totalPointsGained > 0 ? ` (Gained ${totalPointsGained} pts)` : ''}`, chatterName);
+            await sendChatMessage(`${chatterName} redeemed: ${totalUsed.join(', ')} !${totalPointsGained > 0 ? ` (Gained ${totalPointsGained} pts)` : ''}`, chatterName);
           }
           for (const msg of chatMsgs) {
              await sendChatMessage(msg);
@@ -3495,7 +3495,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         }
 
         await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, ?) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + ?', [targetUser, itemName, amount, amount]);
-        await sendChatMessage(`Given ${amount}x "${itemName}" to ${targetUser}!`);
+        await sendChatMessage(`Given ${amount}x ${itemName} to ${targetUser} !`);
       }
     },
     '!reloaditems': {
