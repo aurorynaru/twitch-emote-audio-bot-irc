@@ -2669,7 +2669,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           return a.item_name.localeCompare(b.item_name);
         });
 
-        const displayItems = items.slice(0, 3).map(i => `${i.item_name}(${i.quantity}x)`);
+        const displayItems = items.slice(0, 3).map(i => `${i.item_name} (${i.quantity}x)`);
         let msg = `@${chatterName} inv: ${displayItems.join(', ')}`;
         if (items.length > 3) {
           msg += `... visit {site} to see more`;
