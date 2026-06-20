@@ -866,19 +866,19 @@ async function start() {
                      const modifier = Math.floor(currPoints * Math.abs(itemConfig.effectValue));
                      if (itemConfig.effectValue < 0) {
                         await db.run('UPDATE users SET points = MAX(0, CAST(points - ? AS INTEGER)) WHERE username = ?', [modifier, fish.username]);
-                        autoConsumedMsgs.push(`Ouch! Lost ${modifier} points`);
+                        autoConsumedMsgs.push(` ${item.name} drained ${modifier} points`);
                      } else {
                         const addedAmount = await addPointsWithBonus(fish.username, modifier);
-                        autoConsumedMsgs.push(`Granted ${addedAmount} points`);
+                        autoConsumedMsgs.push(` ${item.name} granted ${addedAmount} points`);
                      }
                   } else {
                       const pts = Math.floor(itemConfig.effectValue);
                       if (pts < 0) {
                          await db.run('UPDATE users SET points = MAX(0, CAST(points + ? AS INTEGER)) WHERE username = ?', [Math.abs(pts), fish.username]);
-                         autoConsumedMsgs.push(`Ouch! Lost ${Math.abs(pts)} points`);
+                         autoConsumedMsgs.push(` ${item.name} drained ${Math.abs(pts)} points`);
                       } else {
                          const addedAmount = await addPointsWithBonus(fish.username, pts);
-                         autoConsumedMsgs.push(`Granted ${addedAmount} points`);
+                         autoConsumedMsgs.push(` ${item.name} granted ${addedAmount} points`);
                       }
                   }
                }

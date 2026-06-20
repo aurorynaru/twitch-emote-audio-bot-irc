@@ -212,8 +212,9 @@ export function setupRoutes(app, {
 
   app.post('/api/admin/items', adminAuth, express.json(), async (req, res) => {
     try {
-      const { originalName, name, rarity, description, effectType, effectValue, effectDurationMinutes, isGlobal, uses, autoConsume, isPercentage, maxGambleLimit } = req.body;
-      if (!name) return res.status(400).json({ success: false, error: 'Name is required' });
+      let { originalName, name, rarity, description, effectType, effectValue, effectDurationMinutes, isGlobal, uses, autoConsume, isPercentage, maxGambleLimit } = req.body;
+      if (!name || name.trim() === '') return res.status(400).json({ success: false, error: 'Name is required' });
+      name = name.trim();
       
       const db = getDb();
       

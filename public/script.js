@@ -49,21 +49,20 @@ let lastEmoteX = null;
 let lastEmoteY = null;
 
 function displayEmote(url, isZeroWidth = false, messageId = null, customX = null, customY = null, modifiers = []) {
-  // 1. Outer Wrapper (Controls screen positioning and Arrive/Leave)
+
   const outerWrapper = document.createElement('div');
   outerWrapper.style.position = 'absolute';
   outerWrapper.style.pointerEvents = 'none';
 
-  // 2. Bounce Wrapper (Controls up/down bouncing)
+
   const bounceWrapper = document.createElement('div');
   
-  // 3. Jam Wrapper (Controls tilting and vibrating)
+
   const jamWrapper = document.createElement('div');
   
-  // 4. Hyper Wrapper (Controls violent shaking)
+
   const hyperWrapper = document.createElement('div');
 
-  // 5. The Image itself (Controls static transforms and color filters)
   const img = document.createElement('img');
   img.src = url;
   img.style.height = `${sizePx}px`;
