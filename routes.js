@@ -623,7 +623,8 @@ export function setupRoutes(app, {
       const now = Date.now();
       const activeEffects = await db.all('SELECT * FROM active_effects WHERE expires_at > ? OR uses_left > 0', [now]);
       const userModifiers = await db.all('SELECT * FROM user_modifiers WHERE value > 0');
-      res.json({ success: true, inventory, activeEffects, userModifiers });
+      const pendingFish = await db.all('SELECT * FROM pending_fish');
+      res.json({ success: true, inventory, activeEffects, userModifiers, pendingFish });
     } catch (error) {
       res.status(500).json({ success: false, error: error.message });
     }
