@@ -1158,7 +1158,7 @@ async function start() {
         for (const req of requestedItems) {
           const lowerItemName = req.name;
           let itemConfig = { ...ITEMS_REGISTRY[lowerItemName] };
-          const itemName = itemConfig && itemConfig.name ? itemConfig.name : lowerItemName; // Use exact case for DB
+          const itemName = itemConfig && itemConfig.name ? itemConfig.name : lowerItemName; 
           
           const inventoryRow = await db.get('SELECT quantity FROM user_inventory WHERE username = ? AND item_name = ?', [chatterName, itemName]);
           if (!inventoryRow || inventoryRow.quantity <= 0) continue;
@@ -4644,10 +4644,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               if (tags['msg-param-category'] === 'watch-streak') {
                 const streak = parseInt(tags['msg-param-value'], 10) || 0;
                 if (streak > 0 && db && chatterName) {
-                  const streakMult = parseInt(globalConfig['reward_watchstreak'] || '1000', 10);
-                  const reward = streak * streakMult;
+                  const baseRate = parseInt(globalConfig['reward_watchstreak'] || '1000', 10);
+                  const scalingBonus = parseInt(globalConfig['reward_watchstreak_scaling'] || '20', 10);
+                  const reward = baseRate + (streak * streak * scalingBonus);
+                  
                   const finalAwarded = await addPointsWithBonus(chatterName, reward);
                   console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for a ${streak} watch streak!`);
+                  await sendChatMessage(`🔥 ${chatterName} is on a ${streak} stream watch streak! They were awarded ${finalAwarded} points! 🔥`);
                 }
               }
             }
