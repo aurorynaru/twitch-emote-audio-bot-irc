@@ -1304,7 +1304,11 @@
         if (input.type === 'checkbox') {
           val = input.checked ? 'true' : 'false';
         }
-        updatesArray.push({ key: input.dataset.key, value: val });
+        if (input.dataset.key.endsWith('_disabled')) {
+          updatesArray.push({ key: input.dataset.key + '_until', value: input.checked ? 'forever' : '0' });
+        } else {
+          updatesArray.push({ key: input.dataset.key, value: val });
+        }
       });
 
       const statusEl = document.getElementById('status');
