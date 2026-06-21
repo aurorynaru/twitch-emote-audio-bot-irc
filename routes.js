@@ -219,15 +219,15 @@ export function setupRoutes(app, {
       const db = getDb();
       
       if (originalName && originalName !== name) {
-        await db.run('DELETE FROM items WHERE name = ?', [originalName]);
+        await db.run('DELETE FROM items WHERE name COLLATE NOCASE = ?', [originalName]);
         
         // Safely migrate the renamed item in user inventories, merging quantities if necessary
         await db.run(`
           INSERT INTO user_inventory (username, item_name, quantity)
-          SELECT username, ?, quantity FROM user_inventory WHERE item_name = ?
+          SELECT username, ?, quantity FROM user_inventory WHERE item_name COLLATE NOCASE = ?
           ON CONFLICT(username, item_name) DO UPDATE SET quantity = user_inventory.quantity + excluded.quantity
         `, [name, originalName]);
-        await db.run('DELETE FROM user_inventory WHERE item_name = ?', [originalName]);
+        await db.run('DELETE FROM user_inventory WHERE item_name COLLATE NOCASE = ?', [originalName]);
       }
 
       await db.run(`
