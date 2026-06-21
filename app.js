@@ -1156,7 +1156,10 @@ async function start() {
         let chatMsgs = [];
 
         for (const req of requestedItems) {
-          const itemName = req.name;
+          const lowerItemName = req.name;
+          let itemConfig = { ...ITEMS_REGISTRY[lowerItemName] };
+          const itemName = itemConfig && itemConfig.name ? itemConfig.name : lowerItemName; // Use exact case for DB
+          
           const inventoryRow = await db.get('SELECT quantity FROM user_inventory WHERE username = ? AND item_name = ?', [chatterName, itemName]);
           if (!inventoryRow || inventoryRow.quantity <= 0) continue;
 
@@ -1164,8 +1167,7 @@ async function start() {
           if (amountToUse <= 0) continue;
 
           const chatMsgCountBefore = chatMsgs.length;
-          let itemConfig = { ...ITEMS_REGISTRY[itemName] };
-          const isLegacy = (itemName === 'fishing ticket' || itemName === 'knife');
+          const isLegacy = (lowerItemName === 'fishing ticket' || lowerItemName === 'knife');
           
           if (!isLegacy && (!itemConfig || !itemConfig.effectType || itemConfig.effectType === 'none')) continue;
 
