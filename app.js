@@ -718,6 +718,7 @@ async function start() {
     const personalBoosts = await getActiveEffects(username, 'personal_point_boost');
     const globalBoosts = await getActiveEffects(username, 'global_point_boost');
     const globalDebuffs = await getActiveEffects(username, 'global_point_debuff');
+    const personalDebuffs = await getActiveEffects(username, 'personal_point_debuff_target');
     
 
     let multiplier = 1.0;
@@ -736,6 +737,19 @@ async function start() {
         }
         multiplier *= (1 - b.effect_value);
       }
+    }
+    
+    for (const b of personalDebuffs) {
+      const evaders = await db.all('SELECT * FROM active_effects WHERE target_user = ? AND effect_type = "tax_evader" AND uses_left > 0', [username]);
+      if (evaders.length > 0) {
+         if (evaders[0].uses_left > 1) {
+            await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [evaders[0].id]);
+         } else {
+            await db.run('DELETE FROM active_effects WHERE id = ?', [evaders[0].id]);
+         }
+         continue;
+      }
+      multiplier *= (1 - b.effect_value);
     }
     
     // Calculate final
