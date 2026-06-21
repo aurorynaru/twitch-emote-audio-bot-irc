@@ -253,6 +253,10 @@ async function initDb() {
     await db.exec('ALTER TABLE users ADD COLUMN xp INTEGER DEFAULT 0');
   } catch (err) {}
 
+  try {
+    await db.exec('ALTER TABLE users ADD COLUMN timeout_until INTEGER DEFAULT 0');
+  } catch (err) {}
+
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_users_points ON users (points DESC);
     CREATE INDEX IF NOT EXISTS idx_users_true_last_chat_time ON users (true_last_chat_time);
@@ -2603,12 +2607,29 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             return;
           }
 
-          const success = await timeoutTwitchUser(targetId, duration, `Shot by ${chatterName} using points`);
+          // Fetch current timeout_until
+          await db.run('INSERT OR IGNORE INTO users (username) VALUES (?)', target);
+          const userObj = await db.get('SELECT timeout_until FROM users WHERE username = ?', target);
+          const currentTimeoutUntil = userObj && userObj.timeout_until ? userObj.timeout_until : 0;
+          
+          const now = Date.now();
+          let newTimeoutUntil = 0;
+          
+          if (currentTimeoutUntil > now) {
+            newTimeoutUntil = currentTimeoutUntil + durationMs;
+          } else {
+            newTimeoutUntil = now + durationMs;
+          }
+          
+          const totalDurationSeconds = Math.ceil((newTimeoutUntil - now) / 1000);
+
+          const success = await timeoutTwitchUser(targetId, totalDurationSeconds, `Shot by ${chatterName} using points`);
           if (success) {
+            await db.run('UPDATE users SET timeout_until = ? WHERE username = ?', [newTimeoutUntil, target]);
             if (cost > 0) {
               await db.run('UPDATE users SET points = points - ? WHERE username = ?', [cost, chatterName]);
             }
-            //await sendChatMessage(`💥 ${chatterName} paid ${cost} points to shoot ${target} for ${duration} seconds!`);
+            await sendChatMessage(`${chatterName} paid ${cost} points to shoot ${target}! They are now timed out for a total of ${totalDurationSeconds} seconds!`);
           } else {
             await sendChatMessage(`${chatterName} failed to shoot ${target}. (Bot might be missing moderator:manage:banned_users scope in its token, or ${target} is a mod/VIP!)`);
           }
