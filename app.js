@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import cors from 'cors';
-dotenv.config();
+dotenv.config({override:true});
 
 import { parseFlexibleTime, parseAmount, parseTime } from './utils.js';
 import { setupRoutes, broadcastEmote, broadcastAudio, broadcastConfig, broadcastBetState, clearBetState, broadcastChatWarState, clearChatWarState, clearEmotes } from './routes.js';
@@ -98,6 +98,7 @@ const commandConfigSchema = {
   '!declineduel': ['cooldown'],
   '!dueltax': ['cooldown'],
   '!disable': ['cooldown'],
+  '!shoot': ['cost', 'duration', 'cooldown'],
   '!enable':['cooldown'],
   '!raffle': ['cooldown'],
   '!multiraffle': ['cooldown'],
@@ -2568,6 +2569,55 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         await sendChatMessage(`⚔️ CHAT WAR STARTED: ${emote1} vs ${emote2}! Type your emote to fight! Each vote costs ${cost} points. War ends in ${durationStr}.`);
       }
     },
+    '!shoot': {
+      cost: 0,
+      manualCost: true,
+      execute: async (args, chatterName, event, hasPermission) => {
+        if (args.length < 1) {
+          await sendChatMessage(`${chatterName} usage: !shoot @username`);
+          return;
+        }
+
+        const target = args[0].replace('@', '').toLowerCase();
+        if (target === TARGET_CHANNEL.toLowerCase() || target === BOT_USERNAME.toLowerCase()) {
+           await sendChatMessage(`${chatterName} you cannot shoot the broadcaster or bot!`);
+           return;
+        }
+
+        const cost = parseInt(globalConfig['cmd_!shoot_cost'] !== undefined ? globalConfig['cmd_!shoot_cost'] : '1000', 10);
+        let durationMs = parseInt(globalConfig['cmd_!shoot_duration'] !== undefined ? globalConfig['cmd_!shoot_duration'] : '60000', 10);
+        const duration = Math.floor(durationMs / 1000);
+
+        if (cost > 0) {
+          const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+          if (!user || user.points < cost) {
+            await sendChatMessage(`${chatterName} you need ${cost} points to use !shoot!`);
+            return;
+          }
+        }
+
+        try {
+          const targetId = await getTwitchUserId(target);
+          if (!targetId) {
+            await sendChatMessage(`${chatterName} could not find Twitch user ${target}!`);
+            return;
+          }
+
+          const success = await timeoutTwitchUser(targetId, duration, `Shot by ${chatterName} using points`);
+          if (success) {
+            if (cost > 0) {
+              await db.run('UPDATE users SET points = points - ? WHERE username = ?', [cost, chatterName]);
+            }
+            //await sendChatMessage(`💥 ${chatterName} paid ${cost} points to shoot ${target} for ${duration} seconds!`);
+          } else {
+            await sendChatMessage(`${chatterName} failed to shoot ${target}. (Bot might be missing moderator:manage:banned_users scope in its token, or ${target} is a mod/VIP!)`);
+          }
+        } catch (e) {
+          console.error('Error shooting user:', e);
+          await sendChatMessage(`${chatterName} failed to shoot ${target}. Check bot console.`);
+        }
+      }
+    },
     '!chatwarcancel': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
@@ -3732,6 +3782,76 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       }
     }
   };
+
+  async function getTwitchUserId(username) {
+    try {
+      let res = await fetch(`https://api.twitch.tv/helix/users?login=${username}`, {
+        headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
+      });
+      if (res.status === 401) {
+        USER_ACCESS_TOKEN = await getValidAccessToken();
+        res = await fetch(`https://api.twitch.tv/helix/users?login=${username}`, {
+          headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
+        });
+      }
+      const data = await res.json();
+      if (data && data.data && data.data.length > 0) {
+        return data.data[0].id;
+      }
+      return null;
+    } catch (e) {
+      console.error('Error fetching twitch user ID:', e);
+      return null;
+    }
+  }
+
+  async function timeoutTwitchUser(targetUserId, durationSeconds, reason = '') {
+    try {
+      let res = await fetch(`https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${BROADCASTER_USER_ID}&moderator_id=${YOUR_USER_ID}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${USER_ACCESS_TOKEN}`,
+          'Client-Id': CLIENT_ID,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          data: {
+            user_id: targetUserId,
+            duration: durationSeconds,
+            reason: reason
+          }
+        })
+      });
+
+      if (res.status === 401) {
+        USER_ACCESS_TOKEN = await getValidAccessToken();
+        res = await fetch(`https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${BROADCASTER_USER_ID}&moderator_id=${YOUR_USER_ID}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${USER_ACCESS_TOKEN}`,
+            'Client-Id': CLIENT_ID,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            data: {
+              user_id: targetUserId,
+              duration: durationSeconds,
+              reason: reason
+            }
+          })
+        });
+      }
+
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) return true;
+      
+      console.error('Failed to timeout user via Helix API:', data);
+      return false;
+    } catch (e) {
+      console.error('Error sending timeout request:', e);
+      return false;
+    }
+  }
 
   let isStreamLiveCached = false;
   let lastStreamCheckTime = 0;
