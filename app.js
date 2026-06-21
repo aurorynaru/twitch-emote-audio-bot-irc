@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import cors from 'cors';
-dotenv.config({override:true});
+dotenv.config();
 
 import { parseFlexibleTime, parseAmount, parseTime } from './utils.js';
 import { setupRoutes, broadcastEmote, broadcastAudio, broadcastConfig, broadcastBetState, clearBetState, broadcastChatWarState, clearChatWarState, clearEmotes } from './routes.js';
