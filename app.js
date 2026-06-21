@@ -1227,10 +1227,12 @@ async function start() {
           await db.run('UPDATE user_inventory SET quantity = quantity - ? WHERE username = ? AND item_name = ?', [amountToUse, chatterName, itemName]);
 
           if (isLegacy) {
+            const usesPerItem = itemConfig ? (itemConfig.uses || 1) : 1;
+            const totalGranted = amountToUse * usesPerItem;
             if (itemName === 'fishing ticket') {
-              await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [chatterName, 'free_fish', amountToUse, amountToUse]);
+              await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [chatterName, 'free_fish', totalGranted, totalGranted]);
             } else if (itemName === 'knife') {
-              await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [chatterName, 'auto_duel', amountToUse, amountToUse]);
+              await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [chatterName, 'auto_duel', totalGranted, totalGranted]);
             }
             totalUsed.push(`${amountToUse}x ${itemName} `);
             continue;
