@@ -362,14 +362,19 @@ export function setupRoutes(app, {
       const uname = username.toLowerCase();
       const item = itemName.toLowerCase();
       
-      const currentItem = await db.get('SELECT quantity FROM user_inventory WHERE username = ? AND item_name = ?', [uname, item]);
+      const currentItem = await db.get('SELECT item_name, quantity FROM user_inventory WHERE username = ? AND item_name COLLATE NOCASE = ?', [uname, item]);
       const currentQty = currentItem ? currentItem.quantity : 0;
+      const dbItemName = currentItem ? currentItem.item_name : itemName; // Use existing casing or the one provided
       const newQty = Math.max(0, currentQty + parseInt(quantityChange, 10));
       
       if (currentItem) {
-        await db.run('UPDATE user_inventory SET quantity = ? WHERE username = ? AND item_name = ?', [newQty, uname, item]);
+        if (newQty > 0) {
+          await db.run('UPDATE user_inventory SET quantity = ? WHERE username = ? AND item_name = ?', [newQty, uname, dbItemName]);
+        } else {
+          await db.run('DELETE FROM user_inventory WHERE username = ? AND item_name = ?', [uname, dbItemName]);
+        }
       } else if (newQty > 0) {
-        await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, ?)', [uname, item, newQty]);
+        await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, ?)', [uname, dbItemName, newQty]);
       }
       res.json({ success: true, newQuantity: newQty });
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
