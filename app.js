@@ -4662,7 +4662,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 const scalingBonus = parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10);
                 const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
                 const totalGifts = parseInt(tags['msg-param-mass-gift-count'], 10) || 1;
-                const giftReward = Math.min(maxCap, baseReward + Math.round((totalGifts * totalGifts / 3) * scalingBonus));
+                const giftReward = Math.min(maxCap, baseReward + Math.round((totalGifts * totalGifts) * scalingBonus));
                 const finalAwarded = await addPointsWithBonus(chatterName, giftReward);
                 console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting ${totalGifts} sub(s)!`);
                 await triggerRandomRaffle('gift sub');
