@@ -3519,7 +3519,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         }
 
         if (args.length < 2) {
-          await sendChatMessage(`Usage: !editrewards <type> <val1> [val2]. Types: sub, giftsub, watchstreak, raffle, multiraffle, chat`);
+          await sendChatMessage(`Usage: !editrewards <type> <val1> [val2]. Types: sub, bits, giftsub, watchstreak, raffle, multiraffle, chat`);
           return;
         }
 
@@ -3532,7 +3532,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           return;
         }
 
-        if (type === 'sub') {
+        if (type === 'sub' || type === 'bits') {
           const key = `reward_${type}`;
           await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [key, val1, val1]);
           globalConfig[key] = val1.toString();
@@ -3590,7 +3590,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           globalConfig['reward_chat_cooldown'] = val3.toString();
           await sendChatMessage(`Chat rewards updated! Non-subs: ${val1} pts | Subs: ${val2} pts | Cooldown: ${val3} mins.`);
         } else {
-          await sendChatMessage(`Unknown reward type: ${type}. Valid types: sub, giftsub, watchstreak, raffle, multiraffle, chat`);
+          await sendChatMessage(`Unknown reward type: ${type}. Valid types: sub, bits, giftsub, watchstreak, raffle, multiraffle, chat`);
         }
       }
     },
@@ -4217,11 +4217,15 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           }
 
           if (bits > 0 && chatterName && !ignoredBots.includes(chatterName)) {
-            const pointsToAward = bits * 10;
+            const pointsPerBit = parseInt(globalConfig['reward_bits'] || '10', 10);
+            const pointsToAward = bits * pointsPerBit;
             if (db) {
               const finalAwarded = await addPointsWithBonus(chatterName, pointsToAward);
               console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for cheering ${bits} bits!`);
-              await triggerRandomRaffle('bit cheer');
+              await sendChatMessage(`🎉 ${chatterName} cheered ${bits} bits! You received ${finalAwarded} points! 🎉`);
+              setTimeout(async () => {
+                await triggerRandomRaffle('bit cheer');
+              }, 3000);
             }
           }
 
@@ -4654,7 +4658,10 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 const subReward = parseInt(globalConfig['reward_sub'] || '5000', 10);
                 const finalAwarded = await addPointsWithBonus(chatterName, subReward);
                 console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for subscribing!`);
-                await triggerRandomRaffle('subscription');
+                await sendChatMessage(`🎉 ${chatterName} subscribed! You received ${finalAwarded} points! 🎉`);
+                setTimeout(async () => {
+                  await triggerRandomRaffle('subscription');
+                }, 3000);
               }
             } else if (msgId === 'submysterygift') {
               if (db && chatterName) {
@@ -4665,11 +4672,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 const giftReward = Math.min(maxCap, baseReward + Math.round((totalGifts * totalGifts) * scalingBonus));
                 const finalAwarded = await addPointsWithBonus(chatterName, giftReward);
                 console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting ${totalGifts} sub(s)!`);
-                await triggerRandomRaffle('gift sub');
+                await sendChatMessage(`🎉 ${chatterName} gifted ${totalGifts} sub(s)! You were awarded ${finalAwarded} points! 🎉`);
+                setTimeout(async () => {
+                  await triggerRandomRaffle('gift sub');
+                }, 3000);
               }
             } else if (msgId === 'subgift') {
-              // Only reward the gifter if this is a direct gift sub (not part of a mass mystery gift batch)
-              // Mass gifts are handled by the 'submysterygift' event above.
+
               if (db && chatterName && !tags['msg-param-communitygift-id']) {
                 const baseReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
                 const scalingBonus = parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10);
@@ -4678,7 +4687,10 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 const giftReward = Math.min(maxCap, baseReward + Math.round((totalGifts * totalGifts / 3) * scalingBonus));
                 const finalAwarded = await addPointsWithBonus(chatterName, giftReward);
                 console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting a direct sub!`);
-                await triggerRandomRaffle('gift sub');
+                await sendChatMessage(`🎉 ${chatterName} gifted a sub! You were awarded ${finalAwarded} points! 🎉`);
+                setTimeout(async () => {
+                  await triggerRandomRaffle('gift sub');
+                }, 3000);
               }
             } else if (msgId === 'viewermilestone') {
               if (tags['msg-param-category'] === 'watch-streak') {

@@ -550,6 +550,7 @@ export function setupRoutes(app, {
         success: true,
         rewards: {
           sub: parseInt(globalConfig['reward_sub'] || '5000', 10),
+          bits: parseInt(globalConfig['reward_bits'] || '10', 10),
           giftsub: parseInt(globalConfig['reward_giftsub'] || '5000', 10),
           giftsub_scaling: parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10),
           giftsub_cap: parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10),
