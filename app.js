@@ -3532,11 +3532,34 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           return;
         }
 
-        if (type === 'sub' || type === 'giftsub' || type === 'watchstreak') {
+        if (type === 'sub') {
           const key = `reward_${type}`;
           await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [key, val1, val1]);
           globalConfig[key] = val1.toString();
           await sendChatMessage(`Reward for ${type} updated to ${val1}.`);
+        } else if (type === 'giftsub' || type === 'watchstreak') {
+          if (args.length < 4) {
+            await sendChatMessage(`Usage for ${type}: !editrewards ${type} <base_reward> <scaling> <cap>`);
+            return;
+          }
+          const val3 = parseInt(args[3], 10);
+          if (isNaN(val2) || isNaN(val3)) {
+            await sendChatMessage(`Invalid values for scaling or cap.`);
+            return;
+          }
+          const keyBase = `reward_${type}`;
+          const keyScaling = `reward_${type}_scaling`;
+          const keyCap = `reward_${type}_cap`;
+
+          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [keyBase, val1, val1]);
+          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [keyScaling, val2, val2]);
+          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [keyCap, val3, val3]);
+          
+          globalConfig[keyBase] = val1.toString();
+          globalConfig[keyScaling] = val2.toString();
+          globalConfig[keyCap] = val3.toString();
+          
+          await sendChatMessage(`Reward for ${type} updated! Base: ${val1} | Scaling: ${val2} | Cap: ${val3}`);
         } else if (type === 'raffle' || type === 'multiraffle') {
           if (val2 === null || isNaN(val2)) {
             await sendChatMessage(`Usage for ${type}: !editrewards ${type} <min> <max>`);
