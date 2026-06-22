@@ -79,8 +79,8 @@
     { key: 'reward_chat_sub', label: 'Reward: Chat (Sub)', type: 'number', def: 750, tooltip: 'Points rewarded to subscribers for chatting (respects cooldown)' },
     { key: 'reward_chat_nonsub', label: 'Reward: Chat (Non-Sub)', type: 'number', def: 500, tooltip: 'Points rewarded to non-subscribers for chatting (respects cooldown)' },
     { key: 'reward_chat_cooldown', label: 'Reward: Chat Cooldown (mins)', type: 'number', def: 25, tooltip: 'Minutes between chat rewards' },
-    { key: 'reward_raffle_min', label: 'Reward: Raffle Min', type: 'number', def: 1500, tooltip: 'Minimum points won in a normal raffle' },
-    { key: 'reward_raffle_max', label: 'Reward: Raffle Max', type: 'number', def: 25000, tooltip: 'Maximum points won in a normal raffle' },
+    { key: 'reward_raffle_min', label: 'Reward: Raffle Min', type: 'number', def: 1500, tooltip: 'Minimum points won in a random raffle trigged by subbing/resubbing/gifting subs and gifting bits' },
+    { key: 'reward_raffle_max', label: 'Reward: Raffle Max', type: 'number', def: 25000, tooltip: 'Minimum points won in a random  raffle trigged by subbing/resubbing/gifting subs and gifting bits' },
     { key: 'reward_multiraffle_min', label: 'Reward: Multi-Raffle Min', type: 'number', def: 3, tooltip: 'Minimum winners in a multi-raffle' },
     { key: 'reward_multiraffle_max', label: 'Reward: Multi-Raffle Max', type: 'number', def: 12, tooltip: 'Maximum winners in a multi-raffle' },
     { key: 'duel_tax', label: 'Duel Tax Rate (0 to 1)', type: 'text', def: 0.05, tooltip: 'Percentage of points taken from winning duels (e.g. 0.05 for 5%)' }
