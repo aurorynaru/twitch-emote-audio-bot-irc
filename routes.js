@@ -551,7 +551,11 @@ export function setupRoutes(app, {
         rewards: {
           sub: parseInt(globalConfig['reward_sub'] || '5000', 10),
           giftsub: parseInt(globalConfig['reward_giftsub'] || '5000', 10),
+          giftsub_scaling: parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10),
+          giftsub_cap: parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10),
           watchstreak: parseInt(globalConfig['reward_watchstreak'] || '1000', 10),
+          watchstreak_scaling: parseInt(globalConfig['reward_watchstreak_scaling'] || '20', 10),
+          watchstreak_cap: parseInt(globalConfig['reward_watchstreak_cap'] || '100000', 10),
           raffle_min: parseInt(globalConfig['reward_raffle_min'] || '1500', 10),
           raffle_max: parseInt(globalConfig['reward_raffle_max'] || '25000', 10),
           multiraffle_min: parseInt(globalConfig['reward_multiraffle_min'] || '3', 10),

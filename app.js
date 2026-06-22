@@ -4633,11 +4633,28 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for subscribing!`);
                 await triggerRandomRaffle('subscription');
               }
-            } else if (msgId === 'subgift') {
+            } else if (msgId === 'submysterygift') {
               if (db && chatterName) {
-                const giftReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
+                const baseReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
+                const scalingBonus = parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10);
+                const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
+                const totalGifts = parseInt(tags['msg-param-mass-gift-count'], 10) || 1;
+                const giftReward = Math.min(maxCap, baseReward + Math.round((totalGifts * totalGifts / 3) * scalingBonus));
                 const finalAwarded = await addPointsWithBonus(chatterName, giftReward);
-                console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting sub(s)!`);
+                console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting ${totalGifts} sub(s)!`);
+                await triggerRandomRaffle('gift sub');
+              }
+            } else if (msgId === 'subgift') {
+              // Only reward the gifter if this is a direct gift sub (not part of a mass mystery gift batch)
+              // Mass gifts are handled by the 'submysterygift' event above.
+              if (db && chatterName && !tags['msg-param-communitygift-id']) {
+                const baseReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
+                const scalingBonus = parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10);
+                const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
+                const totalGifts = 1;
+                const giftReward = Math.min(maxCap, baseReward + Math.round((totalGifts * totalGifts / 3) * scalingBonus));
+                const finalAwarded = await addPointsWithBonus(chatterName, giftReward);
+                console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting a direct sub!`);
                 await triggerRandomRaffle('gift sub');
               }
             } else if (msgId === 'viewermilestone') {
@@ -4646,7 +4663,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 if (streak > 0 && db && chatterName) {
                   const baseRate = parseInt(globalConfig['reward_watchstreak'] || '1000', 10);
                   const scalingBonus = parseInt(globalConfig['reward_watchstreak_scaling'] || '20', 10);
-                  const reward = Math.min(100000, baseRate + Math.round((streak * streak / 3) * scalingBonus));
+                  const maxCap = parseInt(globalConfig['reward_watchstreak_cap'] || '100000', 10);
+                  const reward = Math.min(maxCap, baseRate + Math.round((streak * streak / 3) * scalingBonus));
                   
                   const finalAwarded = await addPointsWithBonus(chatterName, reward);
                   console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for a ${streak} watch streak!`);
