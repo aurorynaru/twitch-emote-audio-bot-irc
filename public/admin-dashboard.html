@@ -320,7 +320,7 @@
 
   <div id="tab-global" class="tab-pane active">
     <h2>Global Settings</h2>
-    <div class="grid" id="globalSettingsGrid">
+    <div id="globalSettingsGrid">
       <!-- Global config inputs injected here -->
     </div>
     <div style="position: sticky; bottom: 20px; text-align: right; z-index: 90; margin-top: 20px; pointer-events: none;">
@@ -892,40 +892,40 @@
 
   // State
   const globalKeys = [
-    { key: 'chat_wide_cooldown', label: 'Chat Wide Cooldown (ms)', type: 'number', def: 1500, tooltip: 'Limits how fast the bot can react to anyone. Acts as a strict speed limit for the entire chat to prevent spam.' },
-    { key: 'cmd_!global_cooldown', label: 'Global Default Cooldown (ms)', type: 'number', def: 1000, tooltip: 'Limits how fast a single chatter can spam the bot. This is the default personal cooldown for a specific chatter across all commands.' },
-    { key: 'cmd_!fish_time', label: 'Base Fish Time (minutes)', type: 'number', def: 5, tooltip: 'Base duration for the fishing minigame' },
-    { key: 'level_base_cost', label: 'Level Base Cost', type: 'number', def: 200, tooltip: 'Points required to reach the first level' },
-    { key: 'points_to_xp_rate', label: 'Points to XP Rate', type: 'text', def: 1, tooltip: 'Multiplier for converting points to XP' },
-    { key: 'leg_bonus_rate', label: 'Legendary Bonus Rate', type: 'text', def: 0.01, tooltip: 'Bonus multiplier for legendary items' },
-    { key: 'rare_bonus_rate', label: 'Rare Bonus Rate', type: 'text', def: 0.05, tooltip: 'Bonus multiplier for rare items' },
-    { key: 'lvl_bonus_rate', label: 'Level Bonus Rate', type: 'text', def: 0.001, tooltip: 'Additional multiplier gained per user level' },
-    { key: 'reward_sub', label: 'Reward: Sub', type: 'number', def: 5000, tooltip: 'Points rewarded when someone subscribes' },
-    { key: 'reward_bits', label: 'Reward: Bits', type: 'number', def: 10, tooltip: 'Points rewarded per bit cheered' },
-    { key: 'reward_giftsub', label: 'Reward: Gift Sub', type: 'number', def: 5000, tooltip: 'Points rewarded to the gifter per gift sub' },
-    { key: 'reward_giftsub_scaling', label: 'Gift Sub Scaling', type: 'number', def: 10, tooltip: 'Scaling bonus multiplied by total gifts squared' },
-    { key: 'reward_giftsub_cap', label: 'Gift Sub Cap', type: 'number', def: 100000, tooltip: 'Maximum points awarded for gift sub scaling' },
-    { key: 'reward_watchstreak', label: 'Reward: Watch Streak', type: 'number', def: 1000, tooltip: 'Points rewarded for consecutive streams watched' },
-    { key: 'reward_watchstreak_scaling', label: 'Watch Streak Scaling', type: 'number', def: 20, tooltip: 'Scaling bonus multiplied by streak squared' },
-    { key: 'reward_watchstreak_cap', label: 'Watch Streak Cap', type: 'number', def: 100000, tooltip: 'Maximum points awarded for watch streak' },
-    { key: 'reward_chat_sub', label: 'Reward: Chat (Sub)', type: 'number', def: 750, tooltip: 'Points rewarded to subscribers for chatting (respects cooldown)' },
-    { key: 'reward_chat_nonsub', label: 'Reward: Chat (Non-Sub)', type: 'number', def: 500, tooltip: 'Points rewarded to non-subscribers for chatting (respects cooldown)' },
-    { key: 'reward_chat_cooldown', label: 'Reward: Chat Cooldown (mins)', type: 'number', def: 25, tooltip: 'Minutes between chat rewards' },
-    { key: 'reward_raffle_min', label: 'Reward: Raffle Min', type: 'number', def: 1500, tooltip: 'Minimum points won in a normal raffle' },
-    { key: 'reward_raffle_max', label: 'Reward: Raffle Max', type: 'number', def: 25000, tooltip: 'Maximum points won in a normal raffle' },
-    { key: 'reward_multiraffle_min', label: 'Reward: Multi-Raffle Min', type: 'number', def: 3, tooltip: 'Minimum winners in a multi-raffle' },
-    { key: 'reward_multiraffle_max', label: 'Reward: Multi-Raffle Max', type: 'number', def: 12, tooltip: 'Maximum winners in a multi-raffle' },
-    { key: 'duel_tax', label: 'Duel Tax Rate (0 to 1)', type: 'text', def: 0.05, tooltip: 'Percentage of points taken from winning duels (e.g. 0.05 for 5%)' },
-    { key: 'mod_wide_cost', label: 'Modifier: Wide Cost', type: 'number', def: 0, tooltip: 'Cost added when using the wide modifier for emotes' },
-    { key: 'mod_cursed_cost', label: 'Modifier: Cursed Cost', type: 'number', def: 0, tooltip: 'Cost added when using the cursed modifier for emotes' },
-    { key: 'mod_flipx_cost', label: 'Modifier: FlipX Cost', type: 'number', def: 0, tooltip: 'Cost added when using the flipx modifier for emotes' },
-    { key: 'mod_flipy_cost', label: 'Modifier: FlipY Cost', type: 'number', def: 0, tooltip: 'Cost added when using the flipy modifier for emotes' },
-    { key: 'mod_bounce_cost', label: 'Modifier: Bounce Cost', type: 'number', def: 0, tooltip: 'Cost added when using the bounce modifier for emotes' },
-    { key: 'mod_leave_cost', label: 'Modifier: Leave Cost', type: 'number', def: 0, tooltip: 'Cost added when using the leave modifier for emotes' },
-    { key: 'mod_arrive_cost', label: 'Modifier: Arrive Cost', type: 'number', def: 0, tooltip: 'Cost added when using the arrive modifier for emotes' },
-    { key: 'mod_jam_cost', label: 'Modifier: Jam Cost', type: 'number', def: 0, tooltip: 'Cost added when using the jam modifier for emotes' },
-    { key: 'mod_rainbow_cost', label: 'Modifier: Rainbow Cost', type: 'number', def: 0, tooltip: 'Cost added when using the rainbow modifier for emotes' },
-    { key: 'mod_hyper_cost', label: 'Modifier: Hyper Cost', type: 'number', def: 0, tooltip: 'Cost added when using the hyper modifier for emotes' }
+    { key: 'chat_wide_cooldown', label: 'Chat Wide Cooldown (ms)', type: 'number', def: 1500, category: 'General Config', tooltip: 'Limits how fast the bot can react to anyone. Acts as a strict speed limit for the entire chat to prevent spam.' },
+    { key: 'cmd_!global_cooldown', label: 'Global Default Cooldown (ms)', type: 'number', def: 1000, category: 'General Config', tooltip: 'Limits how fast a single chatter can spam the bot. This is the default personal cooldown for a specific chatter across all commands.' },
+    { key: 'cmd_!fish_time', label: 'Base Fish Time (minutes)', type: 'number', def: 5, category: 'Fish Config', tooltip: 'Base duration for the fishing minigame' },
+    { key: 'level_base_cost', label: 'Level Base Cost', type: 'number', def: 200, category: 'General Config', tooltip: 'Points required to reach the first level' },
+    { key: 'points_to_xp_rate', label: 'Points to XP Rate', type: 'text', def: 1, category: 'General Config', tooltip: 'Multiplier for converting points to XP' },
+    { key: 'leg_bonus_rate', label: 'Legendary Bonus Rate', type: 'text', def: 0.01, category: 'General Config', tooltip: 'Bonus multiplier for legendary items' },
+    { key: 'rare_bonus_rate', label: 'Rare Bonus Rate', type: 'text', def: 0.05, category: 'General Config', tooltip: 'Bonus multiplier for rare items' },
+    { key: 'lvl_bonus_rate', label: 'Level Bonus Rate', type: 'text', def: 0.001, category: 'General Config', tooltip: 'Additional multiplier gained per user level' },
+    { key: 'reward_sub', label: 'Reward: Sub', type: 'number', def: 5000, category: 'Rewards Config', tooltip: 'Points rewarded when someone subscribes' },
+    { key: 'reward_bits', label: 'Reward: Bits', type: 'number', def: 10, category: 'Rewards Config', tooltip: 'Points rewarded per bit cheered' },
+    { key: 'reward_giftsub', label: 'Reward: Gift Sub', type: 'number', def: 5000, category: 'Rewards Config', tooltip: 'Points rewarded to the gifter per gift sub' },
+    { key: 'reward_giftsub_scaling', label: 'Gift Sub Scaling', type: 'number', def: 10, category: 'Rewards Config', tooltip: 'Scaling bonus multiplied by total gifts squared' },
+    { key: 'reward_giftsub_cap', label: 'Gift Sub Cap', type: 'number', def: 100000, category: 'Rewards Config', tooltip: 'Maximum points awarded for gift sub scaling' },
+    { key: 'reward_watchstreak', label: 'Reward: Watch Streak', type: 'number', def: 1000, category: 'Rewards Config', tooltip: 'Points rewarded for consecutive streams watched' },
+    { key: 'reward_watchstreak_scaling', label: 'Watch Streak Scaling', type: 'number', def: 20, category: 'Rewards Config', tooltip: 'Scaling bonus multiplied by streak squared' },
+    { key: 'reward_watchstreak_cap', label: 'Watch Streak Cap', type: 'number', def: 100000, category: 'Rewards Config', tooltip: 'Maximum points awarded for watch streak' },
+    { key: 'reward_chat_sub', label: 'Reward: Chat (Sub)', type: 'number', def: 750, category: 'Rewards Config', tooltip: 'Points rewarded to subscribers for chatting (respects cooldown)' },
+    { key: 'reward_chat_nonsub', label: 'Reward: Chat (Non-Sub)', type: 'number', def: 500, category: 'Rewards Config', tooltip: 'Points rewarded to non-subscribers for chatting (respects cooldown)' },
+    { key: 'reward_chat_cooldown', label: 'Reward: Chat Cooldown (mins)', type: 'number', def: 25, category: 'Rewards Config', tooltip: 'Minutes between chat rewards' },
+    { key: 'reward_raffle_min', label: 'Reward: Raffle Min', type: 'number', def: 1500, category: 'Rewards Config', tooltip: 'Minimum points won in a normal raffle' },
+    { key: 'reward_raffle_max', label: 'Reward: Raffle Max', type: 'number', def: 25000, category: 'Rewards Config', tooltip: 'Maximum points won in a normal raffle' },
+    { key: 'reward_multiraffle_min', label: 'Reward: Multi-Raffle Min', type: 'number', def: 3, category: 'Rewards Config', tooltip: 'Minimum winners in a multi-raffle' },
+    { key: 'reward_multiraffle_max', label: 'Reward: Multi-Raffle Max', type: 'number', def: 12, category: 'Rewards Config', tooltip: 'Maximum winners in a multi-raffle' },
+    { key: 'duel_tax', label: 'Duel Tax Rate (0 to 1)', type: 'text', def: 0.05, category: 'General Config', tooltip: 'Percentage of points taken from winning duels (e.g. 0.05 for 5%)' },
+    { key: 'mod_wide_cost', label: 'Modifier: Wide Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the wide modifier for emotes' },
+    { key: 'mod_cursed_cost', label: 'Modifier: Cursed Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the cursed modifier for emotes' },
+    { key: 'mod_flipx_cost', label: 'Modifier: FlipX Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the flipx modifier for emotes' },
+    { key: 'mod_flipy_cost', label: 'Modifier: FlipY Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the flipy modifier for emotes' },
+    { key: 'mod_bounce_cost', label: 'Modifier: Bounce Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the bounce modifier for emotes' },
+    { key: 'mod_leave_cost', label: 'Modifier: Leave Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the leave modifier for emotes' },
+    { key: 'mod_arrive_cost', label: 'Modifier: Arrive Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the arrive modifier for emotes' },
+    { key: 'mod_jam_cost', label: 'Modifier: Jam Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the jam modifier for emotes' },
+    { key: 'mod_rainbow_cost', label: 'Modifier: Rainbow Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the rainbow modifier for emotes' },
+    { key: 'mod_hyper_cost', label: 'Modifier: Hyper Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the hyper modifier for emotes' }
   ];
 
   const commandDefaults = {
@@ -1136,18 +1136,44 @@
     }
 
     // Render Global Settings
+    const categories = {};
     globalKeys.forEach(g => {
-      const value = configData.globalConfig[g.key] !== undefined && configData.globalConfig[g.key] !== '' ? configData.globalConfig[g.key] : g.def;
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.innerHTML = `
-        <div class="form-group">
-          <label>${g.label} <span class="tooltip-icon" data-tooltip="${g.tooltip || 'Global configuration setting'}">ⓘ</span></label>
-          <input type="${g.type}" data-key="${g.key}" value="${value}">
-        </div>
-      `;
-      globalGrid.appendChild(card);
+      const cat = g.category || 'Other';
+      if (!categories[cat]) categories[cat] = [];
+      categories[cat].push(g);
     });
+
+    for (const [catName, keys] of Object.entries(categories)) {
+      const section = document.createElement('div');
+      section.style.marginBottom = '30px';
+
+      const header = document.createElement('h3');
+      header.textContent = catName;
+      header.style.borderBottom = '1px solid #3f3f46';
+      header.style.paddingBottom = '8px';
+      header.style.marginBottom = '15px';
+      header.style.color = '#bf94ff';
+
+      const grid = document.createElement('div');
+      grid.className = 'grid';
+
+      keys.forEach(g => {
+        const value = configData.globalConfig[g.key] !== undefined && configData.globalConfig[g.key] !== '' ? configData.globalConfig[g.key] : g.def;
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="form-group">
+            <label>${g.label} <span class="tooltip-icon" data-tooltip="${g.tooltip || 'Global configuration setting'}">ⓘ</span></label>
+            <input type="${g.type}" data-key="${g.key}" value="${value}">
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+
+      section.appendChild(header);
+      section.appendChild(grid);
+      globalGrid.appendChild(section);
+    }
 
     // Render Command Configs
     const commandsGrid = document.getElementById('commandsGrid');
