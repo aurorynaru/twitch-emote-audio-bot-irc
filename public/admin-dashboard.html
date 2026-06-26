@@ -1593,6 +1593,9 @@
   // System Actions
   document.getElementById('testVolumeSlider').addEventListener('input', (e) => {
     document.getElementById('testVolumeDisplay').textContent = e.target.value;
+    if (currentTestAudio) {
+      currentTestAudio.volume = parseInt(e.target.value) / 100;
+    }
   });
 
   let currentTestAudio = null;
