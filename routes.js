@@ -685,8 +685,8 @@ export function broadcastEmote(url, isZeroWidth = false, messageId = null, custo
   sseClients.forEach(client => client.write(`data: ${data}\n\n`));
 }
 
-export function broadcastAudio(filename) {
-  const payload = `data: ${JSON.stringify({ type: 'audio', file: filename })}\n\n`;
+export function broadcastAudio(filename, volume = 1.0) {
+  const payload = `data: ${JSON.stringify({ type: 'audio', file: filename, volume: volume })}\n\n`;
   sseClients.forEach(client => client.write(payload));
 }
 

@@ -2,6 +2,15 @@ let durationMs = 5000;
 let sizePx = 150;
 
 
+let audioCtx = null;
+function getAudioContext() {
+  if (!audioCtx) {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) audioCtx = new AudioContext();
+  }
+  return audioCtx;
+}
+
 fetch('/api/config')
   .then(res => res.json())
   .then(data => {
@@ -14,7 +23,32 @@ fetch('/api/config')
       const parsedData = JSON.parse(event.data);
       if (parsedData.type === 'audio') {
         const audio = new Audio('/playsounds/' + parsedData.file);
-        audio.play().catch(err => console.error("Error playing audio:", err));
+        audio.crossOrigin = "anonymous";
+        
+        let shouldPlayDirectly = true;
+        if (parsedData.volume !== undefined) {
+          const vol = parseFloat(parsedData.volume);
+          if (vol > 1.0) {
+            const actx = getAudioContext();
+            if (actx) {
+              shouldPlayDirectly = false;
+              const source = actx.createMediaElementSource(audio);
+              const gainNode = actx.createGain();
+              gainNode.gain.value = vol;
+              source.connect(gainNode);
+              gainNode.connect(actx.destination);
+              audio.play().catch(err => console.error("Error playing amplified audio:", err));
+            } else {
+              audio.volume = 1.0;
+            }
+          } else {
+            audio.volume = Math.max(0, vol);
+          }
+        }
+        
+        if (shouldPlayDirectly) {
+          audio.play().catch(err => console.error("Error playing audio:", err));
+        }
       } else if (parsedData.type === 'bet_update') {
         updateBetUI(parsedData.bet);
       } else if (parsedData.type === 'bet_clear') {

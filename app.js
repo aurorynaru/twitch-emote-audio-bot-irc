@@ -1679,14 +1679,17 @@ async function start() {
           const mp3Path = path.join(__dirname, 'data', 'playsounds', filename + '.mp3');
           
           if (fs.existsSync(oggPath) || fs.existsSync(mp3Path)) {
+            const customVolumeRaw = globalConfig[`volume_playsound_${filename}`];
+            const volume = customVolumeRaw !== undefined && customVolumeRaw !== '' ? parseFloat(customVolumeRaw) : 1.0;
+            
             if (fs.existsSync(oggPath)) {
-              broadcastAudio(filename + '.ogg');
+              broadcastAudio(filename + '.ogg', volume);
               playsoundCooldowns.set(filename, Date.now());
-              console.log(`[PLAYSOUND] ${chatterName} played audio: ${filename}.ogg (-${activeCost} point(s))`);
+              console.log(`[PLAYSOUND] ${chatterName} played audio: ${filename}.ogg (-${activeCost} point(s)) at ${volume}x volume`);
             } else {
-              broadcastAudio(filename + '.mp3');
+              broadcastAudio(filename + '.mp3', volume);
               playsoundCooldowns.set(filename, Date.now());
-              console.log(`[PLAYSOUND] ${chatterName} played audio: ${filename}.mp3 (-${activeCost} point(s))`);
+              console.log(`[PLAYSOUND] ${chatterName} played audio: ${filename}.mp3 (-${activeCost} point(s)) at ${volume}x volume`);
             }
           } else {
             console.log(`[PLAYSOUND] Audio not found for: ${filename}`);

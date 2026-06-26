@@ -147,6 +147,10 @@
       height: 18px;
       accent-color: #bf94ff;
     }
+    input[type="range"] {
+      accent-color: #00ff7f;
+      cursor: pointer;
+    }
     #status {
       position: fixed;
       bottom: 20px;
@@ -311,6 +315,7 @@
     <button class="tab-btn" data-target="tab-users">User Management</button>
     <button class="tab-btn" data-target="tab-items">Items</button>
     <button class="tab-btn" data-target="tab-system">System Actions</button>
+    <button class="tab-btn" data-target="tab-playsounds">Playsounds</button>
     <button class="tab-btn" data-target="tab-routes">Links</button>
     <button class="tab-btn" data-target="tab-reference">Command Reference</button>
   </div>
@@ -652,53 +657,12 @@
     </div>
   </div>
 
-   <div class="card" style="margin-bottom: 20px;">
-    <h3>Test Playsound <span class="tooltip-icon" data-tooltip="Listen to a playsound.">ⓘ</span></h3>
-    <div style="display: flex; gap: 10px; align-items: flex-end;">
-      <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Sound Name</label>
-        <input type="text" id="testSoundName" placeholder="16stars" autocomplete="off">
-        <ul id="testSoundSuggestions" class="autocomplete-list"></ul>
-      </div>
-      <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Volume (<span id="testVolumeDisplay">25</span>%)</label>
-        <input type="range" id="testVolumeSlider" min="0" max="100" value="25" style="width: 100%; margin-top: 10px;">
-      </div>
-      <button class="save-btn" style="background-color: #2e8b57;" id="testSoundBtn">Play</button>
-      <button class="save-btn" style="background-color: #ff4a4a;" id="stopTestSoundBtn">Stop</button>
-    </div>
-  </div>
-
-
-
-  <div class="card" style="margin-bottom: 20px;">
-    <h3>Set Custom Playsound Cost & Cooldown <span class="tooltip-icon" data-tooltip="Set a custom point cost and/or global cooldown for a specific playsound. Leave empty to reset to the global default.">ⓘ</span></h3>
-    <div style="display: flex; gap: 10px; align-items: flex-end;">
-      <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Playsound Name</label>
-        <input type="text" id="customCostPlaysoundInput" placeholder="e.g. 16stars" autocomplete="off">
-        <ul id="customCostPlaysoundSuggestions" class="autocomplete-list"></ul>
-      </div>
-      <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Cost</label>
-        <input type="number" id="customCostPlaysoundAmount" placeholder="Leave empty for default">
-      </div>
-      <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Cooldown (ms)</label>
-        <input type="number" id="customCooldownPlaysoundAmount" placeholder="e.g. 60000 for 1 min">
-      </div>
-      <button class="save-btn" id="saveCustomCostBtn">Save Settings</button>
-    </div>
-    <div id="activeCustomCostsList" style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 10px;"></div>
-  </div>
-
-
-  <div class="card" style="margin-bottom: 20px;">
-    <h3>Blacklist Specific Playsound / Emote / Modifier <span class="tooltip-icon" data-tooltip="Prevent a playsound, emote, or modifier from being triggered without deleting it.">ⓘ</span></h3>
-    
-    <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
-      <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Playsound Name</label>
+    <div class="card" style="margin-bottom: 20px;">
+      <h3>Blacklist Specific Playsound / Emote / Modifier <span class="tooltip-icon" data-tooltip="Prevent a playsound, emote, or modifier from being triggered without deleting it.">ⓘ</span></h3>
+      
+      <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
+        <div class="form-group" style="flex: 1; margin: 0;">
+          <label>Playsound Name</label>
         <input type="text" id="blacklistPlaysoundInput" placeholder="e.g. 16stars" autocomplete="off">
         <ul id="blacklistPlaysoundSuggestions" class="autocomplete-list"></ul>
       </div>
@@ -751,19 +715,67 @@
 
  
 
-  <div class="card" style="margin-bottom: 20px;">
-    <h3>Delete Playsound <span class="tooltip-icon" data-tooltip="Permanently delete a playsound audio file from the server.">ⓘ</span></h3>
-    <div style="display: flex; gap: 10px; align-items: flex-end;">
-      <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Sound Name</label>
-        <input type="text" id="deleteSoundName" placeholder="Sound Name" autocomplete="off">
-        <ul id="soundsSuggestions" class="autocomplete-list"></ul>
-      </div>
-      <button class="save-btn" style="background-color: #ff4a4a;" id="deleteSoundBtn">Delete Sound</button>
-    </div>
   </div>
+  
+  <div id="tab-playsounds" class="tab-pane">
+    <h2>Playsounds</h2>
 
+    <div class="card" style="margin-bottom: 20px;">
+      <h3>Test Playsound <span class="tooltip-icon" data-tooltip="Listen to a playsound.">ⓘ</span></h3>
+      <div style="display: flex; gap: 10px; align-items: flex-end;">
+        <div class="form-group" style="flex: 1; margin: 0;">
+          <label>Sound Name</label>
+          <input type="text" id="testSoundName" placeholder="16stars" autocomplete="off">
+          <ul id="testSoundSuggestions" class="autocomplete-list"></ul>
+        </div>
+        <div class="form-group" style="flex: 1; margin: 0;">
+          <label>Volume (<span id="testVolumeDisplay">20</span>%)</label>
+          <input type="range" id="testVolumeSlider" min="0" max="300" value="20" style="width: 100%; margin-top: 10px; padding: 0; box-sizing: border-box;">
+        </div>
+        <button class="save-btn" style="background-color: #2e8b57;" id="testSoundBtn">Play</button>
+        <button class="save-btn" style="background-color: #ff4a4a;" id="stopTestSoundBtn">Stop</button>
+      </div>
+    </div>
 
+    <div class="card" style="margin-bottom: 20px;">
+      <h3>Set Custom Playsound Cost & Cooldown <span class="tooltip-icon" data-tooltip="Set a custom point cost, global cooldown, or volume. Leave empty to keep current setting. Use the Reset button to revert to global defaults.">ⓘ</span></h3>
+      <div style="display: flex; gap: 10px; align-items: flex-end;">
+        <div class="form-group" style="flex: 1; margin: 0;">
+          <label>Playsound Name</label>
+          <input type="text" id="customCostPlaysoundInput" placeholder="e.g. 16stars" autocomplete="off">
+          <ul id="customCostPlaysoundSuggestions" class="autocomplete-list"></ul>
+        </div>
+        <div class="form-group" style="flex: 1; margin: 0;">
+          <label>Cost</label>
+          <input type="text" id="customCostPlaysoundAmount" placeholder="Leave empty to keep">
+        </div>
+        <div class="form-group" style="flex: 1; margin: 0;">
+          <label>Cooldown (ms)</label>
+          <input type="text" id="customCooldownPlaysoundAmount" placeholder="Leave empty to keep">
+        </div>
+        <div class="form-group" style="flex: 1; margin: 0;">
+          <label>Volume %</label>
+          <input type="text" id="customVolumePlaysoundAmount" placeholder="Leave empty to keep">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+          <button class="save-btn" id="resetCustomCostBtn" style="background-color: #ffaa00; color: black; padding: 10px 15px; flex: 1;">Reset to Default</button>
+          <button class="save-btn" id="saveCustomCostBtn" style="padding: 10px 15px; flex: 1;">Save Settings</button>
+        </div>
+      </div>
+      <div id="activeCustomCostsList" style="margin-top: 20px; display: flex; flex-wrap: wrap; gap: 10px;"></div>
+    </div>
+
+    <div class="card" style="margin-bottom: 20px;">
+      <h3>Delete Playsound <span class="tooltip-icon" data-tooltip="Permanently delete a playsound audio file from the server.">ⓘ</span></h3>
+      <div style="display: flex; gap: 10px; align-items: flex-end;">
+        <div class="form-group" style="flex: 1; margin: 0;">
+          <label>Sound Name</label>
+          <input type="text" id="deleteSoundName" placeholder="Sound Name" autocomplete="off">
+          <ul id="soundsSuggestions" class="autocomplete-list"></ul>
+        </div>
+        <button class="save-btn" style="background-color: #ff4a4a;" id="deleteSoundBtn">Delete Sound</button>
+      </div>
+    </div>
   </div>
   <div id="tab-routes" class="tab-pane">
     <h2>Important Links & Routes</h2>
@@ -1106,10 +1118,10 @@
     activeCostsList.innerHTML = '';
     const activePlaysounds = new Set();
     Object.keys(configData.globalConfig).forEach(key => {
-      if (key.startsWith('cost_playsound_') || key.startsWith('cooldown_playsound_')) {
+      if (key.startsWith('cost_playsound_') || key.startsWith('cooldown_playsound_') || key.startsWith('volume_playsound_')) {
         const val = configData.globalConfig[key];
         if (val !== undefined && val !== '') {
-          activePlaysounds.add(key.replace('cost_playsound_', '').replace('cooldown_playsound_', ''));
+          activePlaysounds.add(key.replace('cost_playsound_', '').replace('cooldown_playsound_', '').replace('volume_playsound_', ''));
         }
       }
     });
@@ -1119,6 +1131,7 @@
       activePlaysounds.forEach(ps => {
         const cost = configData.globalConfig[`cost_playsound_${ps}`];
         const cd = configData.globalConfig[`cooldown_playsound_${ps}`];
+        const vol = configData.globalConfig[`volume_playsound_${ps}`];
         
         const badge = document.createElement('div');
         badge.style.cssText = 'background: rgba(255,170,0,0.1); border: 1px solid rgba(255,170,0,0.3); padding: 5px 10px; border-radius: 4px; display: flex; flex-direction: column; gap: 2px; cursor: pointer;';
@@ -1126,11 +1139,13 @@
           document.getElementById('customCostPlaysoundInput').value = ps;
           document.getElementById('customCostPlaysoundAmount').value = cost || '';
           document.getElementById('customCooldownPlaysoundAmount').value = cd || '';
+          document.getElementById('customVolumePlaysoundAmount').value = vol !== undefined ? Math.round(parseFloat(vol) * 100) : '';
         };
 
         let html = `<strong style="color: #ffaa00;">${ps}</strong>`;
         if (cost) html += `<span style="font-size: 0.8rem; color: #ccc;">Cost: ${cost}</span>`;
         if (cd) html += `<span style="font-size: 0.8rem; color: #ccc;">Cooldown: ${cd}ms</span>`;
+        if (vol !== undefined && vol !== '') html += `<span style="font-size: 0.8rem; color: #ccc;">Volume: ${Math.round(parseFloat(vol) * 100)}%</span>`;
         badge.innerHTML = html;
         activeCostsList.appendChild(badge);
       });
@@ -1591,38 +1606,78 @@
   });
 
   // System Actions
+  let currentTestAudio = null;
+  let currentTestGainNode = null;
+  let testAudioCtx = null;
+
+  function getTestAudioContext() {
+    if (!testAudioCtx) {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (AudioContext) testAudioCtx = new AudioContext();
+    }
+    return testAudioCtx;
+  }
+
   document.getElementById('testVolumeSlider').addEventListener('input', (e) => {
     document.getElementById('testVolumeDisplay').textContent = e.target.value;
+    const vol = parseInt(e.target.value) / 100;
     if (currentTestAudio) {
-      currentTestAudio.volume = parseInt(e.target.value) / 100;
+      if (currentTestGainNode) {
+        currentTestGainNode.gain.value = vol;
+      } else {
+        currentTestAudio.volume = Math.min(Math.max(0, vol), 1.0);
+      }
     }
   });
 
-  let currentTestAudio = null;
-
   document.getElementById('testSoundBtn').addEventListener('click', () => {
     const sound = document.getElementById('testSoundName').value;
-    if (!sound) return alert('Sound name required.');
+    if (!sound) return showToast('Sound name required.', 'error');
     
     if (currentTestAudio) {
       currentTestAudio.pause();
       currentTestAudio.currentTime = 0;
+      currentTestGainNode = null;
     }
 
     const vol = parseInt(document.getElementById('testVolumeSlider').value) / 100;
 
-    // Try .ogg first, then .mp3 if it fails
-    const audio = new Audio(`/playsounds/${encodeURIComponent(sound)}.ogg`);
-    audio.volume = vol;
-    currentTestAudio = audio;
-    audio.play().catch(() => {
-      const audioMp3 = new Audio(`/playsounds/${encodeURIComponent(sound)}.mp3`);
-      audioMp3.volume = vol;
-      currentTestAudio = audioMp3;
-      audioMp3.play().catch(() => {
-        alert('Could not play sound. It might not exist or the browser blocked it.');
+    function playTestAudio(url, fallbackUrl) {
+      const audio = new Audio(url);
+      audio.crossOrigin = "anonymous";
+      currentTestAudio = audio;
+      
+      const playPromise = (() => {
+        if (vol > 1.0) {
+          const actx = getTestAudioContext();
+          if (actx) {
+            const source = actx.createMediaElementSource(audio);
+            const gainNode = actx.createGain();
+            gainNode.gain.value = vol;
+            source.connect(gainNode);
+            gainNode.connect(actx.destination);
+            currentTestGainNode = gainNode;
+            return audio.play();
+          } else {
+            audio.volume = 1.0;
+            return audio.play();
+          }
+        } else {
+          audio.volume = Math.max(0, vol);
+          return audio.play();
+        }
+      })();
+
+      playPromise.catch(() => {
+        if (fallbackUrl) {
+           playTestAudio(fallbackUrl, null);
+        } else {
+           showToast('Could not play sound. It might not exist or the browser blocked it.', 'error');
+        }
       });
-    });
+    }
+
+    playTestAudio(`/playsounds/${encodeURIComponent(sound)}.ogg`, `/playsounds/${encodeURIComponent(sound)}.mp3`);
   });
 
   document.getElementById('stopTestSoundBtn').addEventListener('click', () => {
@@ -1630,6 +1685,7 @@
       currentTestAudio.pause();
       currentTestAudio.currentTime = 0;
       currentTestAudio = null;
+      currentTestGainNode = null;
     }
   });
 
@@ -1681,12 +1737,61 @@
     const item = document.getElementById('customCostPlaysoundInput').value.trim();
     const cost = document.getElementById('customCostPlaysoundAmount').value.trim();
     const cooldown = document.getElementById('customCooldownPlaysoundAmount').value.trim();
-    if (!item) return alert('Playsound name required.');
+    const volumePercent = document.getElementById('customVolumePlaysoundAmount').value.trim();
+    if (!item) return showToast('Playsound name required.', 'error');
+
+    const updates = [];
+    if (cost !== '') {
+      updates.push({ key: 'cost_playsound_' + item, value: cost.toLowerCase() === 'default' ? '' : cost });
+    }
+    if (cooldown !== '') {
+      updates.push({ key: 'cooldown_playsound_' + item, value: cooldown.toLowerCase() === 'default' ? '' : cooldown });
+    }
+    if (volumePercent !== '') {
+      let volVal = volumePercent.toLowerCase() === 'default' ? '' : (parseFloat(volumePercent) / 100).toString();
+      updates.push({ key: 'volume_playsound_' + item, value: volVal });
+    }
+
+    if (updates.length === 0) {
+      return showToast('Nothing to update. Fill at least one field.', 'error');
+    }
+
+    try {
+
+      const res = await fetch('/api/admin/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Playsound ${item} settings updated successfully!`, 'success');
+        document.getElementById('customCostPlaysoundInput').value = '';
+        document.getElementById('customCostPlaysoundAmount').value = '';
+        document.getElementById('customCooldownPlaysoundAmount').value = '';
+        document.getElementById('customVolumePlaysoundAmount').value = '';
+        loadConfig();
+      } else {
+        showToast('Failed to save custom cost: ' + data.error, 'error');
+      }
+    } catch (e) {
+      showToast('Error saving custom cost.', 'error');
+      console.error(e);
+    }
+  });
+
+  document.getElementById('resetCustomCostBtn').addEventListener('click', async () => {
+    const item = document.getElementById('customCostPlaysoundInput').value.trim();
+    if (!item) return showToast('Playsound name required to reset.', 'error');
+
+    if (!confirm(`Are you sure you want to reset all custom settings for playsound "${item}"?`)) return;
 
     try {
       const updates = [
-        { key: 'cost_playsound_' + item, value: cost },
-        { key: 'cooldown_playsound_' + item, value: cooldown }
+        { key: 'cost_playsound_' + item, value: '' },
+        { key: 'cooldown_playsound_' + item, value: '' },
+        { key: 'volume_playsound_' + item, value: '' }
       ];
 
       const res = await fetch('/api/admin/config', {
@@ -1697,15 +1802,17 @@
 
       const data = await res.json();
       if (data.success) {
-        alert(`Playsound ${item} settings saved! Cost: ${cost || 'default'}, Cooldown: ${cooldown || 'none'}.`);
+        showToast(`Playsound ${item} settings reset to defaults!`, 'success');
         document.getElementById('customCostPlaysoundInput').value = '';
         document.getElementById('customCostPlaysoundAmount').value = '';
         document.getElementById('customCooldownPlaysoundAmount').value = '';
+        document.getElementById('customVolumePlaysoundAmount').value = '';
+        loadConfig();
       } else {
-        alert('Failed to save custom cost: ' + data.error);
+        showToast('Failed to reset custom cost: ' + data.error, 'error');
       }
     } catch (e) {
-      alert('Error saving custom cost.');
+      showToast('Error resetting custom cost.', 'error');
       console.error(e);
     }
   });
