@@ -566,6 +566,7 @@ export function setupRoutes(app, {
           giftsub: parseInt(globalConfig['reward_giftsub'] || '5000', 10),
           giftsub_scaling: parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10),
           giftsub_cap: parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10),
+          active_action_bonus_cap: parseInt(globalConfig['active_action_bonus_cap'] || '5000', 10),
           watchstreak: parseInt(globalConfig['reward_watchstreak'] || '1000', 10),
           watchstreak_scaling: parseInt(globalConfig['reward_watchstreak_scaling'] || '20', 10),
           watchstreak_cap: parseInt(globalConfig['reward_watchstreak_cap'] || '100000', 10),

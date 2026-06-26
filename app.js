@@ -161,7 +161,7 @@ async function loadItemsConfig() {
   try {
     let itemsFromDb = await db.all('SELECT * FROM items');
     
-    // Migration logic
+
     if (itemsFromDb.length === 0 && fs.existsSync('./items.json')) {
       console.log('* Migrating items from items.json to database...');
       const data = fs.readFileSync('./items.json', 'utf8');
@@ -726,7 +726,13 @@ async function start() {
     }
   }
   
-  async function addPointsWithBonus(username, amount) {
+  async function addPointsWithBonus(username, amount, ignoreBoosts = false) {
+    if (ignoreBoosts) {
+      const finalAmount = amount;
+      await db.run('UPDATE users SET xp = xp + ?, points = points + ? WHERE username = ?', [Math.max(1, Math.floor(finalAmount / 10)), finalAmount, username]);
+      return finalAmount;
+    }
+
     const userRow = await db.get('SELECT xp FROM users WHERE username = ?', [username]);
     const xp = userRow ? userRow.xp : 0;
     const lvl = getLvl(xp);
@@ -1412,7 +1418,7 @@ async function start() {
                         
                         const stealAmount = Math.floor(Math.min(targetRow.points, totalCalcAmount));
                         await db.run('UPDATE users SET points = points - ? WHERE username = ?', [stealAmount, actualTarget]);
-                        await addPointsWithBonus(chatterName, stealAmount);
+                        await addPointsWithBonus(chatterName, stealAmount, true);
                         chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} to steal ${stealAmount} points from ${actualTarget}!`);
                     }
                  } else {
@@ -2387,7 +2393,7 @@ async function start() {
              winAmount = Math.floor(betAmount * (multipliers[0].effect_value - 1)); // -1 because we add back the bet 
           }
           
-          const addedAmount = await addPointsWithBonus(chatterName, winAmount);
+          const addedAmount = await addPointsWithBonus(chatterName, winAmount, true);
           const updatedUser = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
           const newPoints = updatedUser.points;
 
@@ -2546,7 +2552,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     await db.run('UPDATE users SET points = points + ? WHERE username = ?', [data.spent, user]);
     let finalProfit = profit;
     if (profit > 0) {
-      finalProfit = await addPointsWithBonus(user, profit);
+      finalProfit = await addPointsWithBonus(user, profit, true);
     } else if (profit < 0) {
       await db.run('UPDATE users SET points = MAX(0, points + ?) WHERE username = ?', [profit, user]);
     }
@@ -2805,7 +2811,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         const displayItems = items.slice(0, 3).map(i => ` ${i.item_name} (${i.quantity}x)`);
         let msg = `${chatterName} inv: ${displayItems.join(', ')}`;
         if (items.length > 3) {
-          msg += `... visit {site} to see more`;
+          msg += ` !site for more details.`;
         }
         await sendChatMessage(msg);
       }
@@ -2848,7 +2854,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           return;
         }
 
-        await sendChatMessage(`@${chatterName} Point Gain Bonus: ${ptGainStr} ... visit {site} to see more`);
+        await sendChatMessage(`@${chatterName} Point Gain Bonus: ${ptGainStr}  !site for more details.`);
       }
     },
 
