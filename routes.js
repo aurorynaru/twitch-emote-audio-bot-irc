@@ -575,7 +575,15 @@ export function setupRoutes(app, {
           multiraffle_min: parseInt(globalConfig['reward_multiraffle_min'] || '3', 10),
           multiraffle_max: parseInt(globalConfig['reward_multiraffle_max'] || '12', 10),
           chat_cooldown: parseInt(globalConfig['reward_chat_cooldown'] || '25', 10)
-        }
+        },
+        emoteModifiers: ['wide', 'cursed', 'flipx', 'flipy', 'bounce', 'leave', 'arrive', 'jam', 'rainbow', 'hyper'].reduce((acc, mod) => {
+          const disabledRaw = globalConfig[`disabled_mod_${mod}`];
+          acc[mod] = {
+            cost: parseInt(globalConfig[`mod_${mod}_cost`] || '0', 10),
+            isDisabled: disabledRaw === 'true' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw))
+          };
+          return acc;
+        }, {})
       });
     } catch (error) {
       res.status(500).json({ success: false, error: error.message });
