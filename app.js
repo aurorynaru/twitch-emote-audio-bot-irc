@@ -1323,7 +1323,7 @@ async function start() {
           } else if (effectType === 'global_point_drain') {
             const drainAmount = itemConfig.effectValue * amountToUse;
             await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE username != ?', [drainAmount, chatterName]);
-            chatMsgs.push(`⚠️ A global point drain of ${drainAmount} points was unleashed!`);
+            chatMsgs.push(`A global point drain of ${drainAmount} points was unleashed! monkaS `);
           } else if (effectType === 'global_point_boost' || effectType === 'personal_point_boost' || effectType === 'fishing_time_reduction' || effectType === 'tax_collector' || effectType === 'global_point_debuff' || effectType === 'rarity_boost' || effectType === 'personal_xp_boost') {
             const actualTarget = useTarget || chatterName;
             const finalTarget = isGlobal ? 'GLOBAL' : actualTarget;
@@ -1360,7 +1360,7 @@ async function start() {
              const pendingFish = await db.get('SELECT * FROM pending_fish WHERE username = ?', [actualTarget]);
              if (pendingFish) {
                 await db.run('UPDATE pending_fish SET catch_time = catch_time + ? WHERE username = ?', [timeToAddMs, actualTarget]);
-                chatMsgs.push(`🎣 ${chatterName} used ${amountToUse}x ${itemName} to sabotage ${actualTarget}'s fishing trip! Added ${timeToAddMinutes} minutes to their wait time!`);
+                chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} to sabotage ${actualTarget}'s fishing trip! Added ${timeToAddMinutes} minutes to their wait time!`);
              } else {
                 await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [actualTarget, 'delayed_fish', timeToAddMs, timeToAddMs]);
                 chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} to curse ${actualTarget}'s fishing rod! Their next trip will take ${timeToAddMinutes} minutes longer!`);
@@ -1385,9 +1385,9 @@ async function start() {
                             await db.run('UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?', [shieldedAttacks, shield.id]);
                             remainingAttacks -= shieldedAttacks;
                             if (remainingAttacks === 0) {
-                                chatMsgs.push(`🛡️ ${actualTarget}'s POINT SHIELD completely blocked ${chatterName}'s steal attack!`);
+                                chatMsgs.push(` SirShield ${actualTarget}'s POINT SHIELD completely blocked ${chatterName}'s steal attack!`);
                             } else {
-                                chatMsgs.push(`🛡️ ${actualTarget}'s POINT SHIELD blocked ${shieldedAttacks} of ${chatterName}'s steal attacks, but broke!`);
+                                chatMsgs.push(` SirShield ${actualTarget}'s POINT SHIELD blocked ${shieldedAttacks} of ${chatterName}'s steal attacks, but broke!`);
                             }
                         }
                     }
@@ -1400,7 +1400,7 @@ async function start() {
                             if (defendedAttacks > 0) {
                                 await db.run('UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?', [defendedAttacks, defense.id]);
                                 defenseMultiplier = Math.max(0, 1 - defense.effect_value);
-                                chatMsgs.push(`🛡️ ${actualTarget}'s POINT DEFENSE reduced ${defendedAttacks} of ${chatterName}'s steal attacks by ${Math.round(defense.effect_value * 100)}%!`);
+                                chatMsgs.push(` SirShield ${actualTarget}'s POINT DEFENSE reduced ${defendedAttacks} of ${chatterName}'s steal attacks by ${Math.round(defense.effect_value * 100)}%!`);
                             }
                         }
                     }
@@ -1445,9 +1445,9 @@ async function start() {
                             await db.run('UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?', [shieldedAttacks, shield.id]);
                             remainingAttacks -= shieldedAttacks;
                             if (remainingAttacks === 0) {
-                                chatMsgs.push(`🛡️ ${actualTarget}'s POINT SHIELD completely blocked ${chatterName}'s attack!`);
+                                chatMsgs.push(` SirShield ${actualTarget}'s POINT SHIELD completely blocked ${chatterName}'s attack!`);
                             } else {
-                                chatMsgs.push(`🛡️ ${actualTarget}'s POINT SHIELD blocked ${shieldedAttacks} of ${chatterName}'s attacks, but broke!`);
+                                chatMsgs.push(` SirShield ${actualTarget}'s POINT SHIELD blocked ${shieldedAttacks} of ${chatterName}'s attacks, but broke!`);
                             }
                         }
                     }
@@ -1460,7 +1460,7 @@ async function start() {
                             if (defendedAttacks > 0) {
                                 await db.run('UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?', [defendedAttacks, defense.id]);
                                 defenseMultiplier = Math.max(0, 1 - defense.effect_value);
-                                chatMsgs.push(`🛡️ ${actualTarget}'s POINT DEFENSE reduced ${defendedAttacks} of ${chatterName}'s attacks by ${Math.round(defense.effect_value * 100)}%!`);
+                                chatMsgs.push(` SirShield ${actualTarget}'s POINT DEFENSE reduced ${defendedAttacks} of ${chatterName}'s attacks by ${Math.round(defense.effect_value * 100)}%!`);
                             }
                         }
                     }
@@ -1493,7 +1493,7 @@ async function start() {
                'INSERT INTO active_effects (target_user, effect_type, effect_value, expires_at, caster) VALUES (?, ?, ?, ?, ?)',
                [actualTarget, 'global_point_debuff', combinedValue, now + durationMs, chatterName]
              );
-             chatMsgs.push(`📉 ${chatterName} used ${amountToUse}x ${itemName} to curse ${actualTarget} with a ${Math.round(combinedValue * 100)}% point gain debuff for ${itemConfig.effectDurationMinutes} minutes!`);
+             chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} to curse ${actualTarget} with a ${Math.round(combinedValue * 100)}% point gain debuff for ${itemConfig.effectDurationMinutes} minutes!`);
           } else {
 
             const uses = itemConfig.uses * amountToUse;
@@ -2061,7 +2061,7 @@ async function start() {
         }
 
         if (target === chatterName) {
-          await sendChatMessage(`${chatterName} you cannot duel yourself!`, chatterName);
+          await sendChatMessage(`${chatterName} you cannot duel yourself! Pepeg `, chatterName);
           return;
         }
 
@@ -2070,7 +2070,7 @@ async function start() {
 
         const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
         if (!user || user.points <= 0) {
-          await sendChatMessage(`${chatterName} you don't have enough points to duel!`, chatterName);
+          await sendChatMessage(`${chatterName} you don't have enough points to duel! BrokeBoy `, chatterName);
           return;
         }
 
@@ -2094,7 +2094,7 @@ async function start() {
         if (knifeMod && knifeMod.value > 0) {
           const targetUserObj = await db.get('SELECT points FROM users WHERE username = ?', target);
           if (!targetUserObj || targetUserObj.points <= 0) {
-            await sendChatMessage(`${chatterName} you tried to assassinate ${target}, but they have no points!`, chatterName);
+            await sendChatMessage(`${chatterName} you tried to assassinate ${target}, but they have no points! BrokeBoy  `, chatterName);
             return;
           }
           
@@ -2158,7 +2158,7 @@ async function start() {
           await updateUserStat(chatterName, 'duels_points_lost', lossAmount);
           await updateUserStat(target, 'duels_points_won', lossAmount);
 
-          await sendChatMessage(`🛡️ ${target}'s MIRROR SHIELD reflected ${chatterName}'s duel! ${chatterName} lost ${lossAmount} points!`, chatterName);
+          await sendChatMessage(` SirShield ${target}'s MIRROR SHIELD reflected ${chatterName}'s duel! ${chatterName} lost ${lossAmount} points!`, chatterName);
           return;
         }
 
@@ -2183,7 +2183,7 @@ async function start() {
           timeoutId: timeoutId
         });
 
-        await sendChatMessage(`⚔️ ${chatterName} challenged ${target} for ${betAmount} pts! Type !acceptduel in 60s!`, chatterName);
+        await sendChatMessage(` StevenFight ${chatterName} challenged ${target} for ${betAmount} pts! Type !acceptduel in 60s!`, chatterName);
       }
     },
     '!acceptduel': {
@@ -2302,7 +2302,7 @@ async function start() {
         if (!isNaN(newTax) && newTax >= 0 && newTax <= 100) {
           globalConfig['duel_tax'] = (newTax / 100).toString();
           broadcastConfig(globalConfig);
-          // Also save to DB for persistence
+     
           db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', ['duel_tax', globalConfig['duel_tax'], globalConfig['duel_tax']]);
           await sendChatMessage(`Duel tax is now set to ${newTax}%.`, chatterName);
         } else {
@@ -2339,7 +2339,7 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
         if (!user || user.points <= 0) {
-          await sendChatMessage(`${chatterName}, you don't have any points to gamble!`, chatterName);
+          await sendChatMessage(`${chatterName}, you don't have any points to gamble! BrokeBoy `, chatterName);
           return;
         }
 
@@ -2375,7 +2375,7 @@ async function start() {
                }
            }
            if (betAmount > maxLimit) {
-               await sendChatMessage(`${chatterName}, your loaded dice only guarantees bets up to ${maxLimit}! Try a lower amount.`, chatterName);
+               await sendChatMessage(`${chatterName}, your loaded dice only guarantees bets up to ${maxLimit}! Try a lower amount. docRant `, chatterName);
                return;
            }
 
@@ -2390,7 +2390,7 @@ async function start() {
           const multipliers = await getActiveEffects(chatterName, 'gamble_multiplier');
           if (multipliers.length > 0) {
              await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [multipliers[0].id]);
-             winAmount = Math.floor(betAmount * (multipliers[0].effect_value - 1)); // -1 because we add back the bet 
+             winAmount = Math.floor(betAmount * (multipliers[0].effect_value - 1)); 
           }
           
           const addedAmount = await addPointsWithBonus(chatterName, winAmount, true);
@@ -2402,9 +2402,9 @@ async function start() {
           await updateUserStat(chatterName, 'gamble_points_won', addedAmount);
           
           if (multipliers.length > 0) {
-            await sendChatMessage(`✨ MIDAS TOUCH! ${chatterName} won ${addedAmount + betAmount} points in a gamble! You now have ${newPoints} points.`, chatterName);
+            await sendChatMessage(`✨ MIDAS TOUCH! ${chatterName} won ${addedAmount + betAmount} points in a gamble! You now have ${newPoints} points. `, chatterName);
           } else {
-            await sendChatMessage(`${chatterName} won ${addedAmount} points in a gamble! You now have ${newPoints} points.`, chatterName);
+            await sendChatMessage(`${chatterName} won ${addedAmount} points in a gamble! You now have ${newPoints} points. EZ  `, chatterName);
           }
         } else {
           const shields = await getActiveEffects(chatterName, 'gamble_shield');
@@ -2420,7 +2420,7 @@ async function start() {
              } else {
                 await db.run('DELETE FROM active_effects WHERE id = ?', [shield.id]);
              }
-             shieldedMsg = ` 🛡️ (Your shield refunded ${refund} points!)`;
+             shieldedMsg = `  SirShield (Your shield refunded ${refund} points!)`;
           }
 
           await db.run('UPDATE users SET points = points - ? WHERE username = ?', [actualLoss, chatterName]);
@@ -2428,7 +2428,7 @@ async function start() {
           await updateUserStat(chatterName, 'gamble_played', 1);
           await updateUserStat(chatterName, 'gamble_lost', 1);
           await updateUserStat(chatterName, 'gamble_points_lost', actualLoss);
-          await sendChatMessage(`${chatterName} lost ${actualLoss} points in a gamble...${shieldedMsg} You now have ${newPoints} points.`, chatterName);
+          await sendChatMessage(`${chatterName} lost ${actualLoss} points in a gamble...${shieldedMsg} You now have ${newPoints} points. LMAO `, chatterName);
         }
       }
     },
@@ -4104,7 +4104,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       activeRaffle = null;
 
       if (r.users.size === 0) {
-        await sendChatMessage(`The random ${r.type === 'multi' ? 'multi-raffle' : 'raffle'} ended, but nobody joined!`);
+        await sendChatMessage(`The random ${r.type === 'multi' ? 'multi-raffle' : 'raffle'} ended, but nobody joined! CaitThinking `);
         return;
       }
 
@@ -4249,7 +4249,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             if (db) {
               const finalAwarded = await addPointsWithBonus(chatterName, pointsToAward);
               console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for cheering ${bits} bits!`);
-              await sendChatMessage(`🎉 ${chatterName} cheered ${bits} bits! You received ${finalAwarded} points! 🎉`);
+              await sendChatMessage(`🎉 ${chatterName} cheered ${bits} bits! You received ${finalAwarded} points!`);
               setTimeout(async () => {
                 await triggerRandomRaffle('bit cheer');
               }, 3000);
