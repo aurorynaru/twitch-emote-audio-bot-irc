@@ -1216,6 +1216,15 @@
         </div>
       `;
 
+      // Offline Only toggle
+      const isOfflineOnly = configData.globalConfig[`cmd_${cmdName}_offline_only`] === 'true';
+      html += `
+        <div class="form-group row">
+          <label>Offline Only <span class="tooltip-icon" data-tooltip="If checked, this command will only work when the stream is offline.">ⓘ</span></label>
+          <input type="checkbox" data-key="cmd_${cmdName}_offline_only" ${isOfflineOnly ? 'checked' : ''}>
+        </div>
+      `;
+
       // Disabled toggle
       const disabledRaw = configData.globalConfig[`cmd_${cmdName}_disabled_until`];
       const isDisabled = disabledRaw === 'forever' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw));

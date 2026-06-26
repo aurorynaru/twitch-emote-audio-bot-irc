@@ -4356,6 +4356,15 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               return;
             }
           }
+
+          // Global offline-only check
+          const isOfflineOnly = globalConfig[`cmd_${commandName}_offline_only`] === 'true';
+          if (isOfflineOnly) {
+            const isLive = await isStreamerLive();
+            if (isLive) {
+              return;
+            }
+          }
           
           if (customAliasesMap.has(commandName)) {
             const alias = customAliasesMap.get(commandName);
@@ -4396,6 +4405,15 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               if (newIsSubOnly) {
                 const isSubOrMod = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'subscriber', 'founder'].includes(b.set_id)) || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
                 if (!isSubOrMod) {
+                  return;
+                }
+              }
+
+              // Re-check offline-only for the new resolved command
+              const newIsOfflineOnly = globalConfig[`cmd_${commandName}_offline_only`] === 'true';
+              if (newIsOfflineOnly) {
+                const isLive = await isStreamerLive();
+                if (isLive) {
                   return;
                 }
               }

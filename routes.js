@@ -492,8 +492,14 @@ export function setupRoutes(app, {
       };
 
       const defaultCommands = Object.keys(commandConfigSchema).map(cmd => {
+        const disabledRaw = globalConfig[`cmd_${cmd}_disabled_until`];
+        const isDisabled = disabledRaw === 'forever' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw));
+        
         return {
           command: cmd,
+          isDisabled: isDisabled,
+          isSubOnly: globalConfig[`cmd_${cmd}_sub_only`] === 'true',
+          isOfflineOnly: globalConfig[`cmd_${cmd}_offline_only`] === 'true',
           settings: commandConfigSchema[cmd].reduce((acc, setting) => {
              let val = globalConfig[`cmd_${cmd}_${setting}`];
              if (val === undefined) {
@@ -511,10 +517,16 @@ export function setupRoutes(app, {
 
       const customCommands = [];
       customAliasesMap.forEach((data, cmd) => {
+        const disabledRaw = globalConfig[`cmd_${cmd}_disabled_until`];
+        const isDisabled = disabledRaw === 'forever' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw));
+        
         customCommands.push({
           command: cmd,
           action: data.action,
-          cost: data.cost
+          cost: data.cost,
+          isDisabled: isDisabled,
+          isSubOnly: globalConfig[`cmd_${cmd}_sub_only`] === 'true',
+          isOfflineOnly: globalConfig[`cmd_${cmd}_offline_only`] === 'true'
         });
       });
 
