@@ -224,10 +224,10 @@ export function setupRoutes(app, {
         // Safely migrate the renamed item in user inventories, merging quantities if necessary
         await db.run(`
           INSERT INTO user_inventory (username, item_name, quantity)
-          SELECT username, ?, quantity FROM user_inventory WHERE item_name COLLATE NOCASE = ?
+          SELECT username, ?, quantity FROM user_inventory WHERE item_name COLLATE NOCASE = ? AND item_name != ?
           ON CONFLICT(username, item_name) DO UPDATE SET quantity = user_inventory.quantity + excluded.quantity
-        `, [name, originalName]);
-        await db.run('DELETE FROM user_inventory WHERE item_name COLLATE NOCASE = ?', [originalName]);
+        `, [name, originalName, name]);
+        await db.run('DELETE FROM user_inventory WHERE item_name COLLATE NOCASE = ? AND item_name != ?', [originalName, name]);
       }
 
       await db.run(`

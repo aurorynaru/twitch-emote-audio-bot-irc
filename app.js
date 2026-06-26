@@ -203,6 +203,24 @@ async function loadItemsConfig() {
       };
       
       ITEMS_REGISTRY[lowerName] = info;
+      
+      try {
+        const canonicalName = row.name;
+        await db.run(`
+          INSERT INTO user_inventory (username, item_name, quantity)
+          SELECT username, ?, quantity FROM user_inventory 
+          WHERE LOWER(item_name) = LOWER(?) AND item_name != ?
+          ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + excluded.quantity
+        `, [canonicalName, canonicalName, canonicalName]);
+        
+        await db.run(`
+          DELETE FROM user_inventory 
+          WHERE LOWER(item_name) = LOWER(?) AND item_name != ?
+        `, [canonicalName, canonicalName]);
+      } catch(e) {
+        console.error('Error syncing inventory case for item:', row.name, e);
+      }
+
       const rarity = info.rarity.toLowerCase();
       if (FISHING_ITEMS[rarity]) {
         FISHING_ITEMS[rarity].push({ 
