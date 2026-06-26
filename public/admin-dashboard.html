@@ -665,6 +665,7 @@
         <input type="range" id="testVolumeSlider" min="0" max="100" value="25" style="width: 100%; margin-top: 10px;">
       </div>
       <button class="save-btn" style="background-color: #2e8b57;" id="testSoundBtn">Play</button>
+      <button class="save-btn" style="background-color: #ff4a4a;" id="stopTestSoundBtn">Stop</button>
     </div>
   </div>
 
@@ -1594,22 +1595,39 @@
     document.getElementById('testVolumeDisplay').textContent = e.target.value;
   });
 
+  let currentTestAudio = null;
+
   document.getElementById('testSoundBtn').addEventListener('click', () => {
     const sound = document.getElementById('testSoundName').value;
     if (!sound) return alert('Sound name required.');
     
+    if (currentTestAudio) {
+      currentTestAudio.pause();
+      currentTestAudio.currentTime = 0;
+    }
+
     const vol = parseInt(document.getElementById('testVolumeSlider').value) / 100;
 
     // Try .ogg first, then .mp3 if it fails
     const audio = new Audio(`/playsounds/${encodeURIComponent(sound)}.ogg`);
     audio.volume = vol;
+    currentTestAudio = audio;
     audio.play().catch(() => {
       const audioMp3 = new Audio(`/playsounds/${encodeURIComponent(sound)}.mp3`);
       audioMp3.volume = vol;
+      currentTestAudio = audioMp3;
       audioMp3.play().catch(() => {
         alert('Could not play sound. It might not exist or the browser blocked it.');
       });
     });
+  });
+
+  document.getElementById('stopTestSoundBtn').addEventListener('click', () => {
+    if (currentTestAudio) {
+      currentTestAudio.pause();
+      currentTestAudio.currentTime = 0;
+      currentTestAudio = null;
+    }
   });
 
   document.getElementById('deleteSoundBtn').addEventListener('click', async () => {
