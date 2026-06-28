@@ -227,6 +227,18 @@ export function setupRoutes(app, {
     }
   });
 
+  app.put('/api/admin/submissions/:id', adminAuth, express.json(), async (req, res) => {
+    try {
+      const id = req.params.id;
+      const { content } = req.body;
+      const db = getDb();
+      await db.run('UPDATE user_submissions SET content = ? WHERE id = ?', [content, id]);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   app.post('/api/admin/submissions/:id/review', adminAuth, express.json(), async (req, res) => {
     try {
       const { status, action } = req.body;

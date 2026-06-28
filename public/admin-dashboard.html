@@ -322,10 +322,10 @@
 </head>
 <body>
 
-<header style="display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 15px 20px;">
-  <div style="display: flex; align-items: center; gap: 20px;">
+<header style="display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 15px 20px; gap: 30px;">
+  <div style="display: flex; align-items: center; gap: 20px; flex-shrink: 0;">
     <h1 style="margin: 0;">Admin Dashboard</h1>
-    <button onclick="loadConfig(); this.innerHTML='â†» Refreshed!'; setTimeout(()=>this.innerHTML='â†» Refresh', 2000);" style="background: #3a3a44; color: #00ff7f; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#bf94ff'; this.style.color='#000';" onmouseout="this.style.background='#3a3a44'; this.style.color='#00ff7f';">â†» Refresh</button>
+    <button onclick="loadConfig(); const i = this.querySelector('span'); i.style.transform = 'rotate(360deg)'; setTimeout(() => i.style.transform = 'none', 300);" style="background: #3a3a44; color: #00ff7f; border: none; padding: 6px; border-radius: 4px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;" onmouseover="this.style.background='#bf94ff'; this.style.color='#000';" onmouseout="this.style.background='#3a3a44'; this.style.color='#00ff7f';" title="Refresh Dashboard"><span style="display:inline-block; transition: transform 0.4s ease; font-size: 1.4em; line-height: 1;">&#8635;</span></button>
     <div id="status"></div>
   </div>
   <div class="tabs" style="padding-bottom: 0; margin: 0; flex-wrap: nowrap;">
@@ -371,7 +371,7 @@
   <div id="tab-custom" class="tab-pane">
     <h2>Custom Commands</h2>
   <div class="card" style="margin-bottom: 20px;">
-    <h3>Add / Update Custom Command <span class="tooltip-icon" data-tooltip="Create or update custom commands that respond with simple text messages.">â“˜</span></h3>
+    <h3>Add / Update Custom Command <span class="tooltip-icon" data-tooltip="Create or update custom commands that respond with simple text messages.">ⓘ</span></h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Command (e.g. !bot)</label>
@@ -397,7 +397,7 @@
     <h2>User Management</h2>
     
     <div class="card" style="margin-bottom: 20px;">
-      <h3 style="margin-top: 0; margin-bottom: 15px;">Search & Edit User Data <span class="tooltip-icon" data-tooltip="Search for a user to edit their points, XP, and inventory.">â“˜</span></h3>
+      <h3 style="margin-top: 0; margin-bottom: 15px;">Search & Edit User Data <span class="tooltip-icon" data-tooltip="Search for a user to edit their points, XP, and inventory.">ⓘ</span></h3>
       <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
         <div class="form-group" style="flex: 1; margin: 0;">
           <label>Search Username</label>
@@ -477,7 +477,7 @@
     </div>
 
   <div class="card" style="margin-bottom: 20px;">
-    <h3 style="margin-top: 0;">Mass Add Points (!masspointsadd) <span class="tooltip-icon" data-tooltip="Give points to everyone who chatted recently.">â“˜</span></h3>
+    <h3 style="margin-top: 0;">Mass Add Points (!masspointsadd) <span class="tooltip-icon" data-tooltip="Give points to everyone who chatted recently.">ⓘ</span></h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Amount</label>
@@ -492,7 +492,7 @@
   </div>
 
   <div class="card" style="margin-bottom: 20px;">
-    <h3 style="margin-top: 0;">Mass Subtract Points (!masspointssub) <span class="tooltip-icon" data-tooltip="Remove points from everyone who chatted recently.">â“˜</span></h3>
+    <h3 style="margin-top: 0;">Mass Subtract Points (!masspointssub) <span class="tooltip-icon" data-tooltip="Remove points from everyone who chatted recently.">ⓘ</span></h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Amount</label>
@@ -510,14 +510,14 @@
     <h2>Items Management</h2>
     
     <div class="card" style="margin-bottom: 20px;">
-      <h3>Add / Edit Item <span class="tooltip-icon" data-tooltip="Create a new item or edit an existing one. Using an existing name will update it.">â“˜</span></h3>
+      <h3>Add / Edit Item <span class="tooltip-icon" data-tooltip="Create a new item or edit an existing one. Using an existing name will update it.">ⓘ</span></h3>
       <div class="grid">
         <div class="form-group">
-          <label>Item Name <span class="tooltip-icon" data-tooltip="Unique name of the item.">â“˜</span></label>
+          <label>Item Name <span class="tooltip-icon" data-tooltip="Unique name of the item.">ⓘ</span></label>
           <input type="text" id="itemName" placeholder="e.g. radioactive fish">
         </div>
         <div class="form-group">
-          <label>Rarity <span class="tooltip-icon" data-tooltip="Rarity tier of the item.">â“˜</span></label>
+          <label>Rarity <span class="tooltip-icon" data-tooltip="Rarity tier of the item.">ⓘ</span></label>
           <select id="itemRarity">
             <option value="Common">Common</option>
             <option value="Uncommon">Uncommon</option>
@@ -526,7 +526,7 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Effect Type <span class="tooltip-icon" id="effectTypeTooltip" data-tooltip="Select an effect to see its description.">â“˜</span></label>
+          <label>Effect Type <span class="tooltip-icon" id="effectTypeTooltip" data-tooltip="Select an effect to see its description.">ⓘ</span></label>
           <select id="itemEffectType" onchange="updateEffectTooltip()">
             <option value="none">none</option>
             <option value="instant_points">instant_points</option>
@@ -559,42 +559,42 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Effect Value <span class="tooltip-icon" data-tooltip="Numeric magnitude of the effect (e.g., points to give/take, multiplier value).">â“˜</span></label>
+          <label>Effect Value <span class="tooltip-icon" data-tooltip="Numeric magnitude of the effect (e.g., points to give/take, multiplier value).">ⓘ</span></label>
           <input type="number" id="itemEffectValue" placeholder="e.g. 100">
         </div>
         <div class="form-group">
           <label style="display: flex; align-items: center; gap: 8px;">
             <input type="checkbox" id="enableItemDuration" onchange="document.getElementById('itemDuration').disabled = !this.checked; if(!this.checked) document.getElementById('itemDuration').value = '';" style="margin:0; width: 14px; height: 14px;">
-            Duration (Minutes) <span class="tooltip-icon" data-tooltip="How long the effect lasts in minutes (for continuous effects).">â“˜</span>
+            Duration (Minutes) <span class="tooltip-icon" data-tooltip="How long the effect lasts in minutes (for continuous effects).">ⓘ</span>
           </label>
           <input type="number" id="itemDuration" placeholder="e.g. 30" disabled>
         </div>
         <div class="form-group">
-          <label>Uses <span class="tooltip-icon" data-tooltip="How many times this item can be used before being destroyed.">â“˜</span></label>
+          <label>Uses <span class="tooltip-icon" data-tooltip="How many times this item can be used before being destroyed.">ⓘ</span></label>
           <input type="number" id="itemUses" placeholder="e.g. 1" value="1">
         </div>
         <div class="form-group">
           <label style="display: flex; align-items: center; gap: 8px;">
             <input type="checkbox" id="enableItemMaxGambleLimit" onchange="document.getElementById('itemMaxGambleLimit').disabled = !this.checked; if(!this.checked) document.getElementById('itemMaxGambleLimit').value = '';" style="margin:0; width: 14px; height: 14px;">
-            Max Gamble Limit <span class="tooltip-icon" data-tooltip="Limit for guaranteed gamble wins.">â“˜</span>
+            Max Gamble Limit <span class="tooltip-icon" data-tooltip="Limit for guaranteed gamble wins.">ⓘ</span>
           </label>
           <input type="number" id="itemMaxGambleLimit" placeholder="e.g. 1000" disabled>
         </div>
         <div class="form-group" style="grid-column: span 2;">
-          <label>Description <span class="tooltip-icon" data-tooltip="What does this item do? Displayed to users in chat/UI.">â“˜</span></label>
+          <label>Description <span class="tooltip-icon" data-tooltip="What does this item do? Displayed to users in chat/UI.">ⓘ</span></label>
           <input type="text" id="itemDescription" placeholder="What does this item do?">
         </div>
         <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
           <input type="checkbox" id="itemIsGlobal" style="width: 20px; height: 20px; cursor: pointer;">
-          <label style="margin: 0; cursor: pointer;" for="itemIsGlobal">Is Global Effect? <span class="tooltip-icon" data-tooltip="Does this affect everyone in the chat?">â“˜</span></label>
+          <label style="margin: 0; cursor: pointer;" for="itemIsGlobal">Is Global Effect? <span class="tooltip-icon" data-tooltip="Does this affect everyone in the chat?">ⓘ</span></label>
         </div>
         <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
           <input type="checkbox" id="itemAutoConsume" style="width: 20px; height: 20px; cursor: pointer;">
-          <label style="margin: 0; cursor: pointer;" for="itemAutoConsume">Auto Consume? <span class="tooltip-icon" data-tooltip="Should this item be consumed immediately upon receiving?">â“˜</span></label>
+          <label style="margin: 0; cursor: pointer;" for="itemAutoConsume">Auto Consume? <span class="tooltip-icon" data-tooltip="Should this item be consumed immediately upon receiving?">ⓘ</span></label>
         </div>
         <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
           <input type="checkbox" id="itemIsPercentage" style="width: 20px; height: 20px; cursor: pointer;">
-          <label style="margin: 0; cursor: pointer;" for="itemIsPercentage">Is Percentage? <span class="tooltip-icon" data-tooltip="Is the effect value a percentage multiplier?">â“˜</span></label>
+          <label style="margin: 0; cursor: pointer;" for="itemIsPercentage">Is Percentage? <span class="tooltip-icon" data-tooltip="Is the effect value a percentage multiplier?">ⓘ</span></label>
         </div>
       </div>
       <div style="display: flex; gap: 10px; margin-top: 15px;">
@@ -649,12 +649,12 @@
     <h2>System Actions</h2>
 
     <div class="card" style="border-color: #ff4a4a; margin-bottom: 20px;">
-      <h3 style="color: #ff4a4a; margin-bottom: 10px;">Clear Overlay <span class="tooltip-icon" data-tooltip="Instantly clears all active visual and audio overlay elements, hiding bets, and stopping chat wars.">â“˜</span></h3>
+      <h3 style="color: #ff4a4a; margin-bottom: 10px;">Clear Overlay <span class="tooltip-icon" data-tooltip="Instantly clears all active visual and audio overlay elements, hiding bets, and stopping chat wars.">ⓘ</span></h3>
       <button class="save-btn" style="background-color: #ff4a4a; width: 100%;" id="clearOverlayBtn">Instant Clear All</button>
     </div>
 
     <div class="card" style="margin-bottom: 20px;">
-      <h3>Temporarily Disable Command <span class="tooltip-icon" data-tooltip="Prevent a specific command from being used for a set duration. Leave Duration empty to disable forever.">â“˜</span></h3>
+      <h3>Temporarily Disable Command <span class="tooltip-icon" data-tooltip="Prevent a specific command from being used for a set duration. Leave Duration empty to disable forever.">ⓘ</span></h3>
       <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Command</label>
@@ -668,7 +668,7 @@
       <button class="save-btn" style="background-color: #ffaa00; color: black;" id="disableCmdBtn">Disable Command</button>
     </div>
 
-    <h3 style="margin-top: 30px;">Enable Command <span class="tooltip-icon" data-tooltip="Re-enable a command that was previously disabled.">â“˜</span></h3>
+    <h3 style="margin-top: 30px;">Enable Command <span class="tooltip-icon" data-tooltip="Re-enable a command that was previously disabled.">ⓘ</span></h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Disabled Command</label>
@@ -680,7 +680,7 @@
   </div>
 
     <div class="card" style="margin-bottom: 20px;">
-      <h3>Blacklist Specific Playsound / Emote / Modifier <span class="tooltip-icon" data-tooltip="Prevent a playsound, emote, or modifier from being triggered without deleting it.">â“˜</span></h3>
+      <h3>Blacklist Specific Playsound / Emote / Modifier <span class="tooltip-icon" data-tooltip="Prevent a playsound, emote, or modifier from being triggered without deleting it.">ⓘ</span></h3>
       
       <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
         <div class="form-group" style="flex: 1; margin: 0;">
@@ -743,7 +743,7 @@
     <h2>Playsounds</h2>
 
     <div class="card" style="margin-bottom: 20px;">
-      <h3>Test Playsound <span class="tooltip-icon" data-tooltip="Listen to a playsound.">â“˜</span></h3>
+      <h3>Test Playsound <span class="tooltip-icon" data-tooltip="Listen to a playsound.">ⓘ</span></h3>
       <div style="display: flex; gap: 10px; align-items: flex-end;">
         <div class="form-group" style="flex: 1; margin: 0;">
           <label>Sound Name</label>
@@ -760,7 +760,7 @@
     </div>
 
     <div class="card" style="margin-bottom: 20px;">
-      <h3>Set Custom Playsound Cost & Cooldown <span class="tooltip-icon" data-tooltip="Set a custom point cost, global cooldown, or volume. Leave empty to keep current setting. Use the Reset button to revert to global defaults.">â“˜</span></h3>
+      <h3>Set Custom Playsound Cost & Cooldown <span class="tooltip-icon" data-tooltip="Set a custom point cost, global cooldown, or volume. Leave empty to keep current setting. Use the Reset button to revert to global defaults.">ⓘ</span></h3>
       <div style="display: flex; gap: 10px; align-items: flex-end;">
         <div class="form-group" style="flex: 1; margin: 0;">
           <label>Playsound Name</label>
@@ -788,7 +788,7 @@
     </div>
 
     <div class="card" style="margin-bottom: 20px;">
-      <h3>Delete Playsound <span class="tooltip-icon" data-tooltip="Permanently delete a playsound audio file from the server.">â“˜</span></h3>
+      <h3>Delete Playsound <span class="tooltip-icon" data-tooltip="Permanently delete a playsound audio file from the server.">ⓘ</span></h3>
       <div style="display: flex; gap: 10px; align-items: flex-end;">
         <div class="form-group" style="flex: 1; margin: 0;">
           <label>Sound Name</label>
@@ -885,7 +885,7 @@
     <div id="tab-submissions" class="tab-pane">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
       <h2 style="margin: 0;">User Submissions</h2>
-      <button class="save-btn" onclick="fetchSubmissions()" style="padding: 6px 12px; font-size: 14px;">â†» Refresh</button>
+      <button class="save-btn" onclick="fetchSubmissions()" style="padding: 6px 12px; font-size: 14px;">↻ Refresh</button>
     </div>
     <p style="color: #adadb8;">Review playsound and trivia submissions from authenticated users.</p>
     
@@ -1267,7 +1267,7 @@
         card.className = 'card';
         card.innerHTML = `
           <div class="form-group">
-            <label>${g.label} <span class="tooltip-icon" data-tooltip="${g.tooltip || 'Global configuration setting'}">â“˜</span></label>
+            <label>${g.label} <span class="tooltip-icon" data-tooltip="${g.tooltip || 'Global configuration setting'}">ⓘ</span></label>
             <input type="${g.type}" data-key="${g.key}" value="${value}">
           </div>
         `;
@@ -1293,7 +1293,7 @@
       const card = document.createElement('div');
       card.className = 'card';
       
-      let html = `<h3>${cmdName} <span class="tooltip-icon" data-tooltip="Configure execution rules and costs for the ${cmdName} command.">â“˜</span></h3>`;
+      let html = `<h3>${cmdName} <span class="tooltip-icon" data-tooltip="Configure execution rules and costs for the ${cmdName} command.">ⓘ</span></h3>`;
       
       // Sub Only toggle
       const isSubOnly = configData.globalConfig[`cmd_${cmdName}_sub_only`] === 'true';
@@ -1308,7 +1308,7 @@
       const isOfflineOnly = configData.globalConfig[`cmd_${cmdName}_offline_only`] === 'true';
       html += `
         <div class="form-group row">
-          <label>Offline Only <span class="tooltip-icon" data-tooltip="If checked, this command will only work when the stream is offline.">â“˜</span></label>
+          <label>Offline Only <span class="tooltip-icon" data-tooltip="If checked, this command will only work when the stream is offline.">ⓘ</span></label>
           <input type="checkbox" data-key="cmd_${cmdName}_offline_only" ${isOfflineOnly ? 'checked' : ''}>
         </div>
       `;
@@ -1345,7 +1345,7 @@
       refCard.className = 'card';
       
       let refHtml = `
-        <h3 style="color: #00ff7f; margin-bottom: 5px; margin-top: 0;">${cmdName} <span class="tooltip-icon" data-tooltip="Command usage and aliasing info for ${cmdName}">â“˜</span></h3>
+        <h3 style="color: #00ff7f; margin-bottom: 5px; margin-top: 0;">${cmdName} <span class="tooltip-icon" data-tooltip="Command usage and aliasing info for ${cmdName}">ⓘ</span></h3>
         ${commandInstructions[cmdName] ? `<p style="margin-top: 0; margin-bottom: 10px; font-size: 0.95em; line-height: 1.4;">${commandInstructions[cmdName]}</p>` : ''}
         ${aliases.length > 0 ? `<p style="margin-top: 0; margin-bottom: 10px; font-size: 0.85em; color: #adadb8;"><strong>Aliases:</strong> ${aliases.join(', ')}</p>` : ''}
         <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 4px; border: 1px solid #3a3a44;">
@@ -2332,9 +2332,13 @@
   });
 
   let currentSubmissionStatus = 'pending';
+  let reviewPlaysoundsPage = 1;
+  let reviewTriviaPage = 1;
   
   function setSubmissionStatus(status) {
     currentSubmissionStatus = status;
+    reviewPlaysoundsPage = 1;
+    reviewTriviaPage = 1;
     document.getElementById('btn-status-pending').className = status === 'pending' ? 'sub-tab-btn active' : 'sub-tab-btn';
     document.getElementById('btn-status-pending').style.background = status === 'pending' ? 'rgba(191, 148, 255, 0.15)' : 'transparent';
     document.getElementById('btn-status-pending').style.border = status === 'pending' ? '1px solid #bf94ff' : '1px solid #3f3f46';
@@ -2367,87 +2371,290 @@
         return;
       }
       
-      let psCount = 0;
-      let trCount = 0;
-
-      data.submissions.forEach(sub => {
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.style.marginBottom = '10px';
-        card.innerHTML = `
-          <div style="display:flex; justify-content:space-between;">
-            <strong>User: <span style="color:#bf94ff">${sub.username}</span></strong>
-            <span style="color:var(--text-muted); font-size: 12px;">${new Date(sub.created_at.replace(' ', 'T') + 'Z').toLocaleString()}</span>
-          </div>
-          <div style="margin-top: 10px; background: #18181b; padding: 15px; border-radius: 4px; font-size: 15px;">
-            ${(() => {
-              if (sub.type === 'playsound') {
-                let html = sub.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                html = html.replace(/^Command Name:\s*!playsound\s+(.+)$/m, '<div style="font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 5px;">!playsound <span style="color: #ff00ff;">$1</span></div>');
-                html = html.replace(/^Link:\s*(.+)$/m, '<div style="margin-bottom: 5px;"><strong>Link:</strong> <a href="$1" target="_blank" style="color: #00bfff; text-decoration: none;">$1</a></div>');
-                html = html.replace(/^Description:\s*([\s\S]*?)(?=\nCategories:|$)/m, '<div style="font-size: 16px; margin-bottom: 10px;"><strong>Description:</strong> <span style="color: #a8a8b3; white-space: pre-wrap;">$1</span></div>');
-                html = html.replace(/^Categories:\s*(.+)$/m, '<div style="margin-bottom: 10px;"><strong>Categories:</strong> <span style="color: #00C851;">$1</span></div>');
-                
-                if (html !== sub.content) {
-                  return html;
-                }
-                return `<div style="white-space: pre-wrap; font-family: monospace; font-size: 14px; line-height: 1.8;">${sub.content}</div>`;
-              } else {
-                let q = sub.content;
-                let h = '';
-                let a = '';
-                let c = '';
-                try {
-                  const parsed = JSON.parse(sub.content);
-                  a = parsed.answer;
-                  if (parsed.categories && parsed.categories.length > 0) {
-                    c = `<div style="margin-top: 10px; font-size: 14px;"><strong>Categories:</strong> <span style="color: #00C851;">${parsed.categories.join(', ')}</span></div>`;
-                  }
-                  try {
-                    const innerParsed = JSON.parse(parsed.question);
-                    q = innerParsed.question;
-                    h = innerParsed.hint ? `<div style="margin-top: 10px; color: #a8a8b3; font-size: 14px;"><strong>Hint:</strong> ${innerParsed.hint}</div>` : '';
-                    if (innerParsed.categories && innerParsed.categories.length > 0) {
-                      c = `<div style="margin-top: 10px; font-size: 14px;"><strong>Categories:</strong> <span style="color: #00C851;">${innerParsed.categories.join(', ')}</span></div>`;
-                    }
-                  } catch (e2) {
-                    q = parsed.question;
-                  }
-                } catch (e) {}
-                return `
-                  <div style="font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 10px;">${q}</div>
-                  <div style="font-size: 16px;"><strong>Answer:</strong> <span style="color: #00ff7f;">${a}</span></div>
-                  ${h}
-                  ${c}
-                `;
-              }
-            })()}
-          </div>
-          ${currentSubmissionStatus === 'pending' ? `
-            <div style="margin-top: 10px; display: flex; gap: 10px; justify-content: flex-end;">
-              <button onclick="reviewSubmission(${sub.id}, 'reject')" style="background: #ff4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Reject</button>
-              <button onclick="reviewSubmission(${sub.id}, 'approve')" style="background: #00C851; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Approve</button>
-            </div>
-          ` : ''}
-        `;
-        
-        if (sub.type === 'playsound') {
-          psGrid.appendChild(card);
-          psCount++;
-        } else {
-          trGrid.appendChild(card);
-          trCount++;
-        }
-      });
-      
-      if (psCount === 0) psGrid.innerHTML = '<p style="color:var(--text-muted)">No pending playsound submissions.</p>';
-      if (trCount === 0) trGrid.innerHTML = '<p style="color:var(--text-muted)">No pending trivia submissions.</p>';
+      window.currentSubmissions = data.submissions;
+      reviewPlaysoundsPage = 1;
+      reviewTriviaPage = 1;
+      renderSubmissions();
       
     } catch (e) {
       console.error(e);
       document.getElementById('submissionsPlaysoundGrid').innerHTML = `<p style="color:red">Error loading submissions.</p>`;
     }
   }
+
+  function renderSubmissions() {
+    const psGrid = document.getElementById('submissionsPlaysoundGrid');
+    const trGrid = document.getElementById('submissionsTriviaGrid');
+    
+    psGrid.innerHTML = '';
+    trGrid.innerHTML = '';
+    
+    if (window.currentSubmissions.length === 0) {
+      const msg = currentSubmissionStatus === 'pending' ? 'No pending submissions.' : 'No approved submissions.';
+      psGrid.innerHTML = `<p style="color:var(--text-muted)">${msg}</p>`;
+      trGrid.innerHTML = `<p style="color:var(--text-muted)">${msg}</p>`;
+      return;
+    }
+    
+    const playsounds = window.currentSubmissions.filter(s => s.type === 'playsound');
+    const trivias = window.currentSubmissions.filter(s => s.type === 'trivia');
+
+    if (playsounds.length === 0) {
+      const msg = currentSubmissionStatus === 'pending' ? 'No pending playsound submissions.' : 'No approved playsound submissions.';
+      psGrid.innerHTML = `<p style="color:var(--text-muted)">${msg}</p>`;
+    } else {
+      const paginatedPs = playsounds.slice(0, reviewPlaysoundsPage * ITEMS_PER_PAGE);
+      paginatedPs.forEach(sub => {
+        const card = createSubmissionCard(sub);
+        psGrid.appendChild(card);
+      });
+      if (playsounds.length > paginatedPs.length) {
+        const btn = document.createElement('button');
+        btn.innerText = 'Show Next (' + (playsounds.length - paginatedPs.length) + ' remaining)';
+        btn.style = 'background: #3b82f6; color: white; padding: 10px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; margin-top: 10px; width: 100%;';
+        btn.onclick = () => { reviewPlaysoundsPage++; renderSubmissions(); };
+        psGrid.appendChild(btn);
+      }
+    }
+
+    if (trivias.length === 0) {
+      const msg = currentSubmissionStatus === 'pending' ? 'No pending trivia submissions.' : 'No approved trivia submissions.';
+      trGrid.innerHTML = `<p style="color:var(--text-muted)">${msg}</p>`;
+    } else {
+      const paginatedTr = trivias.slice(0, reviewTriviaPage * ITEMS_PER_PAGE);
+      paginatedTr.forEach(sub => {
+        const card = createSubmissionCard(sub);
+        trGrid.appendChild(card);
+      });
+      if (trivias.length > paginatedTr.length) {
+        const btn = document.createElement('button');
+        btn.innerText = 'Show Next (' + (trivias.length - paginatedTr.length) + ' remaining)';
+        btn.style = 'background: #3b82f6; color: white; padding: 10px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; margin-top: 10px; width: 100%;';
+        btn.onclick = () => { reviewTriviaPage++; renderSubmissions(); };
+        trGrid.appendChild(btn);
+      }
+    }
+  }
+
+  function createSubmissionCard(sub) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.marginBottom = '10px';
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between;">
+        <strong>User: <span style="color:#bf94ff">${sub.username}</span></strong>
+        <span style="color:var(--text-muted); font-size: 12px;">${new Date(sub.created_at.replace(' ', 'T') + 'Z').toLocaleString()}</span>
+      </div>
+      <div style="margin-top: 10px; background: #18181b; padding: 15px; border-radius: 4px; font-size: 15px;">
+        ${(() => {
+          if (sub.type === 'playsound') {
+            let html = sub.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            html = html.replace(/^Command Name:\s*!playsound\s+(.+)$/m, '<div style="font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 5px;">!playsound <span style="color: #ff00ff;">$1</span></div>');
+            html = html.replace(/^Link:\s*(.+)$/m, '<div style="margin-bottom: 5px;"><strong>Link:</strong> <a href="$1" target="_blank" style="color: #00bfff; text-decoration: none;">$1</a></div>');
+            html = html.replace(/^Description:\s*([\s\S]*?)(?=\nCategories:|$)/m, '<div style="font-size: 16px; margin-bottom: 10px;"><strong>Description:</strong> <span style="color: #a8a8b3; white-space: pre-wrap;">$1</span></div>');
+            html = html.replace(/^Categories:\s*(.+)$/m, '<div style="margin-bottom: 10px;"><strong>Categories:</strong> <span style="color: #00C851;">$1</span></div>');
+            
+            if (html !== sub.content) {
+              return html;
+            }
+            return `<div style="white-space: pre-wrap; font-family: monospace; font-size: 14px; line-height: 1.8;">${sub.content}</div>`;
+          } else {
+            let q = sub.content;
+            let h = '';
+            let a = '';
+            let c = '';
+            try {
+              const parsed = JSON.parse(sub.content);
+              a = parsed.answer;
+              if (parsed.categories && parsed.categories.length > 0) {
+                c = `<div style="margin-top: 10px; font-size: 14px;"><strong>Categories:</strong> <span style="color: #00C851;">${parsed.categories.join(', ')}</span></div>`;
+              }
+              try {
+                const innerParsed = JSON.parse(parsed.question);
+                q = innerParsed.question;
+                h = innerParsed.hint ? `<div style="margin-top: 10px; color: #a8a8b3; font-size: 14px;"><strong>Hint:</strong> ${innerParsed.hint}</div>` : '';
+                if (innerParsed.categories && innerParsed.categories.length > 0) {
+                  c = `<div style="margin-top: 10px; font-size: 14px;"><strong>Categories:</strong> <span style="color: #00C851;">${innerParsed.categories.join(', ')}</span></div>`;
+                }
+              } catch (e2) {
+                q = parsed.question;
+              }
+            } catch (e) {}
+            return `
+              <div style="font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 10px;">${q}</div>
+              <div style="font-size: 16px;"><strong>Answer:</strong> <span style="color: #00ff7f;">${a}</span></div>
+              ${h}
+              ${c}
+            `;
+          }
+        })()}
+      </div>
+      ${currentSubmissionStatus === 'pending' ? `
+        <div style="margin-top: 10px; display: flex; gap: 10px; justify-content: flex-end;">
+          <button onclick="editSubmission(${sub.id})" style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Edit</button>
+          <button onclick="reviewSubmission(${sub.id}, 'reject')" style="background: #ff4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Reject</button>
+          <button onclick="reviewSubmission(${sub.id}, 'approve')" style="background: #00C851; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Approve</button>
+        </div>
+      ` : ''}
+    `;
+    return card;
+  }
+
+  window.editSubmission = async function(id) {
+    if (allManagePlaysounds.length === 0) await fetchManagePlaysounds();
+    if (allManageTrivia.length === 0) await fetchManageTrivia();
+    
+    const sub = window.currentSubmissions.find(s => s.id === id);
+    if (!sub) return;
+    
+    const modal = document.createElement('div');
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.width = '100%';
+    modal.style.height = '100%';
+    modal.style.background = 'rgba(0,0,0,0.8)';
+    modal.style.zIndex = '9999';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    
+    let innerHtml = '';
+    
+    if (sub.type === 'playsound') {
+      let cmdMatch = sub.content.match(/^Command Name:\s*!playsound\s+(.+)$/m);
+      let linkMatch = sub.content.match(/^Link:\s*(.+)$/m);
+      let descMatch = sub.content.match(/^Description:\s*([\s\S]*?)(?=\nCategories:|$)/m);
+      let catMatch = sub.content.match(/^Categories:\s*(.+)$/m);
+      
+      let cmd = cmdMatch ? cmdMatch[1] : '';
+      let link = linkMatch ? linkMatch[1] : '';
+      let desc = descMatch ? descMatch[1] : '';
+      let cats = catMatch ? catMatch[1] : '';
+      
+      innerHtml = `
+        <div style="background:#18181b; padding: 20px; border-radius: 8px; border: 1px solid #3f3f46; width: 600px; max-width: 90%;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <strong style="color: #bf94ff; font-size: 1.1em;">Edit Playsound Submission</strong>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <label style="color: #a1a1aa; font-size: 0.85em; text-transform: uppercase; font-weight: bold;">Command Name</label>
+              <input type="text" id="edit_cmd" value="${cmd.replace(/"/g, '&quot;')}" placeholder="Name without !playsound" style="border-radius: 4px; border: 1px solid #3f3f46; background: #09090b; color: #fff; padding: 8px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <label style="color: #a1a1aa; font-size: 0.85em; text-transform: uppercase; font-weight: bold;">Link</label>
+              <input type="text" id="edit_link" value="${link.replace(/"/g, '&quot;')}" placeholder="URL" style="border-radius: 4px; border: 1px solid #3f3f46; background: #09090b; color: #fff; padding: 8px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <label style="color: #a1a1aa; font-size: 0.85em; text-transform: uppercase; font-weight: bold;">Description</label>
+              <textarea id="edit_desc" placeholder="Description" style="border-radius: 4px; border: 1px solid #3f3f46; background: #09090b; color: #fff; padding: 8px; min-height: 60px; resize: vertical; font-family: inherit;">${desc}</textarea>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <label style="color: #a1a1aa; font-size: 0.85em; text-transform: uppercase; font-weight: bold;">Categories</label>
+              <div id="edit_cat_container_modal" style="display: flex; flex-wrap: wrap; gap: 5px; width: 100%; border-radius: 4px; border: 1px solid #3f3f46; background: #09090b; padding: 6px; box-sizing: border-box; min-height: 35px; align-items: center; cursor: text;"></div>
+              <input type="hidden" id="edit_cat_modal" value="${cats}">
+            </div>
+          </div>
+          <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+            <button id="cancelEditSub" style="background: transparent; color: white; border: 1px solid #3f3f46; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Cancel</button>
+            <button id="saveEditSub" style="background: #00C851; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer;">Save</button>
+          </div>
+        </div>
+      `;
+    } else {
+      let q = ''; let a = ''; let h = ''; let cats = [];
+      try {
+        let parsed = JSON.parse(sub.content);
+        a = parsed.answer || '';
+        if (parsed.categories) cats = parsed.categories;
+        try {
+          let inner = JSON.parse(parsed.question);
+          q = inner.question || '';
+          h = inner.hint || '';
+          if (inner.categories) cats = inner.categories;
+        } catch(e) { q = parsed.question || ''; }
+      } catch(e) { q = sub.content; }
+      
+      innerHtml = `
+        <div style="background:#18181b; padding: 20px; border-radius: 8px; border: 1px solid #3f3f46; width: 600px; max-width: 90%;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <strong style="color: #60a5fa; font-size: 1.1em;">Edit Trivia Submission</strong>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <label style="color: #a1a1aa; font-size: 0.85em; text-transform: uppercase; font-weight: bold;">Question</label>
+              <input type="text" id="edit_q" value="${q.replace(/"/g, '&quot;')}" placeholder="Question" style="border-radius: 4px; border: 1px solid #3f3f46; background: #09090b; color: #fff; padding: 8px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <label style="color: #a1a1aa; font-size: 0.85em; text-transform: uppercase; font-weight: bold;">Answer</label>
+              <input type="text" id="edit_a" value="${a.replace(/"/g, '&quot;')}" placeholder="Answer" style="border-radius: 4px; border: 1px solid #3f3f46; background: #09090b; color: #fff; padding: 8px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <label style="color: #a1a1aa; font-size: 0.85em; text-transform: uppercase; font-weight: bold;">Hint</label>
+              <input type="text" id="edit_h" value="${h.replace(/"/g, '&quot;')}" placeholder="Hint" style="border-radius: 4px; border: 1px solid #3f3f46; background: #09090b; color: #fff; padding: 8px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <label style="color: #a1a1aa; font-size: 0.85em; text-transform: uppercase; font-weight: bold;">Categories</label>
+              <div id="edit_cat_container_modal" style="display: flex; flex-wrap: wrap; gap: 5px; width: 100%; border-radius: 4px; border: 1px solid #3f3f46; background: #09090b; padding: 6px; box-sizing: border-box; min-height: 35px; align-items: center; cursor: text;"></div>
+              <input type="hidden" id="edit_cat_modal" value="${cats.join(',')}">
+            </div>
+          </div>
+          <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+            <button id="cancelEditSub" style="background: transparent; color: white; border: 1px solid #3f3f46; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Cancel</button>
+            <button id="saveEditSub" style="background: #00C851; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer;">Save</button>
+          </div>
+        </div>
+      `;
+    }
+    
+    modal.innerHTML = innerHtml;
+    document.body.appendChild(modal);
+    
+    // Setup categories input
+    let initialCats = document.getElementById('edit_cat_modal').value.split(',').map(c => c.trim()).filter(c => c);
+    setupTagsInput('edit_cat_container_modal', 'edit_cat_modal', initialCats, getUniqueCategories(sub.type));
+    
+    document.getElementById('cancelEditSub').onclick = () => {
+      document.body.removeChild(modal);
+    };
+    
+    document.getElementById('saveEditSub').onclick = async () => {
+      let newContent = '';
+      if (sub.type === 'playsound') {
+        const c = document.getElementById('edit_cmd').value.trim();
+        const l = document.getElementById('edit_link').value.trim();
+        const d = document.getElementById('edit_desc').value.trim();
+        const catStr = document.getElementById('edit_cat_modal').value.split(',').map(x => x.trim()).filter(x => x).join(', ');
+        newContent = `Command Name: !playsound ${c}\nLink: ${l}\nDescription: ${d}\nCategories: ${catStr}`;
+      } else {
+        const q = document.getElementById('edit_q').value.trim();
+        const a = document.getElementById('edit_a').value.trim();
+        const h = document.getElementById('edit_h').value.trim();
+        const catArray = document.getElementById('edit_cat_modal').value.split(',').map(x => x.trim()).filter(x => x);
+        const innerQ = JSON.stringify({ question: q, hint: h, categories: catArray });
+        newContent = JSON.stringify({ question: innerQ, answer: a, categories: catArray });
+      }
+      
+      try {
+        const res = await fetch(`/api/admin/submissions/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: newContent })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Submission updated!', 'success');
+          document.body.removeChild(modal);
+          fetchSubmissions();
+        } else {
+          alert('Error: ' + data.error);
+        }
+      } catch (e) {
+        alert(e.message);
+      }
+    };
+  };
 
   async function reviewSubmission(id, action) {
     if (!confirm(`Are you sure you want to ${action} this submission?`)) return;
@@ -2516,6 +2723,9 @@
 <script>
   let allManagePlaysounds = [];
   let allManageTrivia = [];
+  let playsoundsPage = 1;
+  let triviaPage = 1;
+  const ITEMS_PER_PAGE = 20;
 
   async function fetchManagePlaysounds() {
     try {
@@ -2544,10 +2754,14 @@
     }
   }
 
-  function getUniqueCategories() {
+  function getUniqueCategories(type) {
     const cats = new Set();
-    allManagePlaysounds.forEach(ps => (ps.categories || []).forEach(c => cats.add(c)));
-    allManageTrivia.forEach(tr => (tr.categories || []).forEach(c => cats.add(c)));
+    if (type === 'playsound' || !type) {
+      allManagePlaysounds.forEach(ps => (ps.categories || []).forEach(c => cats.add(c)));
+    }
+    if (type === 'trivia' || !type) {
+      allManageTrivia.forEach(tr => (tr.categories || []).forEach(c => cats.add(c)));
+    }
     return Array.from(cats);
   }
 
@@ -2783,7 +2997,8 @@
        grid.innerHTML = '<p style="color:var(--text-muted)">No playsounds found.</p>';
        return;
     }
-    filtered.forEach(ps => {
+    const paginated = filtered.slice(0, playsoundsPage * ITEMS_PER_PAGE);
+    paginated.forEach(ps => {
       const div = document.createElement('div');
       div.style = 'background: rgba(0,0,0,0.2); padding: 10px; border: 1px solid #3f3f46; display: flex; flex-direction: column; gap: 10px;';
       div.innerHTML = `
@@ -2804,8 +3019,16 @@
           <button onclick="saveManagePlaysound('${ps.filename}')" style="background: #00C851; color: white; padding: 4px 12px; border: none; cursor: pointer; border-radius: 4px;">Save</button>
         </div>`;
       grid.appendChild(div);
-      setupTagsInput('edit_cat_container_' + ps.filename, 'edit_cat_' + ps.filename, ps.categories || [], getUniqueCategories());
+      setupTagsInput('edit_cat_container_' + ps.filename, 'edit_cat_' + ps.filename, ps.categories || [], getUniqueCategories('playsound'));
     });
+
+    if (filtered.length > paginated.length) {
+      const btn = document.createElement('button');
+      btn.innerText = 'Show Next (' + (filtered.length - paginated.length) + ' remaining)';
+      btn.style = 'background: #3b82f6; color: white; padding: 10px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; margin-top: 10px; width: 100%;';
+      btn.onclick = () => { playsoundsPage++; renderManagePlaysounds(); };
+      grid.appendChild(btn);
+    }
   }
 
   async function deleteManagePlaysound(name) {
@@ -2872,27 +3095,51 @@
        grid.innerHTML = '<p style="color:var(--text-muted)">No trivia found.</p>';
        return;
     }
-    filtered.forEach(({tr, idx}) => {
+    const paginated = filtered.slice(0, triviaPage * ITEMS_PER_PAGE);
+    paginated.forEach(({tr, idx}) => {
       const id = tr.id || idx;
       const div = document.createElement('div');
       div.style = 'background: rgba(0,0,0,0.2); padding: 10px; border: 1px solid #3f3f46; display: flex; flex-direction: column; gap: 10px;';
       div.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center;">
-          <strong style="color: #60a5fa;">Trivia #${id}</strong>
-          <button onclick="deleteManageTrivia(${id})" style="background: #ef4444; color: white; padding: 4px 8px; border: none; cursor: pointer; border-radius: 4px;">Delete</button>
+          <strong style="color: #60a5fa; font-size: 1.1em;">Trivia #${id}</strong>
+          <div>
+            <button onclick="saveManageTrivia(${id})" style="background: #00C851; color: white; padding: 4px 12px; border: none; cursor: pointer; border-radius: 4px; margin-right: 5px; font-weight: bold;">Save</button>
+            <button onclick="deleteManageTrivia(${id})" style="background: #ef4444; color: white; padding: 4px 12px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold;">Delete</button>
+          </div>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 5px;">
-          <input type="text" id="edit_tr_q_${id}" value="${tr.question.replace(/"/g, '&quot;')}" placeholder="Question" style="border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff; padding: 6px;">
-          <input type="text" id="edit_tr_a_${id}" value="${tr.answer.replace(/"/g, '&quot;')}" placeholder="Answer" style="border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff; padding: 6px;">
-          <div style="display: flex; gap: 10px;">
-            <input type="text" id="edit_tr_h_${id}" value="${(tr.hint || '').replace(/"/g, '&quot;')}" placeholder="Hint" style="flex:1; border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff; padding: 6px;">
-            <input type="text" id="edit_tr_c_${id}" value="${(tr.categories || []).join(', ')}" placeholder="Categories (comma separated)" style="flex:1; border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff; padding: 6px;">
-            <button onclick="saveManageTrivia(${id})" style="background: #00C851; color: white; padding: 4px 16px; border: none; cursor: pointer; border-radius: 4px;">Save</button>
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 5px;">
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <label style="color: #a1a1aa; font-size: 0.85em; text-transform: uppercase; font-weight: bold;">Question</label>
+            <input type="text" id="edit_tr_q_${id}" value="${tr.question.replace(/"/g, '&quot;')}" placeholder="Question" style="border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff; padding: 8px;">
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <label style="color: #a1a1aa; font-size: 0.85em; text-transform: uppercase; font-weight: bold;">Answer</label>
+            <input type="text" id="edit_tr_a_${id}" value="${tr.answer.replace(/"/g, '&quot;')}" placeholder="Answer" style="border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff; padding: 8px;">
+          </div>
+          <div style="display: flex; gap: 15px;">
+            <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
+              <label style="color: #a1a1aa; font-size: 0.85em; text-transform: uppercase; font-weight: bold;">Hint</label>
+              <input type="text" id="edit_tr_h_${id}" value="${(tr.hint || '').replace(/"/g, '&quot;')}" placeholder="Hint" style="border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff; padding: 8px;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px; flex: 1;">
+              <label style="color: #a1a1aa; font-size: 0.85em; text-transform: uppercase; font-weight: bold;">Categories</label>
+              <div id="edit_tr_c_container_${id}" style="border: 1px solid #3f3f46; border-radius: 4px; padding: 6px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; background: #18181b; min-height: 35px;"></div>
+              <input type="hidden" id="edit_tr_c_${id}" value="${(tr.categories || []).join(',')}">
+            </div>
           </div>
         </div>`;
       grid.appendChild(div);
-      setupMultiAutocomplete('edit_tr_c_' + id, 'edit_tr_c_sug_' + id, getUniqueCategories());
+      setupTagsInput('edit_tr_c_container_' + id, 'edit_tr_c_' + id, tr.categories || [], getUniqueCategories('trivia'));
     });
+
+    if (filtered.length > paginated.length) {
+      const btn = document.createElement('button');
+      btn.innerText = 'Show Next (' + (filtered.length - paginated.length) + ' remaining)';
+      btn.style = 'background: #3b82f6; color: white; padding: 10px; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; margin-top: 10px; width: 100%;';
+      btn.onclick = () => { triviaPage++; renderManageTrivia(); };
+      grid.appendChild(btn);
+    }
   }
 
   async function deleteManageTrivia(id) {
@@ -2924,8 +3171,8 @@
     } catch(e) { console.error(e); }
   }
 
-  document.getElementById('managePsSearch').addEventListener('input', renderManagePlaysounds);
-  document.getElementById('manageTrSearch').addEventListener('input', renderManageTrivia);
+  document.getElementById('managePsSearch').addEventListener('input', () => { playsoundsPage = 1; renderManagePlaysounds(); });
+  document.getElementById('manageTrSearch').addEventListener('input', () => { triviaPage = 1; renderManageTrivia(); });
   
   // Hook into tabs
   document.querySelectorAll('.tab-btn').forEach(btn => {
