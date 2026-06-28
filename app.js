@@ -72,6 +72,8 @@ const builtInAliases = {
 };
 
 const commandConfigSchema = {
+  '!triviastart': ['cost', 'cooldown'],
+  '!triviastop': ['cost', 'cooldown'],
   '!playsound': ['cost', 'cooldown'],
   '!showemote': ['cost', 'duration', 'size', 'cooldown'],
   '!betstart': ['cost', 'cooldown'],
@@ -395,6 +397,43 @@ async function initDb() {
       action TEXT
     )
   `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS user_submissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT,
+      type TEXT,
+      content TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS trivia_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      question TEXT,
+      answer TEXT,
+      hint TEXT,
+      submitter TEXT,
+      categories TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS categories (
+      name TEXT,
+      type TEXT,
+      PRIMARY KEY (name, type)
+    );
+    CREATE TABLE IF NOT EXISTS playsounds_metadata (
+      name TEXT PRIMARY KEY,
+      description TEXT,
+      submitter TEXT,
+      categories TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    -- Ensure categories column exists on trivia_questions if it was already created
+    ALTER TABLE trivia_questions ADD COLUMN categories TEXT;
+  `).catch(() => {}); // Catch error if column already exists
 
   const configs = await db.all('SELECT * FROM app_config');
   for (const row of configs) {
@@ -1005,6 +1044,38 @@ async function start() {
   }
 
   const customCommands = {
+    '!triviastart': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        if (activeTrivia || triviaLoopActive) {
+          await sendChatMessage(`${chatterName} trivia is already active!`);
+          return;
+        }
+        triviaLoopActive = true;
+        startTriviaQuestion();
+      }
+    },
+    '!triviastop': {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        if (!activeTrivia && !triviaLoopActive) {
+          await sendChatMessage(`${chatterName} there is no active trivia to stop!`);
+          return;
+        }
+        triviaLoopActive = false;
+        if (nextTriviaTimeout) clearTimeout(nextTriviaTimeout);
+        
+        let a = null;
+        if (activeTrivia) {
+          if (activeTrivia.hintTimeout) clearTimeout(activeTrivia.hintTimeout);
+          if (activeTrivia.endTimeout) clearTimeout(activeTrivia.endTimeout);
+          a = activeTrivia.answer;
+        }
+        activeTrivia = null;
+        const answerMsg = a ? ` The answer was: ${a}` : '';
+        await sendChatMessage(`[TRIVIA] Trivia has been stopped by ${chatterName}.${answerMsg}`);
+      }
+    },
     '!editconfig': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
@@ -1752,6 +1823,11 @@ async function start() {
         if (fs.existsSync(mp3Path)) { fs.unlinkSync(mp3Path); deleted = true; }
 
         if (deleted) {
+          try {
+            await db.run('DELETE FROM playsounds_metadata WHERE name = ?', [filename]);
+          } catch(e) {
+            console.error('Failed to delete playsound metadata', e);
+          }
           await sendChatMessage(`Successfully deleted playsound: ${filename}`);
         } else {
           await sendChatMessage(`${chatterName} could not find a playsound named: ${filename}`, chatterName);
@@ -4057,6 +4133,73 @@ for (const [user, data] of Object.entries(war.userVotes)) {
   const activeBets = new Map();
   let activeChatWar = null;
   let activeRaffle = null;
+  let activeTrivia = null;
+  let triviaLoopActive = false;
+  let nextTriviaTimeout = null;
+
+  async function startTriviaQuestion() {
+    if (!triviaLoopActive) return;
+    if (activeTrivia) return;
+    
+    try {
+        const row = await db.get('SELECT * FROM trivia_questions ORDER BY RANDOM() LIMIT 1');
+        if (!row) {
+           await sendChatMessage(`No trivia questions are available.`);
+           triviaLoopActive = false;
+           return;
+        }
+        
+        const rewardRaw = globalConfig['reward_trivia'];
+        const reward = rewardRaw !== undefined ? parseInt(rewardRaw, 10) : 1000;
+        const durationRaw = globalConfig['trivia_duration'];
+        const duration = durationRaw !== undefined ? parseInt(durationRaw, 10) : 60;
+        const hintDelayRaw = globalConfig['trivia_hint_delay'];
+        const hintDelay = hintDelayRaw !== undefined ? parseInt(hintDelayRaw, 10) : 30;
+        
+        let hintTimeout = null;
+        let endTimeout = null;
+
+        if (row.hint) {
+          hintTimeout = setTimeout(() => {
+            if (activeTrivia && activeTrivia.answer === row.answer) {
+              sendChatMessage(`[TRIVIA HINT] ${row.hint}`);
+            }
+          }, hintDelay * 1000);
+        }
+
+        endTimeout = setTimeout(() => {
+           if (activeTrivia && activeTrivia.answer === row.answer) {
+             sendChatMessage(`[TRIVIA] Time's up! Nobody guessed the correct answer. The answer was: ${row.answer}`);
+             activeTrivia = null;
+             if (triviaLoopActive) {
+                nextTriviaTimeout = setTimeout(startTriviaQuestion, 10000);
+             }
+           }
+        }, duration * 1000);
+
+        activeTrivia = {
+           question: row.question,
+           answer: row.answer,
+           reward: reward,
+           hintTimeout: hintTimeout,
+           endTimeout: endTimeout
+        };
+        
+        let catsStr = "Uncategorized";
+        try {
+          if (row.categories) {
+            const parsed = JSON.parse(row.categories);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              catsStr = parsed.join(', ');
+            }
+          }
+        } catch(e) {}
+        
+        await sendChatMessage(`Category: ${catsStr} Question: ${row.question} (First to answer gets ${reward} points! You have ${duration} seconds)`);
+    } catch(e) {
+        console.error("Trivia start error:", e);
+    }
+  }
   let lastChatWideCommandTime = 0;
 
   async function triggerRandomRaffle(triggerName) {
@@ -4309,6 +4452,25 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             return;
           }
 
+          if (activeTrivia) {
+            if (chatText.toLowerCase() === activeTrivia.answer.toLowerCase()) {
+              const reward = activeTrivia.reward;
+              const a = activeTrivia.answer;
+              
+              if (activeTrivia.hintTimeout) clearTimeout(activeTrivia.hintTimeout);
+              if (activeTrivia.endTimeout) clearTimeout(activeTrivia.endTimeout);
+              
+              activeTrivia = null;
+              
+              await db.run('UPDATE users SET points = points + ? WHERE username = ?', [reward, chatterName]);
+              await sendChatMessage(`Congratulations @${chatterName}! You answered correctly and won ${reward} points! The answer was: ${a}`);
+              
+              if (triviaLoopActive) {
+                nextTriviaTimeout = setTimeout(startTriviaQuestion, 10000);
+              }
+            }
+          }
+
           if (activeChatWar) {
             const words = chatText.split(' ');
             const isVote1 = words.includes(activeChatWar.emote1);
@@ -4500,7 +4662,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             return;
           }
 
- 
+
+
           if (chatText.toLowerCase().startsWith('!showemote ')) {
             // if (!await isStreamerLive()) return;
 

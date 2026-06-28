@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import { ZipArchive } from 'archiver';
 import multer from 'multer';
@@ -154,6 +155,179 @@ export function setupRoutes(app, {
     }
   });
 
+  app.get('/api/config/client_id', (req, res) => {
+    res.json({ success: true, client_id: process.env.CLIENT_ID });
+  });
+
+  app.post('/api/auth/verify', express.json(), async (req, res) => {
+    try {
+      const { token } = req.body;
+      if (!token) return res.status(400).json({ success: false, error: 'No token provided' });
+      
+      const response = await fetch('https://id.twitch.tv/oauth2/validate', {
+        headers: { 'Authorization': `OAuth ${token}` }
+      });
+      const data = await response.json();
+      
+      if (!response.ok || !data.login) {
+        return res.status(401).json({ success: false, error: 'Invalid token' });
+      }
+      
+      res.json({ success: true, username: data.login, user_id: data.user_id });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post('/api/submissions', express.json(), async (req, res) => {
+    try {
+      const { token, type, content, answer } = req.body;
+      if (!token) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+      const authRes = await fetch('https://id.twitch.tv/oauth2/validate', {
+        headers: { 'Authorization': `OAuth ${token}` }
+      });
+      const authData = await authRes.json();
+      if (!authRes.ok || !authData.login) return res.status(401).json({ success: false, error: 'Invalid token' });
+
+      const username = authData.login;
+      const db = getDb();
+      
+      // We will store both playsounds and trivia in user_submissions initially for admin review
+      const submissionContent = type === 'trivia' ? JSON.stringify({ question: content, answer }) : content;
+
+      await db.run('INSERT INTO user_submissions (username, type, content) VALUES (?, ?, ?)', [username, type, submissionContent]);
+      
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.get('/api/admin/submissions', adminAuth, async (req, res) => {
+    try {
+      const db = getDb();
+      const status = req.query.status || 'pending';
+      const order = status === 'pending' ? 'ASC' : 'DESC';
+      const submissions = await db.all(`SELECT * FROM user_submissions WHERE status = ? ORDER BY created_at ${order}`, [status]);
+      res.json({ success: true, submissions });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.get('/api/categories/:type', async (req, res) => {
+    try {
+      const type = req.params.type;
+      const db = getDb();
+      const categories = await db.all('SELECT name FROM categories WHERE type = ?', [type]);
+      res.json({ success: true, categories: categories.map(c => c.name) });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post('/api/admin/submissions/:id/review', adminAuth, express.json(), async (req, res) => {
+    try {
+      const { status, action } = req.body;
+      const finalStatus = status || (action === 'approve' ? 'approved' : 'rejected');
+      const id = req.params.id;
+      const db = getDb();
+      
+      const sub = await db.get('SELECT * FROM user_submissions WHERE id = ?', [id]);
+      if (!sub) return res.status(404).json({ success: false, error: 'Not found' });
+
+      await db.run('UPDATE user_submissions SET status = ? WHERE id = ?', [finalStatus, id]);
+
+      if (finalStatus === 'approved') {
+        if (sub.type === 'trivia') {
+          let q = '';
+          let a = sub.answer;
+          let h = null;
+          let cats = [];
+
+          try {
+            const parsed = JSON.parse(sub.content);
+            q = parsed.question;
+            h = parsed.hint || null;
+            if (parsed.answer) a = parsed.answer;
+            if (parsed.categories) cats = parsed.categories;
+
+            // Handle buggy older double-encoded JSON submissions
+            try {
+              const inner = JSON.parse(parsed.question);
+              if (inner.question) q = inner.question;
+              if (inner.hint) h = inner.hint || null;
+              if (inner.categories) cats = inner.categories || [];
+            } catch (e) {}
+          } catch (e) {
+            q = sub.content;
+          }
+
+          cats = cats.map(c => typeof c === 'string' ? c.toLowerCase() : c);
+          const catsStr = JSON.stringify(cats);
+          await db.run('INSERT INTO trivia_questions (question, answer, hint, submitter, categories) VALUES (?, ?, ?, ?, ?)', [q, a, h, sub.username, catsStr]);
+          
+          for (const c of cats) {
+            await db.run('INSERT OR IGNORE INTO categories (name, type) VALUES (?, ?)', [c, 'trivia']);
+          }
+        } else if (sub.type === 'playsound') {
+          // Playsounds will be added manually via the addsound endpoint.
+          // Save metadata
+          let nameMatch = sub.content.match(/^Command Name:\s*!playsound\s+(.+)$/m);
+          let linkMatch = sub.content.match(/^Link:\s*(.+)$/m);
+          let descMatch = sub.content.match(/^Description:\s*([\s\S]*?)(?:\nCategories:|$)/m);
+          let catsMatch = sub.content.match(/^Categories:\s*(.+)$/m);
+          
+          let name = nameMatch ? nameMatch[1].trim() : `playsound_${Date.now()}`;
+          let link = linkMatch ? linkMatch[1].trim() : '';
+          let desc = descMatch ? descMatch[1].trim() : '';
+          let cats = catsMatch ? catsMatch[1].split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : [];
+          
+          if (action === 'approve') {
+            if (!link) return res.status(400).json({ success: false, error: 'No link found in submission.' });
+            
+            const linkLower = link.toLowerCase();
+            if (!linkLower.includes('nuuls.com')) {
+              return res.status(400).json({ success: false, error: 'Only nuuls.com links are allowed.' });
+            }
+            if (!linkLower.endsWith('.mp3') && !linkLower.endsWith('.ogg')) {
+              return res.status(400).json({ success: false, error: 'The link must end with .mp3 or .ogg' });
+            }
+            
+            const ext = linkLower.endsWith('.ogg') ? '.ogg' : '.mp3';
+            const filePath = path.join(__dirname, 'data', 'playsounds', `${name}${ext}`);
+            
+            try {
+              const response = await fetch(link);
+              if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+              
+              const fileStream = fs.createWriteStream(filePath);
+              await new Promise((resolve, reject) => {
+                 Readable.fromWeb(response.body).pipe(fileStream)
+                   .on('finish', resolve)
+                   .on('error', reject);
+              });
+            } catch (err) {
+              return res.status(500).json({ success: false, error: `Failed to download audio file: ${err.message}` });
+            }
+          }
+          
+          await db.run('INSERT INTO playsounds_metadata (name, description, submitter, categories) VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET description = ?, submitter = ?, categories = ?', 
+            [name, desc, sub.username, JSON.stringify(cats), desc, sub.username, JSON.stringify(cats)]);
+            
+          for (const c of cats) {
+            await db.run('INSERT OR IGNORE INTO categories (name, type) VALUES (?, ?)', [c, 'playsound']);
+          }
+        }
+      }
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+
   app.get('/api/admin/custom-commands', adminAuth, (req, res) => {
     const commands = [];
     for (const [cmd, details] of customAliasesMap.entries()) {
@@ -298,6 +472,108 @@ export function setupRoutes(app, {
       res.json({ success: true });
     } else {
       res.status(500).json({ success: false, error: 'clearOverlaySystem not available' });
+    }
+  });
+
+  // Admin Playsound Management
+  app.put('/api/admin/playsounds/:name', adminAuth, express.json(), async (req, res) => {
+    try {
+      const db = getDb();
+      const { description, categories } = req.body;
+      const catsJson = JSON.stringify(categories || []);
+      const nameOnly = req.params.name.replace(/\.(mp3|ogg)$/i, '');
+      
+      const exists = await db.get('SELECT name FROM playsounds_metadata WHERE name = ?', [nameOnly]);
+      if (exists) {
+        await db.run('UPDATE playsounds_metadata SET description = ?, categories = ? WHERE name = ?', [description, catsJson, nameOnly]);
+      } else {
+        await db.run('INSERT INTO playsounds_metadata (name, description, categories) VALUES (?, ?, ?)', [nameOnly, description, catsJson]);
+      }
+      res.json({ success: true, message: 'Playsound updated successfully.' });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.delete('/api/admin/playsounds/:name', adminAuth, async (req, res) => {
+    try {
+      const db = getDb();
+      const filename = req.params.name;
+      const oggPath = path.join(__dirname, 'data', 'playsounds', filename + '.ogg');
+      const mp3Path = path.join(__dirname, 'data', 'playsounds', filename + '.mp3');
+      
+      let deleted = false;
+      if (fs.existsSync(oggPath)) { fs.unlinkSync(oggPath); deleted = true; }
+      if (fs.existsSync(mp3Path)) { fs.unlinkSync(mp3Path); deleted = true; }
+
+      await db.run('DELETE FROM playsounds_metadata WHERE name = ?', [filename]);
+      
+      if (deleted) {
+        res.json({ success: true, message: `Playsound ${filename} deleted.` });
+      } else {
+        res.status(404).json({ success: false, error: 'Playsound file not found, but metadata was removed.' });
+      }
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // Admin Trivia Management
+  app.get('/api/admin/trivia', adminAuth, async (req, res) => {
+    try {
+      const db = getDb();
+      const triviaRows = await db.all('SELECT * FROM trivia_questions');
+      const trivia = triviaRows.map(row => {
+        let cats = [];
+        try { cats = JSON.parse(row.categories || '[]'); } catch (e) {}
+        return {
+          id: row.id,
+          question: row.question,
+          answer: row.answer,
+          hint: row.hint,
+          submitter: row.submitter,
+          categories: cats
+        };
+      });
+      res.json({ success: true, trivia });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.put('/api/admin/trivia/:id', adminAuth, express.json(), async (req, res) => {
+    try {
+      const id = req.params.id;
+      const { question, answer, hint, categories } = req.body;
+      const db = getDb();
+      
+      const catsStr = JSON.stringify(categories || []);
+      await db.run('UPDATE trivia_questions SET question = ?, answer = ?, hint = ?, categories = ? WHERE id = ?', 
+        [question, answer, hint || '', catsStr, id]);
+        
+      for (const c of (categories || [])) {
+        await db.run('INSERT OR IGNORE INTO categories (name, type) VALUES (?, ?)', [c, 'trivia']);
+      }
+      
+      res.json({ success: true, message: 'Trivia updated successfully.' });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.delete('/api/admin/trivia/:id', adminAuth, async (req, res) => {
+    try {
+      const id = req.params.id;
+      const db = getDb();
+      await db.run('DELETE FROM trivia_questions WHERE id = ?', [id]);
+      res.json({ success: true, message: 'Trivia deleted successfully.' });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ success: false, error: e.message });
     }
   });
 
@@ -536,8 +812,15 @@ export function setupRoutes(app, {
     }
   });
 
-  app.get('/api/dashboard/sounds', (req, res) => {
+  app.get('/api/dashboard/sounds', async (req, res) => {
     try {
+      const db = getDb();
+      const metadata = await db.all('SELECT name, categories FROM playsounds_metadata');
+      const metaMap = {};
+      for (const row of metadata) {
+        metaMap[row.name] = row;
+      }
+
       const soundsDir = path.join(__dirname, 'data', 'playsounds');
       let sounds = [];
       if (fs.existsSync(soundsDir)) {
@@ -547,7 +830,24 @@ export function setupRoutes(app, {
           const nameOnly = f.split('.').slice(0, -1).join('.');
           const cost = globalConfig[`cost_playsound_${nameOnly}`];
           const cooldown = globalConfig[`cooldown_playsound_${nameOnly}`];
-          return { filename: f, uploadedAt: stats.mtimeMs, customCost: cost, customCooldown: cooldown };
+          
+          let categories = ['Uncategorized'];
+          if (metaMap[nameOnly] && metaMap[nameOnly].categories) {
+            try {
+              const parsed = JSON.parse(metaMap[nameOnly].categories);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                categories = parsed;
+              }
+            } catch(e) {}
+          }
+
+          return { 
+            filename: f, 
+            uploadedAt: stats.mtimeMs, 
+            customCost: cost, 
+            customCooldown: cooldown,
+            categories
+          };
         });
       }
       res.json({ success: true, sounds });
@@ -795,3 +1095,4 @@ export function clearEmotes() {
   const payload = `data: ${JSON.stringify({ type: 'clear_emotes' })}\n\n`;
   sseClients.forEach(client => client.write(payload));
 }
+

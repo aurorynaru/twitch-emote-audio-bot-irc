@@ -298,6 +298,26 @@
     .data-table tbody tr:hover {
       background-color: #2a2a30;
     }
+    
+    .sub-tab-btn {
+      background: none;
+      border: none;
+      color: #adadb8;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      padding: 10px 20px;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+    .sub-tab-btn:hover {
+      background: #1f1f23;
+      color: #efeff1;
+    }
+    .sub-tab-btn.active {
+      background: #bf94ff;
+      color: #000;
+    }
   </style>
 </head>
 <body>
@@ -305,7 +325,7 @@
 <header style="display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 15px 20px;">
   <div style="display: flex; align-items: center; gap: 20px;">
     <h1 style="margin: 0;">Admin Dashboard</h1>
-    <button onclick="loadConfig(); this.innerHTML='↻ Refreshed!'; setTimeout(()=>this.innerHTML='↻ Refresh', 2000);" style="background: #3a3a44; color: #00ff7f; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#bf94ff'; this.style.color='#000';" onmouseout="this.style.background='#3a3a44'; this.style.color='#00ff7f';">↻ Refresh</button>
+    <button onclick="loadConfig(); this.innerHTML='â†» Refreshed!'; setTimeout(()=>this.innerHTML='â†» Refresh', 2000);" style="background: #3a3a44; color: #00ff7f; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#bf94ff'; this.style.color='#000';" onmouseout="this.style.background='#3a3a44'; this.style.color='#00ff7f';">â†» Refresh</button>
     <div id="status"></div>
   </div>
   <div class="tabs" style="padding-bottom: 0; margin: 0; flex-wrap: nowrap;">
@@ -317,6 +337,8 @@
     <button class="tab-btn" data-target="tab-system">System Actions</button>
     <button class="tab-btn" data-target="tab-playsounds">Playsounds</button>
     <button class="tab-btn" data-target="tab-routes">Links</button>
+    <button class="tab-btn" data-target="tab-submissions">User Submissions</button>
+      <button class="tab-btn" data-target="tab-manage-data">Manage Data</button>
     <button class="tab-btn" data-target="tab-reference">Command Reference</button>
   </div>
 </header>
@@ -349,7 +371,7 @@
   <div id="tab-custom" class="tab-pane">
     <h2>Custom Commands</h2>
   <div class="card" style="margin-bottom: 20px;">
-    <h3>Add / Update Custom Command <span class="tooltip-icon" data-tooltip="Create or update custom commands that respond with simple text messages.">ⓘ</span></h3>
+    <h3>Add / Update Custom Command <span class="tooltip-icon" data-tooltip="Create or update custom commands that respond with simple text messages.">â“˜</span></h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Command (e.g. !bot)</label>
@@ -375,7 +397,7 @@
     <h2>User Management</h2>
     
     <div class="card" style="margin-bottom: 20px;">
-      <h3 style="margin-top: 0; margin-bottom: 15px;">Search & Edit User Data <span class="tooltip-icon" data-tooltip="Search for a user to edit their points, XP, and inventory.">ⓘ</span></h3>
+      <h3 style="margin-top: 0; margin-bottom: 15px;">Search & Edit User Data <span class="tooltip-icon" data-tooltip="Search for a user to edit their points, XP, and inventory.">â“˜</span></h3>
       <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
         <div class="form-group" style="flex: 1; margin: 0;">
           <label>Search Username</label>
@@ -455,7 +477,7 @@
     </div>
 
   <div class="card" style="margin-bottom: 20px;">
-    <h3 style="margin-top: 0;">Mass Add Points (!masspointsadd) <span class="tooltip-icon" data-tooltip="Give points to everyone who chatted recently.">ⓘ</span></h3>
+    <h3 style="margin-top: 0;">Mass Add Points (!masspointsadd) <span class="tooltip-icon" data-tooltip="Give points to everyone who chatted recently.">â“˜</span></h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Amount</label>
@@ -470,7 +492,7 @@
   </div>
 
   <div class="card" style="margin-bottom: 20px;">
-    <h3 style="margin-top: 0;">Mass Subtract Points (!masspointssub) <span class="tooltip-icon" data-tooltip="Remove points from everyone who chatted recently.">ⓘ</span></h3>
+    <h3 style="margin-top: 0;">Mass Subtract Points (!masspointssub) <span class="tooltip-icon" data-tooltip="Remove points from everyone who chatted recently.">â“˜</span></h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Amount</label>
@@ -488,14 +510,14 @@
     <h2>Items Management</h2>
     
     <div class="card" style="margin-bottom: 20px;">
-      <h3>Add / Edit Item <span class="tooltip-icon" data-tooltip="Create a new item or edit an existing one. Using an existing name will update it.">ⓘ</span></h3>
+      <h3>Add / Edit Item <span class="tooltip-icon" data-tooltip="Create a new item or edit an existing one. Using an existing name will update it.">â“˜</span></h3>
       <div class="grid">
         <div class="form-group">
-          <label>Item Name <span class="tooltip-icon" data-tooltip="Unique name of the item.">ⓘ</span></label>
+          <label>Item Name <span class="tooltip-icon" data-tooltip="Unique name of the item.">â“˜</span></label>
           <input type="text" id="itemName" placeholder="e.g. radioactive fish">
         </div>
         <div class="form-group">
-          <label>Rarity <span class="tooltip-icon" data-tooltip="Rarity tier of the item.">ⓘ</span></label>
+          <label>Rarity <span class="tooltip-icon" data-tooltip="Rarity tier of the item.">â“˜</span></label>
           <select id="itemRarity">
             <option value="Common">Common</option>
             <option value="Uncommon">Uncommon</option>
@@ -504,7 +526,7 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Effect Type <span class="tooltip-icon" id="effectTypeTooltip" data-tooltip="Select an effect to see its description.">ⓘ</span></label>
+          <label>Effect Type <span class="tooltip-icon" id="effectTypeTooltip" data-tooltip="Select an effect to see its description.">â“˜</span></label>
           <select id="itemEffectType" onchange="updateEffectTooltip()">
             <option value="none">none</option>
             <option value="instant_points">instant_points</option>
@@ -537,42 +559,42 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Effect Value <span class="tooltip-icon" data-tooltip="Numeric magnitude of the effect (e.g., points to give/take, multiplier value).">ⓘ</span></label>
+          <label>Effect Value <span class="tooltip-icon" data-tooltip="Numeric magnitude of the effect (e.g., points to give/take, multiplier value).">â“˜</span></label>
           <input type="number" id="itemEffectValue" placeholder="e.g. 100">
         </div>
         <div class="form-group">
           <label style="display: flex; align-items: center; gap: 8px;">
             <input type="checkbox" id="enableItemDuration" onchange="document.getElementById('itemDuration').disabled = !this.checked; if(!this.checked) document.getElementById('itemDuration').value = '';" style="margin:0; width: 14px; height: 14px;">
-            Duration (Minutes) <span class="tooltip-icon" data-tooltip="How long the effect lasts in minutes (for continuous effects).">ⓘ</span>
+            Duration (Minutes) <span class="tooltip-icon" data-tooltip="How long the effect lasts in minutes (for continuous effects).">â“˜</span>
           </label>
           <input type="number" id="itemDuration" placeholder="e.g. 30" disabled>
         </div>
         <div class="form-group">
-          <label>Uses <span class="tooltip-icon" data-tooltip="How many times this item can be used before being destroyed.">ⓘ</span></label>
+          <label>Uses <span class="tooltip-icon" data-tooltip="How many times this item can be used before being destroyed.">â“˜</span></label>
           <input type="number" id="itemUses" placeholder="e.g. 1" value="1">
         </div>
         <div class="form-group">
           <label style="display: flex; align-items: center; gap: 8px;">
             <input type="checkbox" id="enableItemMaxGambleLimit" onchange="document.getElementById('itemMaxGambleLimit').disabled = !this.checked; if(!this.checked) document.getElementById('itemMaxGambleLimit').value = '';" style="margin:0; width: 14px; height: 14px;">
-            Max Gamble Limit <span class="tooltip-icon" data-tooltip="Limit for guaranteed gamble wins.">ⓘ</span>
+            Max Gamble Limit <span class="tooltip-icon" data-tooltip="Limit for guaranteed gamble wins.">â“˜</span>
           </label>
           <input type="number" id="itemMaxGambleLimit" placeholder="e.g. 1000" disabled>
         </div>
         <div class="form-group" style="grid-column: span 2;">
-          <label>Description <span class="tooltip-icon" data-tooltip="What does this item do? Displayed to users in chat/UI.">ⓘ</span></label>
+          <label>Description <span class="tooltip-icon" data-tooltip="What does this item do? Displayed to users in chat/UI.">â“˜</span></label>
           <input type="text" id="itemDescription" placeholder="What does this item do?">
         </div>
         <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
           <input type="checkbox" id="itemIsGlobal" style="width: 20px; height: 20px; cursor: pointer;">
-          <label style="margin: 0; cursor: pointer;" for="itemIsGlobal">Is Global Effect? <span class="tooltip-icon" data-tooltip="Does this affect everyone in the chat?">ⓘ</span></label>
+          <label style="margin: 0; cursor: pointer;" for="itemIsGlobal">Is Global Effect? <span class="tooltip-icon" data-tooltip="Does this affect everyone in the chat?">â“˜</span></label>
         </div>
         <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
           <input type="checkbox" id="itemAutoConsume" style="width: 20px; height: 20px; cursor: pointer;">
-          <label style="margin: 0; cursor: pointer;" for="itemAutoConsume">Auto Consume? <span class="tooltip-icon" data-tooltip="Should this item be consumed immediately upon receiving?">ⓘ</span></label>
+          <label style="margin: 0; cursor: pointer;" for="itemAutoConsume">Auto Consume? <span class="tooltip-icon" data-tooltip="Should this item be consumed immediately upon receiving?">â“˜</span></label>
         </div>
         <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
           <input type="checkbox" id="itemIsPercentage" style="width: 20px; height: 20px; cursor: pointer;">
-          <label style="margin: 0; cursor: pointer;" for="itemIsPercentage">Is Percentage? <span class="tooltip-icon" data-tooltip="Is the effect value a percentage multiplier?">ⓘ</span></label>
+          <label style="margin: 0; cursor: pointer;" for="itemIsPercentage">Is Percentage? <span class="tooltip-icon" data-tooltip="Is the effect value a percentage multiplier?">â“˜</span></label>
         </div>
       </div>
       <div style="display: flex; gap: 10px; margin-top: 15px;">
@@ -627,12 +649,12 @@
     <h2>System Actions</h2>
 
     <div class="card" style="border-color: #ff4a4a; margin-bottom: 20px;">
-      <h3 style="color: #ff4a4a; margin-bottom: 10px;">Clear Overlay <span class="tooltip-icon" data-tooltip="Instantly clears all active visual and audio overlay elements, hiding bets, and stopping chat wars.">ⓘ</span></h3>
+      <h3 style="color: #ff4a4a; margin-bottom: 10px;">Clear Overlay <span class="tooltip-icon" data-tooltip="Instantly clears all active visual and audio overlay elements, hiding bets, and stopping chat wars.">â“˜</span></h3>
       <button class="save-btn" style="background-color: #ff4a4a; width: 100%;" id="clearOverlayBtn">Instant Clear All</button>
     </div>
 
     <div class="card" style="margin-bottom: 20px;">
-      <h3>Temporarily Disable Command <span class="tooltip-icon" data-tooltip="Prevent a specific command from being used for a set duration. Leave Duration empty to disable forever.">ⓘ</span></h3>
+      <h3>Temporarily Disable Command <span class="tooltip-icon" data-tooltip="Prevent a specific command from being used for a set duration. Leave Duration empty to disable forever.">â“˜</span></h3>
       <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Command</label>
@@ -646,7 +668,7 @@
       <button class="save-btn" style="background-color: #ffaa00; color: black;" id="disableCmdBtn">Disable Command</button>
     </div>
 
-    <h3 style="margin-top: 30px;">Enable Command <span class="tooltip-icon" data-tooltip="Re-enable a command that was previously disabled.">ⓘ</span></h3>
+    <h3 style="margin-top: 30px;">Enable Command <span class="tooltip-icon" data-tooltip="Re-enable a command that was previously disabled.">â“˜</span></h3>
     <div style="display: flex; gap: 10px; align-items: flex-end;">
       <div class="form-group" style="flex: 1; margin: 0;">
         <label>Disabled Command</label>
@@ -658,7 +680,7 @@
   </div>
 
     <div class="card" style="margin-bottom: 20px;">
-      <h3>Blacklist Specific Playsound / Emote / Modifier <span class="tooltip-icon" data-tooltip="Prevent a playsound, emote, or modifier from being triggered without deleting it.">ⓘ</span></h3>
+      <h3>Blacklist Specific Playsound / Emote / Modifier <span class="tooltip-icon" data-tooltip="Prevent a playsound, emote, or modifier from being triggered without deleting it.">â“˜</span></h3>
       
       <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 20px;">
         <div class="form-group" style="flex: 1; margin: 0;">
@@ -721,7 +743,7 @@
     <h2>Playsounds</h2>
 
     <div class="card" style="margin-bottom: 20px;">
-      <h3>Test Playsound <span class="tooltip-icon" data-tooltip="Listen to a playsound.">ⓘ</span></h3>
+      <h3>Test Playsound <span class="tooltip-icon" data-tooltip="Listen to a playsound.">â“˜</span></h3>
       <div style="display: flex; gap: 10px; align-items: flex-end;">
         <div class="form-group" style="flex: 1; margin: 0;">
           <label>Sound Name</label>
@@ -738,7 +760,7 @@
     </div>
 
     <div class="card" style="margin-bottom: 20px;">
-      <h3>Set Custom Playsound Cost & Cooldown <span class="tooltip-icon" data-tooltip="Set a custom point cost, global cooldown, or volume. Leave empty to keep current setting. Use the Reset button to revert to global defaults.">ⓘ</span></h3>
+      <h3>Set Custom Playsound Cost & Cooldown <span class="tooltip-icon" data-tooltip="Set a custom point cost, global cooldown, or volume. Leave empty to keep current setting. Use the Reset button to revert to global defaults.">â“˜</span></h3>
       <div style="display: flex; gap: 10px; align-items: flex-end;">
         <div class="form-group" style="flex: 1; margin: 0;">
           <label>Playsound Name</label>
@@ -766,7 +788,7 @@
     </div>
 
     <div class="card" style="margin-bottom: 20px;">
-      <h3>Delete Playsound <span class="tooltip-icon" data-tooltip="Permanently delete a playsound audio file from the server.">ⓘ</span></h3>
+      <h3>Delete Playsound <span class="tooltip-icon" data-tooltip="Permanently delete a playsound audio file from the server.">â“˜</span></h3>
       <div style="display: flex; gap: 10px; align-items: flex-end;">
         <div class="form-group" style="flex: 1; margin: 0;">
           <label>Sound Name</label>
@@ -821,6 +843,68 @@
           </tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+      
+    <div id="tab-manage-data" class="tab-pane">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+        <h2 style="margin: 0;">Manage Playsounds & Trivia</h2>
+      </div>
+      <p style="color: #adadb8;">View, edit, and delete approved playsounds and trivia.</p>
+      
+      <div style="margin-top: 20px; margin-bottom: 15px; display: flex; gap: 10px; border-bottom: 1px solid #3a3a44; padding-bottom: 10px;">
+        <button id="btn-manage-playsounds" class="sub-tab-btn active" style="margin:0; padding: 6px 12px;" onclick="showManageSubTab('playsounds')">Manage Playsounds</button>
+        <button id="btn-manage-trivia" class="sub-tab-btn" style="margin:0; padding: 6px 12px; background: transparent; border: 1px solid #3f3f46; color: #adadb8;" onclick="showManageSubTab('trivia')">Manage Trivia</button>
+      </div>
+
+      <div id="managePlaysoundsSection" class="card" style="margin-bottom: 20px;">
+        <h3>Manage Playsounds</h3>
+        <div style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center;">
+           <input type="text" id="managePsSearch" placeholder="Search playsounds..." style="padding: 6px; flex: 1; border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff;">
+           <div style="display: flex; align-items: center; gap: 5px;">
+             <label style="font-size: 12px; color: #adadb8;">Volume</label>
+             <input type="range" id="managePsVolume" min="0" max="1" step="0.05" value="0.5" style="width: 80px;" oninput="if(currentPreviewAudio) currentPreviewAudio.volume=this.value">
+           </div>
+           <button class="save-btn" onclick="fetchManagePlaysounds()" style="padding: 6px 12px; font-size: 14px;">Refresh</button>
+        </div>
+        <div id="managePlaysoundsGrid" style="display: flex; flex-direction: column; gap: 10px;"></div>
+      </div>
+
+      <div id="manageTriviaSection" class="card" style="display: none;">
+        <h3>Manage Trivia</h3>
+        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+           <input type="text" id="manageTrSearch" placeholder="Search trivia..." style="padding: 6px; flex: 1; border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff;">
+           <button class="save-btn" onclick="fetchManageTrivia()" style="padding: 6px 12px; font-size: 14px;">Refresh</button>
+        </div>
+        <div id="manageTriviaGrid" style="display: flex; flex-direction: column; gap: 10px;"></div>
+      </div>
+    </div>
+
+
+    <div id="tab-submissions" class="tab-pane">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+      <h2 style="margin: 0;">User Submissions</h2>
+      <button class="save-btn" onclick="fetchSubmissions()" style="padding: 6px 12px; font-size: 14px;">â†» Refresh</button>
+    </div>
+    <p style="color: #adadb8;">Review playsound and trivia submissions from authenticated users.</p>
+    
+    <div style="margin-top: 15px; display: flex; gap: 10px;">
+      <button id="btn-status-pending" class="sub-tab-btn active" style="margin:0; padding: 6px 12px;" onclick="setSubmissionStatus('pending')">To Review</button>
+      <button id="btn-status-approved" class="sub-tab-btn" style="margin:0; padding: 6px 12px; background: transparent; border: 1px solid #3f3f46; color: #adadb8;" onclick="setSubmissionStatus('approved')">Approved</button>
+    </div>
+    
+    <div style="margin-top: 20px; margin-bottom: 15px; display: flex; gap: 10px; border-bottom: 1px solid #3a3a44; padding-bottom: 10px;">
+      <button id="btn-show-playsounds" class="sub-tab-btn active" style="margin:0; padding: 6px 12px;" onclick="showSubTab('playsounds')">Playsound Submissions</button>
+      <button id="btn-show-trivia" class="sub-tab-btn" style="margin:0; padding: 6px 12px;" onclick="showSubTab('trivia')">Trivia Submissions</button>
+    </div>
+    
+    <div id="submissionsPlaysoundGrid" style="display: flex; flex-direction: column; gap: 15px;">
+      <!-- JS injected -->
+    </div>
+      
+    <div id="submissionsTriviaGrid" style="display: none; flex-direction: column; gap: 15px;">
+      <!-- JS injected -->
     </div>
   </div>
 
@@ -925,6 +1009,9 @@
     { key: 'reward_chat_sub', label: 'Reward: Chat (Sub)', type: 'number', def: 750, category: 'Rewards Config', tooltip: 'Points rewarded to subscribers for chatting (respects cooldown)' },
     { key: 'reward_chat_nonsub', label: 'Reward: Chat (Non-Sub)', type: 'number', def: 500, category: 'Rewards Config', tooltip: 'Points rewarded to non-subscribers for chatting (respects cooldown)' },
     { key: 'reward_chat_cooldown', label: 'Reward: Chat Cooldown (mins)', type: 'number', def: 25, category: 'Rewards Config', tooltip: 'Minutes between chat rewards' },
+    { key: 'reward_trivia', label: 'Reward: Trivia Winner', type: 'number', def: 1000, category: 'Trivia Config', tooltip: 'Points rewarded to the first person to guess the correct trivia answer' },
+    { key: 'trivia_duration', label: 'Trivia Duration (seconds)', type: 'number', def: 60, category: 'Trivia Config', tooltip: 'How long chat has to guess the correct answer' },
+    { key: 'trivia_hint_delay', label: 'Trivia Hint Delay (seconds)', type: 'number', def: 30, category: 'Trivia Config', tooltip: 'Time before showing the optional hint' },
     { key: 'reward_raffle_min', label: 'Reward: Random Raffle Min', type: 'number', def: 1500, category: 'Rewards Config', tooltip: 'Minimum points won in a random raffle trigged by subbing/resubbing/gifting subs and gifting bits' },
     { key: 'reward_raffle_max', label: 'Reward: Random Raffle Max', type: 'number', def: 25000, category: 'Rewards Config', tooltip: 'Maximum points won in a random raffle trigged by subbing/resubbing/gifting subs and gifting bits' },
     { key: 'reward_multiraffle_min', label: 'Reward: Random Multi-Raffle Min', type: 'number', def: 3, category: 'Rewards Config', tooltip: 'Minimum winners in a random multi-raffle trigged by subbing/resubbing/gifting subs' },
@@ -1180,7 +1267,7 @@
         card.className = 'card';
         card.innerHTML = `
           <div class="form-group">
-            <label>${g.label} <span class="tooltip-icon" data-tooltip="${g.tooltip || 'Global configuration setting'}">ⓘ</span></label>
+            <label>${g.label} <span class="tooltip-icon" data-tooltip="${g.tooltip || 'Global configuration setting'}">â“˜</span></label>
             <input type="${g.type}" data-key="${g.key}" value="${value}">
           </div>
         `;
@@ -1206,7 +1293,7 @@
       const card = document.createElement('div');
       card.className = 'card';
       
-      let html = `<h3>${cmdName} <span class="tooltip-icon" data-tooltip="Configure execution rules and costs for the ${cmdName} command.">ⓘ</span></h3>`;
+      let html = `<h3>${cmdName} <span class="tooltip-icon" data-tooltip="Configure execution rules and costs for the ${cmdName} command.">â“˜</span></h3>`;
       
       // Sub Only toggle
       const isSubOnly = configData.globalConfig[`cmd_${cmdName}_sub_only`] === 'true';
@@ -1221,7 +1308,7 @@
       const isOfflineOnly = configData.globalConfig[`cmd_${cmdName}_offline_only`] === 'true';
       html += `
         <div class="form-group row">
-          <label>Offline Only <span class="tooltip-icon" data-tooltip="If checked, this command will only work when the stream is offline.">ⓘ</span></label>
+          <label>Offline Only <span class="tooltip-icon" data-tooltip="If checked, this command will only work when the stream is offline.">â“˜</span></label>
           <input type="checkbox" data-key="cmd_${cmdName}_offline_only" ${isOfflineOnly ? 'checked' : ''}>
         </div>
       `;
@@ -1258,7 +1345,7 @@
       refCard.className = 'card';
       
       let refHtml = `
-        <h3 style="color: #00ff7f; margin-bottom: 5px; margin-top: 0;">${cmdName} <span class="tooltip-icon" data-tooltip="Command usage and aliasing info for ${cmdName}">ⓘ</span></h3>
+        <h3 style="color: #00ff7f; margin-bottom: 5px; margin-top: 0;">${cmdName} <span class="tooltip-icon" data-tooltip="Command usage and aliasing info for ${cmdName}">â“˜</span></h3>
         ${commandInstructions[cmdName] ? `<p style="margin-top: 0; margin-bottom: 10px; font-size: 0.95em; line-height: 1.4;">${commandInstructions[cmdName]}</p>` : ''}
         ${aliases.length > 0 ? `<p style="margin-top: 0; margin-bottom: 10px; font-size: 0.85em; color: #adadb8;"><strong>Aliases:</strong> ${aliases.join(', ')}</p>` : ''}
         <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 4px; border: 1px solid #3a3a44;">
@@ -2244,8 +2331,611 @@
     });
   });
 
+  let currentSubmissionStatus = 'pending';
+  
+  function setSubmissionStatus(status) {
+    currentSubmissionStatus = status;
+    document.getElementById('btn-status-pending').className = status === 'pending' ? 'sub-tab-btn active' : 'sub-tab-btn';
+    document.getElementById('btn-status-pending').style.background = status === 'pending' ? 'rgba(191, 148, 255, 0.15)' : 'transparent';
+    document.getElementById('btn-status-pending').style.border = status === 'pending' ? '1px solid #bf94ff' : '1px solid #3f3f46';
+    document.getElementById('btn-status-pending').style.color = status === 'pending' ? '#fff' : '#adadb8';
+    
+    document.getElementById('btn-status-approved').className = status === 'approved' ? 'sub-tab-btn active' : 'sub-tab-btn';
+    document.getElementById('btn-status-approved').style.background = status === 'approved' ? 'rgba(191, 148, 255, 0.15)' : 'transparent';
+    document.getElementById('btn-status-approved').style.border = status === 'approved' ? '1px solid #bf94ff' : '1px solid #3f3f46';
+    document.getElementById('btn-status-approved').style.color = status === 'approved' ? '#fff' : '#adadb8';
+    
+    fetchSubmissions();
+  }
+
+  async function fetchSubmissions() {
+    try {
+      const res = await fetch(`/api/admin/submissions?status=${currentSubmissionStatus}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      
+      const psGrid = document.getElementById('submissionsPlaysoundGrid');
+      const trGrid = document.getElementById('submissionsTriviaGrid');
+      
+      psGrid.innerHTML = '';
+      trGrid.innerHTML = '';
+      
+      if (data.submissions.length === 0) {
+        const msg = currentSubmissionStatus === 'pending' ? 'No pending submissions.' : 'No approved submissions.';
+        psGrid.innerHTML = `<p style="color:var(--text-muted)">${msg}</p>`;
+        trGrid.innerHTML = `<p style="color:var(--text-muted)">${msg}</p>`;
+        return;
+      }
+      
+      let psCount = 0;
+      let trCount = 0;
+
+      data.submissions.forEach(sub => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.marginBottom = '10px';
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between;">
+            <strong>User: <span style="color:#bf94ff">${sub.username}</span></strong>
+            <span style="color:var(--text-muted); font-size: 12px;">${new Date(sub.created_at.replace(' ', 'T') + 'Z').toLocaleString()}</span>
+          </div>
+          <div style="margin-top: 10px; background: #18181b; padding: 15px; border-radius: 4px; font-size: 15px;">
+            ${(() => {
+              if (sub.type === 'playsound') {
+                let html = sub.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                html = html.replace(/^Command Name:\s*!playsound\s+(.+)$/m, '<div style="font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 5px;">!playsound <span style="color: #ff00ff;">$1</span></div>');
+                html = html.replace(/^Link:\s*(.+)$/m, '<div style="margin-bottom: 5px;"><strong>Link:</strong> <a href="$1" target="_blank" style="color: #00bfff; text-decoration: none;">$1</a></div>');
+                html = html.replace(/^Description:\s*([\s\S]*?)(?=\nCategories:|$)/m, '<div style="font-size: 16px; margin-bottom: 10px;"><strong>Description:</strong> <span style="color: #a8a8b3; white-space: pre-wrap;">$1</span></div>');
+                html = html.replace(/^Categories:\s*(.+)$/m, '<div style="margin-bottom: 10px;"><strong>Categories:</strong> <span style="color: #00C851;">$1</span></div>');
+                
+                if (html !== sub.content) {
+                  return html;
+                }
+                return `<div style="white-space: pre-wrap; font-family: monospace; font-size: 14px; line-height: 1.8;">${sub.content}</div>`;
+              } else {
+                let q = sub.content;
+                let h = '';
+                let a = '';
+                let c = '';
+                try {
+                  const parsed = JSON.parse(sub.content);
+                  a = parsed.answer;
+                  if (parsed.categories && parsed.categories.length > 0) {
+                    c = `<div style="margin-top: 10px; font-size: 14px;"><strong>Categories:</strong> <span style="color: #00C851;">${parsed.categories.join(', ')}</span></div>`;
+                  }
+                  try {
+                    const innerParsed = JSON.parse(parsed.question);
+                    q = innerParsed.question;
+                    h = innerParsed.hint ? `<div style="margin-top: 10px; color: #a8a8b3; font-size: 14px;"><strong>Hint:</strong> ${innerParsed.hint}</div>` : '';
+                    if (innerParsed.categories && innerParsed.categories.length > 0) {
+                      c = `<div style="margin-top: 10px; font-size: 14px;"><strong>Categories:</strong> <span style="color: #00C851;">${innerParsed.categories.join(', ')}</span></div>`;
+                    }
+                  } catch (e2) {
+                    q = parsed.question;
+                  }
+                } catch (e) {}
+                return `
+                  <div style="font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 10px;">${q}</div>
+                  <div style="font-size: 16px;"><strong>Answer:</strong> <span style="color: #00ff7f;">${a}</span></div>
+                  ${h}
+                  ${c}
+                `;
+              }
+            })()}
+          </div>
+          ${currentSubmissionStatus === 'pending' ? `
+            <div style="margin-top: 10px; display: flex; gap: 10px; justify-content: flex-end;">
+              <button onclick="reviewSubmission(${sub.id}, 'reject')" style="background: #ff4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Reject</button>
+              <button onclick="reviewSubmission(${sub.id}, 'approve')" style="background: #00C851; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">Approve</button>
+            </div>
+          ` : ''}
+        `;
+        
+        if (sub.type === 'playsound') {
+          psGrid.appendChild(card);
+          psCount++;
+        } else {
+          trGrid.appendChild(card);
+          trCount++;
+        }
+      });
+      
+      if (psCount === 0) psGrid.innerHTML = '<p style="color:var(--text-muted)">No pending playsound submissions.</p>';
+      if (trCount === 0) trGrid.innerHTML = '<p style="color:var(--text-muted)">No pending trivia submissions.</p>';
+      
+    } catch (e) {
+      console.error(e);
+      document.getElementById('submissionsPlaysoundGrid').innerHTML = `<p style="color:red">Error loading submissions.</p>`;
+    }
+  }
+
+  async function reviewSubmission(id, action) {
+    if (!confirm(`Are you sure you want to ${action} this submission?`)) return;
+    
+    try {
+      const res = await fetch(`/api/admin/submissions/${id}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Submission ${action}d!`, 'success');
+        fetchSubmissions();
+      } else {
+        alert('Error: ' + data.error);
+      }
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  // Hook into tab click to load submissions automatically
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.target === 'tab-submissions') {
+        fetchSubmissions();
+      }
+    });
+  });
+
+  function showManageSubTab(tab) {
+    document.getElementById('btn-manage-playsounds').classList.remove('active');
+    document.getElementById('btn-manage-trivia').classList.remove('active');
+    document.getElementById('managePlaysoundsSection').style.display = 'none';
+    document.getElementById('manageTriviaSection').style.display = 'none';
+    
+    if (tab === 'playsounds') {
+      document.getElementById('btn-manage-playsounds').classList.add('active');
+      document.getElementById('managePlaysoundsSection').style.display = 'block';
+    } else {
+      document.getElementById('btn-manage-trivia').classList.add('active');
+      document.getElementById('manageTriviaSection').style.display = 'block';
+    }
+  }
+
+  function showSubTab(tab) {
+    document.getElementById('btn-show-playsounds').classList.remove('active');
+    document.getElementById('btn-show-trivia').classList.remove('active');
+    document.getElementById('submissionsPlaysoundGrid').style.display = 'none';
+    document.getElementById('submissionsTriviaGrid').style.display = 'none';
+    
+    if (tab === 'playsounds') {
+      document.getElementById('btn-show-playsounds').classList.add('active');
+      document.getElementById('submissionsPlaysoundGrid').style.display = 'flex';
+    } else {
+      document.getElementById('btn-show-trivia').classList.add('active');
+      document.getElementById('submissionsTriviaGrid').style.display = 'flex';
+    }
+  }
+
   // Initialize
   loadConfig();
+</script>
+
+<script>
+  let allManagePlaysounds = [];
+  let allManageTrivia = [];
+
+  async function fetchManagePlaysounds() {
+    try {
+      const res = await fetch('/api/dashboard/sounds');
+      const data = await res.json();
+      if(data.success) {
+        allManagePlaysounds = data.sounds;
+        renderManagePlaysounds();
+      }
+    } catch(e) { console.error(e); }
+  }
+
+  
+  function showManageSubTab(tab) {
+    document.getElementById('btn-manage-playsounds').classList.remove('active');
+    document.getElementById('btn-manage-trivia').classList.remove('active');
+    document.getElementById('managePlaysoundsSection').style.display = 'none';
+    document.getElementById('manageTriviaSection').style.display = 'none';
+    
+    if (tab === 'playsounds') {
+      document.getElementById('btn-manage-playsounds').classList.add('active');
+      document.getElementById('managePlaysoundsSection').style.display = 'block';
+    } else {
+      document.getElementById('btn-manage-trivia').classList.add('active');
+      document.getElementById('manageTriviaSection').style.display = 'block';
+    }
+  }
+
+  function getUniqueCategories() {
+    const cats = new Set();
+    allManagePlaysounds.forEach(ps => (ps.categories || []).forEach(c => cats.add(c)));
+    allManageTrivia.forEach(tr => (tr.categories || []).forEach(c => cats.add(c)));
+    return Array.from(cats);
+  }
+
+  function setupMultiAutocomplete(inputId, listId, dataArray) {
+    const input = document.getElementById(inputId);
+    const list = document.getElementById(listId);
+
+    input.addEventListener('input', () => {
+      const parts = input.value.split(',');
+      const currentVal = parts[parts.length - 1].trim().toLowerCase();
+      
+      list.innerHTML = '';
+      if (!currentVal) {
+        list.style.display = 'none';
+        return;
+      }
+      
+      const matches = dataArray.filter(item => item.toLowerCase().includes(currentVal));
+      if (matches.length === 0) {
+        list.style.display = 'none';
+        return;
+      }
+      
+      matches.forEach(match => {
+        const li = document.createElement('li');
+        li.textContent = match;
+        li.addEventListener('mousedown', () => {
+          parts[parts.length - 1] = ' ' + match;
+          input.value = parts.join(',').trim();
+          list.style.display = 'none';
+        });
+        list.appendChild(li);
+      });
+      list.style.display = 'block';
+    });
+
+    input.addEventListener('focus', () => {
+      if (input.value) input.dispatchEvent(new Event('input'));
+    });
+    
+    input.addEventListener('blur', () => {
+      setTimeout(() => { list.style.display = 'none'; }, 200);
+    });
+  }
+
+  
+  let currentPreviewAudio = null;
+  
+    let currentPreviewFilename = null;
+    
+    function togglePreview(filename) {
+      const btn = document.getElementById('playBtn_' + filename);
+      
+      // If clicking the currently playing file
+      if (currentPreviewAudio && currentPreviewFilename === filename) {
+        if (!currentPreviewAudio.paused) {
+          currentPreviewAudio.pause();
+          if (btn) btn.innerHTML = '&#9654; Play';
+        } else {
+          currentPreviewAudio.play();
+          if (btn) btn.innerHTML = '&#9209; Pause';
+        }
+        return;
+      }
+      
+      // If playing a different file, stop old one
+      if (currentPreviewAudio) {
+        currentPreviewAudio.pause();
+        const oldBtn = document.getElementById('playBtn_' + currentPreviewFilename);
+        if (oldBtn) oldBtn.innerHTML = '&#9654; Play';
+      }
+      
+      // Start new file
+      const vol = document.getElementById('managePsVolume') ? document.getElementById('managePsVolume').value : 0.5;
+      currentPreviewAudio = new Audio('/playsounds/' + encodeURIComponent(filename));
+      currentPreviewAudio.volume = vol;
+      currentPreviewFilename = filename;
+      
+      currentPreviewAudio.addEventListener('ended', () => {
+        if (btn) btn.innerHTML = '&#9654; Play';
+      });
+      
+      currentPreviewAudio.play().then(() => {
+        if (btn) btn.innerHTML = '&#9209; Pause';
+      }).catch(e => console.error("Error playing audio:", e));
+    }
+    
+    function stopPreview() {
+      if (currentPreviewAudio) {
+        currentPreviewAudio.pause();
+        currentPreviewAudio.currentTime = 0;
+        const oldBtn = document.getElementById('playBtn_' + currentPreviewFilename);
+        if (oldBtn) oldBtn.innerHTML = '&#9654; Play';
+      }
+    }
+  
+
+
+  function setupTagsInput(containerId, hiddenInputId, initialTags, suggestionsData) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const hiddenInput = document.getElementById(hiddenInputId);
+    let tags = initialTags ? initialTags.filter(t => t.trim() !== '') : [];
+    if (tags.length > 5) tags = tags.slice(0, 5);
+    
+    function render() {
+      container.innerHTML = '';
+      tags.forEach((t, i) => {
+        const pill = document.createElement('div');
+        pill.style = 'background: #bf94ff; color: #18181b; padding: 2px 8px; border-radius: 12px; display: flex; align-items: center; gap: 5px; font-size: 13px; font-weight: bold; cursor: default; white-space: nowrap;';
+        
+        const text = document.createElement('span');
+        text.textContent = t;
+        
+        const closeBtn = document.createElement('span');
+        closeBtn.innerHTML = '&#10005;';
+        closeBtn.style = 'cursor: pointer; font-size: 10px; margin-left: 2px;';
+        closeBtn.onclick = (e) => {
+          e.stopPropagation();
+          tags.splice(i, 1);
+          updateHidden();
+          render();
+        };
+        
+        pill.appendChild(text);
+        pill.appendChild(closeBtn);
+        container.appendChild(pill);
+      });
+      
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = tags.length ? '' : 'Add category...';
+      input.style = 'border: none; background: transparent; color: #fff; outline: none; flex: 1; min-width: 100px; font-size: 14px;';
+      if (tags.length >= 5) {
+        input.style.display = 'none';
+      }
+      
+      const list = document.createElement('ul');
+      list.className = 'autocomplete-list';
+      list.style.top = '100%';
+      list.style.bottom = 'auto';
+      list.style.left = '0';
+      list.style.width = '200px';
+      
+      const wrapper = document.createElement('div');
+      wrapper.style = 'position: relative; flex: 1; display: flex; min-width: 100px;';
+      wrapper.appendChild(input);
+      wrapper.appendChild(list);
+      container.appendChild(wrapper);
+      
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const val = input.value.trim();
+          if (val && !tags.includes(val) && tags.length < 5) {
+            tags.push(val);
+            updateHidden();
+            render();
+          } else if (val && tags.length >= 5) {
+            alert("Maximum of 5 categories allowed");
+            input.value = '';
+          }
+        } else if (e.key === 'Backspace' && input.value === '' && tags.length > 0) {
+          tags.pop();
+          updateHidden();
+          render();
+        }
+      });
+      
+      input.addEventListener('input', () => {
+        const val = input.value.trim().toLowerCase();
+        list.innerHTML = '';
+        if (!val) {
+          list.style.display = 'none';
+          return;
+        }
+        const matches = suggestionsData.filter(item => item.toLowerCase().includes(val) && !tags.includes(item));
+        if (matches.length === 0) {
+          list.style.display = 'none';
+          return;
+        }
+        matches.forEach(match => {
+          const li = document.createElement('li');
+          li.textContent = match;
+          li.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            if (!tags.includes(match) && tags.length < 5) {
+              tags.push(match);
+              input.value = ''; // Clear the input box
+              list.style.display = 'none'; // Hide the list
+              updateHidden();
+              render();
+            }
+          });
+          list.appendChild(li);
+        });
+        list.style.display = 'block';
+      });
+
+      input.addEventListener('focus', () => {
+        if (input.value) input.dispatchEvent(new Event('input'));
+      });
+      input.addEventListener('blur', () => {
+        setTimeout(() => { 
+          list.style.display = 'none'; 
+          const val = input.value.trim();
+          if (val && !tags.includes(val) && tags.length < 5) {
+            tags.push(val);
+            updateHidden();
+            render();
+          } else if (val) {
+            input.value = '';
+          }
+        }, 200);
+      });
+      
+      container.onclick = () => { if(tags.length < 5) input.focus(); };
+    }
+    
+    function updateHidden() {
+      hiddenInput.value = tags.join(',');
+    }
+    
+    render();
+  }
+
+  function renderManagePlaysounds() {
+    const q = document.getElementById('managePsSearch').value.toLowerCase();
+    const grid = document.getElementById('managePlaysoundsGrid');
+    grid.innerHTML = '';
+    const filtered = allManagePlaysounds.filter(p => p.filename.toLowerCase().includes(q) || (p.categories && p.categories.join(' ').toLowerCase().includes(q)));
+    if (filtered.length === 0) {
+       grid.innerHTML = '<p style="color:var(--text-muted)">No playsounds found.</p>';
+       return;
+    }
+    filtered.forEach(ps => {
+      const div = document.createElement('div');
+      div.style = 'background: rgba(0,0,0,0.2); padding: 10px; border: 1px solid #3f3f46; display: flex; flex-direction: column; gap: 10px;';
+      div.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <strong style="color: #bf94ff;">${ps.filename}</strong>
+          <div style="display: flex; gap: 5px;">
+            <button id="playBtn_${ps.filename}" onclick="togglePreview('${ps.filename}')" style="background: #3b82f6; color: white; padding: 4px 8px; border: none; cursor: pointer; border-radius: 4px; width: 80px; text-align: center; white-space: nowrap;">&#9654; Play</button>
+            <button onclick="deleteManagePlaysound('${ps.filename}')" style="background: #ef4444; color: white; padding: 4px 8px; border: none; cursor: pointer; border-radius: 4px;">Delete</button>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <input type="text" id="edit_desc_${ps.filename}" value="${(ps.description || '').replace(/"/g, '&quot;')}" placeholder="Description" style="flex: 2; border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff; padding: 6px;">
+          <div style="flex: 2;">
+            <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 2px;">Category</label>
+            <div id="edit_cat_container_${ps.filename}" style="display: flex; flex-wrap: wrap; gap: 5px; width: 100%; border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; padding: 4px; box-sizing: border-box; min-height: 31px; align-items: center; cursor: text;"></div>
+            <input type="hidden" id="edit_cat_${ps.filename}" value="${(ps.categories || []).join(',')}">
+          </div>
+          <button onclick="saveManagePlaysound('${ps.filename}')" style="background: #00C851; color: white; padding: 4px 12px; border: none; cursor: pointer; border-radius: 4px;">Save</button>
+        </div>`;
+      grid.appendChild(div);
+      setupTagsInput('edit_cat_container_' + ps.filename, 'edit_cat_' + ps.filename, ps.categories || [], getUniqueCategories());
+    });
+  }
+
+  async function deleteManagePlaysound(name) {
+    if(!confirm('Are you sure you want to delete playsound ' + name + '?')) return;
+    try {
+      const res = await fetch('/api/admin/playsounds/' + name, { method: 'DELETE' });
+      const data = await res.json();
+      if(data.success) { showToast('Playsound deleted', 'success'); fetchManagePlaysounds(); }
+      else alert(data.error);
+    } catch(e) { console.error(e); }
+  }
+
+  async function saveManagePlaysound(name) {
+    const desc = document.getElementById('edit_desc_' + name).value;
+    const cat = document.getElementById('edit_cat_' + name).value;
+    let categories = cat.split(',').map(c => c.trim()).filter(c => c);
+    
+    // Check if there is pending text in the tag input
+    const container = document.getElementById('tags_container_' + name);
+    if (container) {
+      const input = container.querySelector('input[type="text"]');
+      if (input && input.value.trim()) {
+        const val = input.value.trim().toLowerCase();
+        if (!categories.includes(val) && categories.length < 5) {
+          categories.push(val);
+        }
+      }
+    }
+
+    try {
+      const res = await fetch('/api/admin/playsounds/' + name, {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ description: desc, categories })
+      });
+      const data = await res.json();
+      if(data.success) {
+        showToast('Playsound updated!', 'success');
+        fetchManagePlaysounds();
+      } else alert(data.error);
+    } catch(e) { console.error(e); }
+  }
+
+  async function fetchManageTrivia() {
+    try {
+      const res = await fetch('/api/admin/trivia');
+      const data = await res.json();
+      if(data.success) {
+        allManageTrivia = data.trivia;
+        renderManageTrivia();
+      }
+    } catch(e) { console.error(e); }
+  }
+
+  function renderManageTrivia() {
+    const q = document.getElementById('manageTrSearch').value.toLowerCase();
+    const grid = document.getElementById('manageTriviaGrid');
+    grid.innerHTML = '';
+    const filtered = [];
+    allManageTrivia.forEach((tr, idx) => {
+      if(!tr.question.toLowerCase().includes(q) && !tr.answer.toLowerCase().includes(q) && !(tr.categories || []).join(' ').toLowerCase().includes(q)) return;
+      filtered.push({tr, idx});
+    });
+    if (filtered.length === 0) {
+       grid.innerHTML = '<p style="color:var(--text-muted)">No trivia found.</p>';
+       return;
+    }
+    filtered.forEach(({tr, idx}) => {
+      const id = tr.id || idx;
+      const div = document.createElement('div');
+      div.style = 'background: rgba(0,0,0,0.2); padding: 10px; border: 1px solid #3f3f46; display: flex; flex-direction: column; gap: 10px;';
+      div.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <strong style="color: #60a5fa;">Trivia #${id}</strong>
+          <button onclick="deleteManageTrivia(${id})" style="background: #ef4444; color: white; padding: 4px 8px; border: none; cursor: pointer; border-radius: 4px;">Delete</button>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+          <input type="text" id="edit_tr_q_${id}" value="${tr.question.replace(/"/g, '&quot;')}" placeholder="Question" style="border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff; padding: 6px;">
+          <input type="text" id="edit_tr_a_${id}" value="${tr.answer.replace(/"/g, '&quot;')}" placeholder="Answer" style="border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff; padding: 6px;">
+          <div style="display: flex; gap: 10px;">
+            <input type="text" id="edit_tr_h_${id}" value="${(tr.hint || '').replace(/"/g, '&quot;')}" placeholder="Hint" style="flex:1; border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff; padding: 6px;">
+            <input type="text" id="edit_tr_c_${id}" value="${(tr.categories || []).join(', ')}" placeholder="Categories (comma separated)" style="flex:1; border-radius: 4px; border: 1px solid #3f3f46; background: #18181b; color: #fff; padding: 6px;">
+            <button onclick="saveManageTrivia(${id})" style="background: #00C851; color: white; padding: 4px 16px; border: none; cursor: pointer; border-radius: 4px;">Save</button>
+          </div>
+        </div>`;
+      grid.appendChild(div);
+      setupMultiAutocomplete('edit_tr_c_' + id, 'edit_tr_c_sug_' + id, getUniqueCategories());
+    });
+  }
+
+  async function deleteManageTrivia(id) {
+    if(!confirm('Are you sure you want to delete this trivia?')) return;
+    try {
+      const res = await fetch('/api/admin/trivia/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if(data.success) { showToast('Trivia deleted', 'success'); fetchManageTrivia(); }
+      else alert(data.error);
+    } catch(e) { console.error(e); }
+  }
+
+  async function saveManageTrivia(id) {
+    const q = document.getElementById('edit_tr_q_' + id).value;
+    const a = document.getElementById('edit_tr_a_' + id).value;
+    const h = document.getElementById('edit_tr_h_' + id).value;
+    const c = document.getElementById('edit_tr_c_' + id).value;
+    const categories = c.split(',').map(x => x.trim()).filter(x => x);
+    try {
+      const res = await fetch('/api/admin/trivia/' + id, {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ question: q, answer: a, hint: h, categories })
+      });
+      const data = await res.json();
+      if(data.success) {
+        showToast('Trivia updated!', 'success');
+        fetchManageTrivia();
+      } else alert(data.error);
+    } catch(e) { console.error(e); }
+  }
+
+  document.getElementById('managePsSearch').addEventListener('input', renderManagePlaysounds);
+  document.getElementById('manageTrSearch').addEventListener('input', renderManageTrivia);
+  
+  // Hook into tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.target === 'tab-manage-data') {
+        fetchManagePlaysounds();
+        fetchManageTrivia();
+      }
+    });
+  });
 </script>
 
 </body>
