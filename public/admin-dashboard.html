@@ -1010,6 +1010,8 @@
     { key: 'reward_chat_nonsub', label: 'Reward: Chat (Non-Sub)', type: 'number', def: 500, category: 'Rewards Config', tooltip: 'Points rewarded to non-subscribers for chatting (respects cooldown)' },
     { key: 'reward_chat_cooldown', label: 'Reward: Chat Cooldown (mins)', type: 'number', def: 25, category: 'Rewards Config', tooltip: 'Minutes between chat rewards' },
     { key: 'reward_trivia', label: 'Reward: Trivia Winner', type: 'number', def: 1000, category: 'Trivia Config', tooltip: 'Points rewarded to the first person to guess the correct trivia answer' },
+    { key: 'reward_trivia_submitter', label: 'Reward: Trivia Submitter', type: 'number', def: 50, category: 'Trivia Config', tooltip: 'Points rewarded to the submitter when their trivia is answered' },
+    { key: 'reward_playsound_submitter', label: 'Reward: Playsound Submitter', type: 'number', def: 50, category: 'Rewards Config', tooltip: 'Points rewarded to the submitter when their playsound is played' },
     { key: 'trivia_duration', label: 'Trivia Duration (seconds)', type: 'number', def: 60, category: 'Trivia Config', tooltip: 'How long chat has to guess the correct answer' },
     { key: 'trivia_hint_delay', label: 'Trivia Hint Delay (seconds)', type: 'number', def: 30, category: 'Trivia Config', tooltip: 'Time before showing the optional hint' },
     { key: 'reward_raffle_min', label: 'Reward: Random Raffle Min', type: 'number', def: 1500, category: 'Rewards Config', tooltip: 'Minimum points won in a random raffle trigged by subbing/resubbing/gifting subs and gifting bits' },
@@ -2463,23 +2465,31 @@
             let h = '';
             let a = '';
             let c = '';
+            
+            const escapeHtml = (str) => {
+              if (typeof str !== 'string') return '';
+              return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+            };
+
             try {
               const parsed = JSON.parse(sub.content);
-              a = parsed.answer;
+              a = escapeHtml(parsed.answer);
               if (parsed.categories && parsed.categories.length > 0) {
-                c = `<div style="margin-top: 10px; font-size: 14px;"><strong>Categories:</strong> <span style="color: #00C851;">${parsed.categories.join(', ')}</span></div>`;
+                c = `<div style="margin-top: 10px; font-size: 14px;"><strong>Categories:</strong> <span style="color: #00C851;">${escapeHtml(parsed.categories.join(', '))}</span></div>`;
               }
               try {
                 const innerParsed = JSON.parse(parsed.question);
-                q = innerParsed.question;
-                h = innerParsed.hint ? `<div style="margin-top: 10px; color: #a8a8b3; font-size: 14px;"><strong>Hint:</strong> ${innerParsed.hint}</div>` : '';
+                q = escapeHtml(innerParsed.question);
+                h = innerParsed.hint ? `<div style="margin-top: 10px; color: #a8a8b3; font-size: 14px;"><strong>Hint:</strong> ${escapeHtml(innerParsed.hint)}</div>` : '';
                 if (innerParsed.categories && innerParsed.categories.length > 0) {
-                  c = `<div style="margin-top: 10px; font-size: 14px;"><strong>Categories:</strong> <span style="color: #00C851;">${innerParsed.categories.join(', ')}</span></div>`;
+                  c = `<div style="margin-top: 10px; font-size: 14px;"><strong>Categories:</strong> <span style="color: #00C851;">${escapeHtml(innerParsed.categories.join(', '))}</span></div>`;
                 }
               } catch (e2) {
-                q = parsed.question;
+                q = escapeHtml(parsed.question);
               }
-            } catch (e) {}
+            } catch (e) {
+              q = escapeHtml(sub.content);
+            }
             return `
               <div style="font-size: 18px; font-weight: bold; color: #fff; margin-bottom: 10px;">${q}</div>
               <div style="font-size: 16px;"><strong>Answer:</strong> <span style="color: #00ff7f;">${a}</span></div>

@@ -405,6 +405,7 @@ async function initDb() {
       type TEXT,
       content TEXT,
       status TEXT DEFAULT 'pending',
+      points_earned INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -416,6 +417,7 @@ async function initDb() {
       answer TEXT,
       hint TEXT,
       submitter TEXT,
+      submission_id INTEGER,
       categories TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -428,12 +430,17 @@ async function initDb() {
       name TEXT PRIMARY KEY,
       description TEXT,
       submitter TEXT,
+      submission_id INTEGER,
       categories TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     -- Ensure categories column exists on trivia_questions if it was already created
     ALTER TABLE trivia_questions ADD COLUMN categories TEXT;
   `).catch(() => {}); // Catch error if column already exists
+
+  try { await db.exec('ALTER TABLE user_submissions ADD COLUMN points_earned INTEGER DEFAULT 0'); } catch (err) {}
+  try { await db.exec('ALTER TABLE trivia_questions ADD COLUMN submission_id INTEGER'); } catch (err) {}
+  try { await db.exec('ALTER TABLE playsounds_metadata ADD COLUMN submission_id INTEGER'); } catch (err) {}
 
   const configs = await db.all('SELECT * FROM app_config');
   for (const row of configs) {
@@ -1089,7 +1096,7 @@ async function start() {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (activeTrivia || triviaLoopActive) {
-          await sendChatMessage(`${chatterName} trivia is already active!`);
+        //  await sendChatMessage(`${chatterName} trivia is already active!`);
           return;
         }
         triviaLoopActive = true;
@@ -1100,7 +1107,7 @@ async function start() {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (!activeTrivia && !triviaLoopActive) {
-          await sendChatMessage(`${chatterName} there is no active trivia to stop!`);
+         // await sendChatMessage(`${chatterName} there is no active trivia to stop!`);
           return;
         }
         triviaLoopActive = false;
@@ -1827,6 +1834,19 @@ async function start() {
               playsoundCooldowns.set(filename, Date.now());
               console.log(`[PLAYSOUND] ${chatterName} played audio: ${filename}.mp3 (-${activeCost} point(s)) at ${volume}x volume`);
             }
+            
+            try {
+              const meta = await db.get('SELECT submitter, submission_id FROM playsounds_metadata WHERE name = ?', [filename]);
+              if (meta && meta.submitter && meta.submission_id) {
+                const authorRewardRaw = globalConfig['reward_playsound_submitter'];
+                const authorReward = authorRewardRaw !== undefined ? parseInt(authorRewardRaw, 10) : 50; 
+                if (authorReward > 0) {
+                  await db.run('UPDATE users SET points = points + ? WHERE username = ?', [authorReward, meta.submitter]);
+                  await db.run('UPDATE user_submissions SET points_earned = points_earned + ? WHERE id = ?', [authorReward, meta.submission_id]);
+                  console.log(`[PLAYSOUND] Awarded ${authorReward} points to submitter ${meta.submitter}`);
+                }
+              }
+            } catch (err) {}
           } else {
             console.log(`[PLAYSOUND] Audio not found for: ${filename}`);
             if (activeCost > 0) {
@@ -4203,14 +4223,14 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         if (row.hint) {
           hintTimeout = setTimeout(() => {
             if (activeTrivia && activeTrivia.answer === row.answer) {
-              sendChatMessage(`[TRIVIA HINT] ${row.hint}`);
+              sendChatMessage(`[TRIVIA HINT] ${row.hint} CaitThinking `);
             }
           }, hintDelay * 1000);
         }
 
         endTimeout = setTimeout(() => {
            if (activeTrivia && activeTrivia.answer === row.answer) {
-             sendChatMessage(`[TRIVIA] Time's up! Nobody guessed the correct answer. The answer was: ${row.answer}`);
+             sendChatMessage(`[TRIVIA] Time's up! Nobody guessed the correct answer. The answer was: ${row.answer} MaxLOL `);
              activeTrivia = null;
              if (triviaLoopActive) {
                 nextTriviaTimeout = setTimeout(startTriviaQuestion, 10000);
@@ -4223,7 +4243,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
            answer: row.answer,
            reward: reward,
            hintTimeout: hintTimeout,
-           endTimeout: endTimeout
+           endTimeout: endTimeout,
+           submitter: row.submitter,
+           submission_id: row.submission_id
         };
         
         let catsStr = "Uncategorized";
@@ -4496,16 +4518,27 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
           if (activeTrivia) {
             if (chatText.toLowerCase() === activeTrivia.answer.toLowerCase()) {
-              const reward = activeTrivia.reward;
-              const a = activeTrivia.answer;
-              
-              if (activeTrivia.hintTimeout) clearTimeout(activeTrivia.hintTimeout);
-              if (activeTrivia.endTimeout) clearTimeout(activeTrivia.endTimeout);
-              
+              const completedTrivia = activeTrivia;
               activeTrivia = null;
+              
+              if (completedTrivia.hintTimeout) clearTimeout(completedTrivia.hintTimeout);
+              if (completedTrivia.endTimeout) clearTimeout(completedTrivia.endTimeout);
+              
+              const reward = completedTrivia.reward;
+              const a = completedTrivia.answer;
               
               await db.run('UPDATE users SET points = points + ? WHERE username = ?', [reward, chatterName]);
               await sendChatMessage(`Congratulations ${chatterName}! You answered correctly and won ${reward} points! The answer was: ${a} `);
+              
+              if (completedTrivia.submitter && completedTrivia.submission_id) {
+                const authorRewardRaw = globalConfig['reward_trivia_submitter'];
+                const authorReward = authorRewardRaw !== undefined ? parseInt(authorRewardRaw, 10) : 50;
+                if (authorReward > 0) {
+                  await db.run('UPDATE users SET points = points + ? WHERE username = ?', [authorReward, completedTrivia.submitter]);
+                  await db.run('UPDATE user_submissions SET points_earned = points_earned + ? WHERE id = ?', [authorReward, completedTrivia.submission_id]);
+                  await sendChatMessage(`The submitter of this trivia, @${completedTrivia.submitter}, also earned ${authorReward} points!`);
+                }
+              }
               
               if (triviaLoopActive) {
                 nextTriviaTimeout = setTimeout(startTriviaQuestion, 10000);

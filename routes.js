@@ -208,6 +208,25 @@ export function setupRoutes(app, {
     }
   });
 
+  app.post('/api/user/submissions', express.json(), async (req, res) => {
+    try {
+      const { token } = req.body;
+      if (!token) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+      const authRes = await fetch('https://id.twitch.tv/oauth2/validate', {
+        headers: { 'Authorization': `OAuth ${token}` }
+      });
+      const authData = await authRes.json();
+      if (!authRes.ok || !authData.login) return res.status(401).json({ success: false, error: 'Invalid token' });
+
+      const db = getDb();
+      const submissions = await db.all('SELECT * FROM user_submissions WHERE username = ? ORDER BY created_at DESC', [authData.login]);
+      res.json({ success: true, submissions });
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
   app.get('/api/admin/submissions', adminAuth, async (req, res) => {
     try {
       const db = getDb();
@@ -282,7 +301,7 @@ export function setupRoutes(app, {
 
           cats = cats.map(c => typeof c === 'string' ? c.toLowerCase() : c);
           const catsStr = JSON.stringify(cats);
-          await db.run('INSERT INTO trivia_questions (question, answer, hint, submitter, categories) VALUES (?, ?, ?, ?, ?)', [q, a, h, sub.username, catsStr]);
+          await db.run('INSERT INTO trivia_questions (question, answer, hint, submitter, categories, submission_id) VALUES (?, ?, ?, ?, ?, ?)', [q, a, h, sub.username, catsStr, id]);
           
           for (const c of cats) {
             await db.run('INSERT OR IGNORE INTO categories (name, type) VALUES (?, ?)', [c, 'trivia']);
@@ -331,8 +350,8 @@ export function setupRoutes(app, {
             }
           }
           
-          await db.run('INSERT INTO playsounds_metadata (name, description, submitter, categories) VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET description = ?, submitter = ?, categories = ?', 
-            [name, desc, sub.username, JSON.stringify(cats), desc, sub.username, JSON.stringify(cats)]);
+          await db.run('INSERT INTO playsounds_metadata (name, description, submitter, categories, submission_id) VALUES (?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET description = ?, submitter = ?, categories = ?, submission_id = ?', 
+            [name, desc, sub.username, JSON.stringify(cats), id, desc, sub.username, JSON.stringify(cats), id]);
             
           for (const c of cats) {
             await db.run('INSERT OR IGNORE INTO categories (name, type) VALUES (?, ?)', [c, 'playsound']);
@@ -507,6 +526,13 @@ export function setupRoutes(app, {
       } else {
         await db.run('INSERT INTO playsounds_metadata (name, description, categories) VALUES (?, ?, ?)', [nameOnly, description, catsJson]);
       }
+      
+      if (categories && Array.isArray(categories)) {
+        for (const c of categories) {
+          await db.run('INSERT OR IGNORE INTO categories (name, type) VALUES (?, ?)', [c.toLowerCase(), 'playsound']);
+        }
+      }
+      
       res.json({ success: true, message: 'Playsound updated successfully.' });
     } catch (e) {
       console.error(e);
