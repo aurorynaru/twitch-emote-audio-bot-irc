@@ -457,6 +457,32 @@ async function initDb() {
     await db.run('UPDATE users SET points = CAST(points AS INTEGER)');
     console.log('* Ensured all user points are integers.');
 
+    // Backfill missing categories from playsounds and trivia
+    console.log('* Backfilling categories from playsounds and trivia...');
+    const playsoundRows = await db.all('SELECT categories FROM playsounds_metadata');
+    for (const row of playsoundRows) {
+      if (!row.categories) continue;
+      try {
+        const cats = JSON.parse(row.categories);
+        for (const c of cats) {
+          if (!c) continue;
+          await db.run('INSERT OR IGNORE INTO categories (name, type) VALUES (?, ?)', [c.toLowerCase(), 'playsound']);
+        }
+      } catch(e) {}
+    }
+    
+    const triviaRows = await db.all('SELECT categories FROM trivia_questions');
+    for (const row of triviaRows) {
+      if (!row.categories) continue;
+      try {
+        const cats = JSON.parse(row.categories);
+        for (const c of cats) {
+          if (!c) continue;
+          await db.run('INSERT OR IGNORE INTO categories (name, type) VALUES (?, ?)', [c.toLowerCase(), 'trivia']);
+        }
+      } catch(e) {}
+    }
+
     // Migrate bomb to rng_effect
     await db.run("UPDATE items SET effectType = 'rng_effect' WHERE effectType = 'bomb'");
     await db.run("UPDATE active_effects SET effect_type = 'rng_effect' WHERE effect_type = 'bomb'");
