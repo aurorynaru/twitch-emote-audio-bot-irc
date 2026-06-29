@@ -93,11 +93,11 @@
 
 <div class="container">
   <h1>Add Playsound</h1>
-  <p>Upload a new sound effect (.ogg or .mp3).</p>
+  <p>Upload a new sound effect (.ogg, .mp3).</p>
   
   <div class="upload-area">
     <label class="file-label" for="soundFile">Choose File</label>
-    <input type="file" id="soundFile" accept=".ogg,.mp3" multiple>
+    <input type="file" id="soundFile" accept=".ogg,.mp3,.zip" multiple>
     <div id="fileName">No files chosen</div>
   </div>
 
@@ -120,14 +120,14 @@
       for (let i = 0; i < fileInput.files.length; i++) {
         const file = fileInput.files[i];
         names.push(file.name);
-        if (!file.name.toLowerCase().endsWith('.ogg') && !file.name.toLowerCase().endsWith('.mp3')) {
+        if (!file.name.toLowerCase().endsWith('.ogg') && !file.name.toLowerCase().endsWith('.mp3') && !file.name.toLowerCase().endsWith('.zip')) {
           valid = false;
         }
       }
       fileNameDisplay.textContent = names.length > 3 ? `${names.length} files chosen` : names.join(', ');
       
       if (!valid) {
-        statusDiv.textContent = 'Error: All files must be .ogg or .mp3!';
+        statusDiv.textContent = 'Error: All files must be .ogg, .mp3, or .zip!';
         statusDiv.className = 'error';
         uploadBtn.disabled = true;
       } else {

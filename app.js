@@ -833,6 +833,25 @@ async function start() {
     return finalAmount;
   }
 
+  let appAccessToken = null;
+  let appAccessTokenExpiry = 0;
+
+  async function getAppAccessToken() {
+    if (appAccessToken && Date.now() < appAccessTokenExpiry) {
+      return appAccessToken;
+    }
+    const res = await fetch(`https://id.twitch.tv/oauth2/token?client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&grant_type=client_credentials`, {
+      method: 'POST'
+    });
+    const data = await res.json();
+    if (!data.access_token) {
+      throw new Error('Failed to get App Access Token: ' + JSON.stringify(data));
+    }
+    appAccessToken = data.access_token;
+    appAccessTokenExpiry = Date.now() + (data.expires_in * 1000) - 60000;
+    return appAccessToken;
+  }
+//helix chat bot badge
   async function sendChatMessage(messageText, author = null) {
     try {
       if (author) {
@@ -848,13 +867,35 @@ async function start() {
           messageText = `[${lvl}]` + messageText;
         }
       }
-      if (activeWs && activeWs.readyState === WebSocket.OPEN) {
-        activeWs.send(`PRIVMSG #${TARGET_CHANNEL.toLowerCase()} :${messageText}`);
-      } else {
-        console.error('! Cannot send chat message, IRC disconnected.');
+      
+      const token = await getAppAccessToken();
+      const res = await fetch('https://api.twitch.tv/helix/chat/messages', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Client-Id': CLIENT_ID,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          broadcaster_id: BROADCASTER_USER_ID,
+          sender_id: YOUR_USER_ID,
+          message: messageText
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.text();
+        console.error('! Failed to send chat message via API:', res.status, errData);
+        console.log('* Falling back to IRC messaging...');
+        if (activeWs && activeWs.readyState === 1) { // 1 === WebSocket.OPEN
+          activeWs.send(`PRIVMSG #${TARGET_CHANNEL} :${messageText}`);
+        }
       }
     } catch (err) {
       console.error('! Error sending chat message:', err);
+      if (activeWs && activeWs.readyState === 1) {
+        activeWs.send(`PRIVMSG #${TARGET_CHANNEL} :${messageText}`);
+      }
     }
   }
 
@@ -4448,7 +4489,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
           // --- COMMAND LOGIC START ---
      
-          if (ignoredBots.includes(chatterName.toLowerCase())) {
+          const isBotBadge = event.badges.some(b => b.set_id === 'bot');
+          if (isBotBadge || ignoredBots.includes(chatterName.toLowerCase())) {
             return;
           }
 
@@ -4463,7 +4505,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               activeTrivia = null;
               
               await db.run('UPDATE users SET points = points + ? WHERE username = ?', [reward, chatterName]);
-              await sendChatMessage(`Congratulations @${chatterName}! You answered correctly and won ${reward} points! The answer was: ${a}`);
+              await sendChatMessage(`Congratulations ${chatterName}! You answered correctly and won ${reward} points! The answer was: ${a} `);
               
               if (triviaLoopActive) {
                 nextTriviaTimeout = setTimeout(startTriviaQuestion, 10000);
@@ -4887,7 +4929,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               }
             } else if (msgId === 'subgift') {
 
-              if (db && chatterName && !tags['msg-param-communitygift-id']) {
+              if (db && chatterName && !tags['msg-param-communitygift-id'] && !tags['msg-param-origin-id']) {
                 const baseReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
                 const scalingBonus = parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10);
                 const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);

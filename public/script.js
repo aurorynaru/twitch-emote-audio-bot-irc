@@ -3,10 +3,24 @@ let sizePx = 150;
 
 
 let audioCtx = null;
+let globalCompressor = null;
+
 function getAudioContext() {
   if (!audioCtx) {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (AudioContext) audioCtx = new AudioContext();
+    if (AudioContext) {
+      audioCtx = new AudioContext();
+      
+      //  master limiter for the overlay
+      globalCompressor = audioCtx.createDynamicsCompressor();
+      globalCompressor.threshold.value = -15; 
+      globalCompressor.knee.value = 30;       
+      globalCompressor.ratio.value = 12;      
+      globalCompressor.attack.value = 0.003;  
+      globalCompressor.release.value = 0.25; 
+      
+      globalCompressor.connect(audioCtx.destination);
+    }
   }
   return audioCtx;
 }
@@ -26,23 +40,28 @@ fetch('/api/config')
         audio.crossOrigin = "anonymous";
         
         let shouldPlayDirectly = true;
-        if (parsedData.volume !== undefined) {
-          const vol = parseFloat(parsedData.volume);
-          if (vol > 1.0) {
-            const actx = getAudioContext();
-            if (actx) {
-              shouldPlayDirectly = false;
-              const source = actx.createMediaElementSource(audio);
-              const gainNode = actx.createGain();
-              gainNode.gain.value = vol;
-              source.connect(gainNode);
-              gainNode.connect(actx.destination);
-              audio.play().catch(err => console.error("Error playing amplified audio:", err));
-            } else {
-              audio.volume = 1.0;
-            }
+        const actx = getAudioContext();
+        
+        if (actx) {
+          shouldPlayDirectly = false;
+          const source = actx.createMediaElementSource(audio);
+          
+          if (parsedData.volume !== undefined) {
+            const vol = parseFloat(parsedData.volume);
+            const gainNode = actx.createGain();
+            gainNode.gain.value = Math.max(0, vol);
+            source.connect(gainNode);
+            gainNode.connect(globalCompressor);
           } else {
-            audio.volume = Math.max(0, vol);
+            source.connect(globalCompressor);
+          }
+          
+          audio.play().catch(err => console.error("Error playing compressed audio:", err));
+        } else {
+          // Fallback if AudioContext isn't supported
+          if (parsedData.volume !== undefined) {
+            const vol = parseFloat(parsedData.volume);
+            audio.volume = Math.min(1.0, Math.max(0, vol));
           }
         }
         

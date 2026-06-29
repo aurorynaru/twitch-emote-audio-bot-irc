@@ -117,7 +117,7 @@ Open your `.env` file and set the following variables:
 6. Click OK
 
 ### Adding Playsounds
-You can add custom sound effects (`.ogg` or `.mp3` format) in two different ways:
+You can add custom sound effect (`.ogg` or `.mp3` format) in two different ways:
 
 **Manual Method:**
 Copy the audio file directly into the `playsounds` folder inside the project directory.

@@ -5,9 +5,11 @@ import { fileURLToPath } from 'url';
 import { ZipArchive } from 'archiver';
 import multer from 'multer';
 import AdmZip from 'adm-zip';
+import { exec } from 'child_process';
 import express from 'express';
 import { adminAuth, parseTime } from './utils.js';
 import dotenv from 'dotenv';
+import { normalizeAudio } from './normalize_all_sounds.js';
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -76,7 +78,7 @@ export function setupRoutes(app, {
     res.sendFile(path.join(__dirname, 'public', 'upload-database.html'));
   });
 
-  app.post('/api/upload-sound', adminAuth, upload.array('soundFiles', 50), (req, res) => {
+  app.post('/api/upload-sound', adminAuth, upload.array('soundFiles', 50), async (req, res) => {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No files uploaded or files were not .ogg, .mp3, or .zip!' });
     }
@@ -91,6 +93,7 @@ export function setupRoutes(app, {
              if (!zipEntry.isDirectory && (name.endsWith('.mp3') || name.endsWith('.ogg'))) {
                 const outPath = path.join(__dirname, 'data', 'playsounds', path.basename(zipEntry.entryName));
                 fs.writeFileSync(outPath, zipEntry.getData());
+                await normalizeAudio(outPath);
                 finalFilenames.push(path.basename(zipEntry.entryName));
              }
           }
@@ -99,6 +102,7 @@ export function setupRoutes(app, {
           console.error("Failed to extract zip", e);
         }
       } else {
+        await normalizeAudio(file.path);
         finalFilenames.push(file.filename);
       }
     }
@@ -320,6 +324,8 @@ export function setupRoutes(app, {
                    .on('finish', resolve)
                    .on('error', reject);
               });
+              
+              await normalizeAudio(filePath);
             } catch (err) {
               return res.status(500).json({ success: false, error: `Failed to download audio file: ${err.message}` });
             }
