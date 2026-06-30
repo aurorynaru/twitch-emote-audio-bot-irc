@@ -1801,7 +1801,7 @@ async function start() {
       cost: 1,
       manualCost: true,
       execute: async (args, chatterName, event, hasPermission) => {
-        // if (!await isStreamerLive()) return;
+         if (!await isStreamerLive()) return;
         args = [args[0]]
 
         const filename = args.join('').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
