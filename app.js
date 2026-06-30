@@ -457,6 +457,34 @@ async function initDb() {
     await db.run('UPDATE users SET points = CAST(points AS INTEGER)');
     console.log('* Ensured all user points are integers.');
 
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS admin_users (
+        username TEXT PRIMARY KEY,
+        password_hash TEXT,
+        salt TEXT,
+        permissions TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_username TEXT,
+        action_type TEXT,
+        target_entity TEXT,
+        old_value TEXT,
+        new_value TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    try {
+      await db.run('ALTER TABLE user_submissions ADD COLUMN reviewer TEXT');
+    } catch (e) {
+      // Column might already exist
+    }
+
     // Migrate bomb to rng_effect
     await db.run("UPDATE items SET effectType = 'rng_effect' WHERE effectType = 'bomb'");
     await db.run("UPDATE active_effects SET effect_type = 'rng_effect' WHERE effect_type = 'bomb'");
@@ -605,9 +633,6 @@ const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/playsounds', express.static(path.join(__dirname, 'data', 'playsounds')));
-
 function clearOverlaySystem() {
   if (activeBets.has('default')) {
     const bet = activeBets.get('default');
@@ -635,6 +660,9 @@ setupRoutes(app, {
   clearOverlaySystem,
   loadItemsConfig
 });
+
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/playsounds', express.static(path.join(__dirname, 'data', 'playsounds')));
 
 app.listen(PORT, () => {
   console.log(`==================================================`);

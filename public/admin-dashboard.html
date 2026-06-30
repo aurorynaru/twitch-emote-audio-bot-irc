@@ -321,14 +321,20 @@
   </style>
 </head>
 <body>
+  <div id="loadingOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #18181b; display: flex; align-items: center; justify-content: center; z-index: 9999; color: #bf94ff; font-size: 24px; font-weight: bold;">
+    Loading Dashboard...
+  </div>
 
 <header style="display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 15px 20px; gap: 10px;">
   <div style="display: flex; align-items: center; gap: 20px; flex-shrink: 0;">
     <h1 style="margin: 0;">Admin Dashboard</h1>
-    <button onclick="loadConfig(); const i = this.querySelector('span'); i.style.transform = 'rotate(360deg)'; setTimeout(() => i.style.transform = 'none', 300);" style="background: #3a3a44; color: #00ff7f; border: none; padding: 6px; border-radius: 4px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;" onmouseover="this.style.background='#bf94ff'; this.style.color='#000';" onmouseout="this.style.background='#3a3a44'; this.style.color='#00ff7f';" title="Refresh Dashboard"><span style="display:inline-block; transition: transform 0.4s ease; font-size: 1.4em; line-height: 1;">&#8635;</span></button>
+    <div style="display: flex; gap: 10px;">
+        <button onclick="loadConfig(); const i = this.querySelector('span'); i.style.transform = 'rotate(360deg)'; setTimeout(() => i.style.transform = 'none', 300);" style="background: #3a3a44; color: #00ff7f; border: none; padding: 6px; border-radius: 4px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;" onmouseover="this.style.background='#bf94ff'; this.style.color='#000';" onmouseout="this.style.background='#3a3a44'; this.style.color='#00ff7f';" title="Refresh Dashboard"><span style="display:inline-block; transition: transform 0.4s ease; font-size: 1.4em; line-height: 1;">&#8635;</span></button>
+        <button onclick="logoutAdmin()" style="background: #3a3a44; color: #ff4a4a; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#ff4a4a'; this.style.color='#000';" onmouseout="this.style.background='#3a3a44'; this.style.color='#ff4a4a';">Logout</button>
+    </div>
     <div id="status"></div>
   </div>
-  <div class="tabs" style="padding-bottom: 0; margin: 0; flex-wrap: nowrap;">
+  <div class="tabs" style="padding-bottom: 0; margin: 0; flex-wrap: wrap;">
     <button class="tab-btn active" data-target="tab-global">Global Settings</button>
     <button class="tab-btn" data-target="tab-commands">Command Config</button>
     <button class="tab-btn" data-target="tab-custom">Custom Commands</button>
@@ -338,7 +344,9 @@
     <button class="tab-btn" data-target="tab-playsounds">Playsounds</button>
     <button class="tab-btn" data-target="tab-routes">Links</button>
     <button class="tab-btn" data-target="tab-submissions">User Submissions</button>
-      <button class="tab-btn" data-target="tab-manage-data">Manage Data</button>
+    <button class="tab-btn" data-target="tab-manage-data">Manage Data</button>
+    <button class="tab-btn" data-target="tab-audit">Audit Logs</button>
+    <button class="tab-btn" data-target="tab-admin-users" id="adminUsersTabBtn" style="display: none;">Admin Management</button>
     <button class="tab-btn" data-target="tab-reference">Command Reference</button>
   </div>
 </header>
@@ -906,7 +914,80 @@
     <div id="submissionsTriviaGrid" style="display: none; flex-direction: column; gap: 15px;">
       <!-- JS injected -->
     </div>
-  </div>
+    </div>
+  
+    <div id="tab-audit" class="tab-pane">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 style="margin: 0;">Audit Logs</h2>
+        <button class="save-btn" onclick="fetchAuditLogs()" style="background-color: #3a3a44;">Refresh</button>
+      </div>
+      
+      <div class="card" style="overflow-x: auto;">
+        <table class="data-table" style="min-width: 800px; word-break: break-all;">
+          <thead>
+            <tr>
+              <th style="width: 15%;">Time</th>
+              <th style="width: 10%;">Admin</th>
+              <th style="width: 15%;">Action</th>
+              <th style="width: 20%;">Target</th>
+              <th style="width: 20%;">Old Value</th>
+              <th style="width: 20%;">New Value</th>
+            </tr>
+          </thead>
+          <tbody id="auditLogsBody">
+            <tr><td colspan="6" style="text-align: center; color: #adadb8;">Loading audit logs...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  
+    <div id="tab-admin-users" class="tab-pane">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 style="margin: 0;">Admin Management</h2>
+        <button class="save-btn" id="refreshAdminsBtn" style="background-color: #3a3a44;">Refresh</button>
+      </div>
+      
+      <div class="card" style="margin-bottom: 20px;">
+        <h3>Create New Admin</h3>
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+          <div class="form-group" style="margin: 0;">
+            <label>Username</label>
+            <input type="text" id="newAdminUsername" placeholder="e.g. mod1" autocomplete="off">
+          </div>
+          <div class="form-group" style="margin: 0;">
+            <label>Password</label>
+            <input type="password" id="newAdminPassword" placeholder="Required" autocomplete="off">
+          </div>
+          <div class="form-group" style="margin: 0;">
+            <label>Repeat Password</label>
+            <input type="password" id="newAdminRepeatPassword" placeholder="Required" autocomplete="off">
+          </div>
+          <div class="form-group" style="margin: 0;">
+            <label>Allowed Tabs (Permissions)</label>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; background: #2a2a30; padding: 15px; border-radius: 4px;">
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal;"><input type="checkbox" class="admin-perm-cb" value="tab-global"> Global</label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal;"><input type="checkbox" class="admin-perm-cb" value="tab-commands"> Cmd Config</label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal;"><input type="checkbox" class="admin-perm-cb" value="tab-custom"> Custom Cmds</label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal;"><input type="checkbox" class="admin-perm-cb" value="tab-users"> Users</label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal;"><input type="checkbox" class="admin-perm-cb" value="tab-items"> Items</label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal;"><input type="checkbox" class="admin-perm-cb" value="tab-system"> System</label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal;"><input type="checkbox" class="admin-perm-cb" value="tab-playsounds"> Playsounds</label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal;"><input type="checkbox" class="admin-perm-cb" value="tab-routes"> Links</label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal;"><input type="checkbox" class="admin-perm-cb" value="tab-submissions"> Submissions</label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal;"><input type="checkbox" class="admin-perm-cb" value="tab-manage-data"> Manage Data</label>
+            </div>
+          </div>
+          <button class="save-btn" style="background-color: #00ff7f; color: black; font-weight: bold; align-self: flex-start;" id="createAdminBtn">Create Admin</button>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h3>Existing Admins</h3>
+        <div id="adminsList" style="display: flex; flex-direction: column; gap: 10px;">
+          <!-- Admins will be loaded here -->
+        </div>
+      </div>
+    </div>
 
   <div id="tab-reference" class="tab-pane">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
@@ -2444,7 +2525,10 @@
     card.style.marginBottom = '10px';
     card.innerHTML = `
       <div style="display:flex; justify-content:space-between;">
-        <strong>User: <span style="color:#bf94ff">${sub.username}</span></strong>
+        <div>
+          <strong>User: <span style="color:#bf94ff">${sub.username}</span></strong>
+          ${sub.reviewer ? `<span style="margin-left: 10px; font-size: 13px; color: #a8a8b3;">(Reviewed by: <span style="color: #ffb86c;">${sub.reviewer}</span>)</span>` : ''}
+        </div>
         <span style="color:var(--text-muted); font-size: 12px;">${new Date(sub.created_at.replace(' ', 'T') + 'Z').toLocaleString()}</span>
       </div>
       <div style="margin-top: 10px; background: #18181b; padding: 15px; border-radius: 4px; font-size: 15px;">
@@ -3190,9 +3274,204 @@
       if (btn.dataset.target === 'tab-manage-data') {
         fetchManagePlaysounds();
         fetchManageTrivia();
+      } else if (btn.dataset.target === 'tab-audit') {
+        fetchAuditLogs();
       }
     });
   });
+
+  // --- Audit Logs Logic ---
+  async function fetchAuditLogs() {
+    const tbody = document.getElementById('auditLogsBody');
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #adadb8;">Loading...</td></tr>';
+    try {
+      const res = await fetch('/api/admin/audit');
+      const data = await res.json();
+      if (data.success) {
+        tbody.innerHTML = '';
+        if (data.logs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #adadb8;">No audit logs found.</td></tr>';
+          return;
+        }
+        data.logs.forEach(log => {
+          const tr = document.createElement('tr');
+          const dateStr = log.created_at.replace(' ', 'T') + 'Z';
+          const ts = new Date(dateStr).toLocaleString();
+          tr.innerHTML = `
+            <td>${ts}</td>
+            <td style="color: #bf94ff; font-weight: bold;">${log.admin_username}</td>
+            <td>${log.action_type}</td>
+            <td>${log.target_entity || ''}</td>
+            <td style="color: #ff4a4a; white-space: pre-wrap;">${log.old_value || ''}</td>
+            <td style="color: #00ff7f; white-space: pre-wrap;">${log.new_value || ''}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } else {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #ff4a4a;">Failed to load logs.</td></tr>';
+      }
+    } catch (e) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #ff4a4a;">Error loading logs.</td></tr>';
+    }
+  }
+
+  // --- Admin User Management Logic ---
+  
+  async function loadAdminMe() {
+    try {
+      const res = await fetch('/api/admin/me');
+      const data = await res.json();
+      if (data.success) {
+        const perms = data.user.permissions;
+        const isHeadAdmin = perms.includes('all');
+        
+        // Hide tabs the user doesn't have access to
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+          const target = btn.dataset.target;
+          if (!isHeadAdmin && !perms.includes(target) && target !== 'tab-admin-users') {
+            btn.style.display = 'none';
+          }
+        });
+        
+        // Show Admin Management tab if head admin
+        if (isHeadAdmin) {
+          document.getElementById('adminUsersTabBtn').style.display = 'inline-block';
+          loadAdminsList();
+        } else {
+          document.getElementById('adminUsersTabBtn').style.display = 'none';
+        }
+        
+        // Ensure the active tab is one they have access to
+        const activeTabBtn = document.querySelector('.tab-btn.active');
+        if (activeTabBtn && activeTabBtn.style.display === 'none') {
+          const firstVisibleTab = document.querySelector('.tab-btn:not([style*="display: none"])');
+          if (firstVisibleTab) firstVisibleTab.click();
+        }
+      }
+      document.getElementById('loadingOverlay').style.display = 'none';
+    } catch (e) { 
+      console.error('Failed to load admin profile', e); 
+      document.getElementById('loadingOverlay').style.display = 'none';
+    }
+  }
+
+  async function loadAdminsList() {
+    try {
+      const res = await fetch('/api/admin/subadmins');
+      const data = await res.json();
+      if (data.success) {
+        const list = document.getElementById('adminsList');
+        list.innerHTML = '';
+        data.admins.forEach(admin => {
+          list.innerHTML += `
+            <div style="background: #2a2a30; padding: 15px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <strong style="color: #bf94ff; font-size: 16px;">${admin.username}</strong>
+                <div style="font-size: 12px; color: #aaa; margin-top: 5px;">Created: ${new Date(admin.created_at).toLocaleString()}</div>
+                <div style="font-size: 12px; margin-top: 5px;">Permissions: ${admin.permissions.join(', ') || 'None'}</div>
+              </div>
+              <div style="display: flex; gap: 10px;">
+                <button class="save-btn" style="background-color: #ffaa00; color: black; padding: 5px 10px;" onclick="editAdmin('${admin.username}', '${admin.permissions.join(',')}')">Edit</button>
+                <button class="save-btn" style="background-color: #ff4a4a; padding: 5px 10px;" onclick="deleteAdmin('${admin.username}')">Delete</button>
+              </div>
+            </div>
+          `;
+        });
+      }
+    } catch (e) { console.error(e); }
+  }
+
+  function editAdmin(username, permsStr) {
+    document.getElementById('newAdminUsername').value = username;
+    document.getElementById('newAdminUsername').disabled = true;
+    document.getElementById('newAdminPassword').placeholder = "Leave blank to keep unchanged";
+    document.getElementById('newAdminRepeatPassword').placeholder = "Leave blank to keep unchanged";
+    
+    const perms = permsStr ? permsStr.split(',') : [];
+    document.querySelectorAll('.admin-perm-cb').forEach(cb => {
+      cb.checked = perms.includes(cb.value);
+    });
+    
+    document.getElementById('createAdminBtn').innerText = 'Update Admin';
+    document.getElementById('createAdminBtn').onclick = () => saveAdmin(username, true);
+  }
+
+  async function saveAdmin(existingUsername = null, isUpdate = false) {
+    const username = existingUsername || document.getElementById('newAdminUsername').value.trim();
+    const password = document.getElementById('newAdminPassword').value;
+    const repeatPassword = document.getElementById('newAdminRepeatPassword').value;
+    const permissions = Array.from(document.querySelectorAll('.admin-perm-cb:checked')).map(cb => cb.value);
+    
+    if (!username) return alert('Username required');
+    if (!isUpdate && !password) return alert('Password required for new admin');
+    if (password && password !== repeatPassword) return alert('Passwords do not match');
+    
+    const url = isUpdate ? '/api/admin/subadmins/' + username : '/api/admin/subadmins';
+    const method = isUpdate ? 'PUT' : 'POST';
+    
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username, password, permissions })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(isUpdate ? 'Admin updated!' : 'Admin created!');
+        resetAdminForm();
+        loadAdminsList();
+      } else {
+        alert(data.error);
+      }
+    } catch (e) { console.error(e); }
+  }
+
+  function resetAdminForm() {
+    document.getElementById('newAdminUsername').value = '';
+    document.getElementById('newAdminUsername').disabled = false;
+    document.getElementById('newAdminPassword').value = '';
+    document.getElementById('newAdminPassword').placeholder = 'Required';
+    document.getElementById('newAdminRepeatPassword').value = '';
+    document.getElementById('newAdminRepeatPassword').placeholder = 'Required';
+    document.querySelectorAll('.admin-perm-cb').forEach(cb => cb.checked = false);
+    document.getElementById('createAdminBtn').innerText = 'Create Admin';
+    document.getElementById('createAdminBtn').onclick = () => saveAdmin(null, false);
+  }
+
+  async function deleteAdmin(username) {
+    if (!confirm('Delete admin ' + username + '?')) return;
+    try {
+      const res = await fetch('/api/admin/subadmins/' + username, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        loadAdminsList();
+        if (document.getElementById('newAdminUsername').value === username) resetAdminForm();
+      } else alert(data.error);
+    } catch (e) { console.error(e); }
+  }
+
+  document.getElementById('createAdminBtn').onclick = () => saveAdmin(null, false);
+  document.getElementById('refreshAdminsBtn').addEventListener('click', loadAdminsList);
+
+  // Load admin permissions on startup (since browser handles Basic Auth)
+  setTimeout(() => {
+    loadAdminMe();
+  }, 500);
+
+  function logoutAdmin() {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", "/admin-dashboard.html", true, "logout", "logout");
+    xhr.send("");
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState == 4) {
+        window.location.href = "/admin-dashboard";
+      }
+    };
+  }
 </script>
 
 </body>
