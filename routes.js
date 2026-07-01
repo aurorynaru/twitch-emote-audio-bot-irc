@@ -976,6 +976,18 @@ export function setupRoutes(app, {
     res.sendFile(path.join(__dirname, 'public', 'overlay.html'));
   });
 
+  app.get('/api/force-reset-tokens', (req, res) => {
+    const tokenPath = path.join(__dirname, 'data', 'tokens.json');
+    if (fs.existsSync(tokenPath)) {
+      fs.unlinkSync(tokenPath);
+      res.send('tokens.json deleted! Restarting bot to fetch new tokens from AUTH_CODE...');
+      setTimeout(() => process.exit(1), 1000);
+    } else {
+      res.send('tokens.json not found. The bot will naturally use your AUTH_CODE on its next startup.');
+    }
+  });
+
+
   app.get('/api/dashboard/commands', (req, res) => {
     try {
       const defaultSettingsFallback = {
