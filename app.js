@@ -36,7 +36,7 @@ if (!fs.existsSync(path.join(__dirname, 'data', 'playsounds'))) {
 
 const globalConfig = {};
 const customAliasesMap = new Map();
-const ignoredBots = ['nightbot', 'streamelements', 'streamlabs', 'moobot', 'dotabod', 'wizebot', 'fossabot', 'kofibot', 'soundalerts'];
+const ignoredBots = ['nightbot', 'streamelements', 'streamlabs', 'moobot', 'dotabod', 'wizebot', 'fossabot', 'kofibot', 'soundalerts','Tangiabot'];
 let streamStartTime = Date.now();
 
 const builtInAliases = {
@@ -2796,8 +2796,14 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         }
 
         const target = args[0].replace('@', '').toLowerCase();
-        if (target === TARGET_CHANNEL.toLowerCase() || target === BOT_USERNAME.toLowerCase()) {
-           await sendChatMessage(`${chatterName} you cannot shoot the broadcaster or bot!`);
+
+        if (target === chatterName.toLowerCase()) {
+          // await sendChatMessage(`${chatterName} you cannot shoot yourself!`);
+           return;
+        }
+
+        if (target === TARGET_CHANNEL.toLowerCase() || target === BOT_USERNAME.toLowerCase() || ignoredBots.includes(target)) {
+          // await sendChatMessage(`${chatterName} you cannot shoot the broadcaster, bots, or staff!`);
            return;
         }
 
@@ -2808,7 +2814,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         if (cost > 0) {
           const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
           if (!user || user.points < cost) {
-            await sendChatMessage(`${chatterName} you need ${cost} points to use !shoot!`);
+            await sendChatMessage(`${chatterName} you need ${cost} points to use !shoot! BrokeBoy `);
             return;
           }
         }
@@ -2836,15 +2842,16 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           
           const totalDurationSeconds = Math.ceil((newTimeoutUntil - now) / 1000);
 
-          const success = await timeoutTwitchUser(targetId, totalDurationSeconds, `Shot by ${chatterName} using points`);
+          const success = await timeoutTwitchUser(targetId, totalDurationSeconds, `Shot by ${chatterName} using points FatAim `);
           if (success) {
             await db.run('UPDATE users SET timeout_until = ? WHERE username = ?', [newTimeoutUntil, target]);
             if (cost > 0) {
               await db.run('UPDATE users SET points = points - ? WHERE username = ?', [cost, chatterName]);
             }
-            await sendChatMessage(`${chatterName} paid ${cost} points to shoot ${target}! They are now timed out for a total of ${totalDurationSeconds} seconds!`);
+            await sendChatMessage(`${chatterName} paid ${cost} points to shoot ${target}! They are now timed out for a total of ${totalDurationSeconds} seconds! FatAim  `);
           } else {
-            await sendChatMessage(`${chatterName} failed to shoot ${target}. (Bot might be missing moderator:manage:banned_users scope in its token, or ${target} is a mod/VIP!)`);
+            // Silently fail if they try to shoot a Mod/VIP (API rejects it)
+            console.log(`[SHOOT] ${chatterName} failed to shoot ${target}. (Target is likely a mod/VIP, or missing scopes)`);
           }
         } catch (e) {
           console.error('Error shooting user:', e);
