@@ -5000,7 +5000,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               }
             } else if (msgId === 'subgift') {
 
-              if (db && chatterName && !tags['msg-param-communitygift-id'] && !tags['msg-param-origin-id']) {
+              if (db && chatterName && !tags['msg-param-communitygift-id']) {
                 const baseReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
                 const scalingBonus = parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10);
                 const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
