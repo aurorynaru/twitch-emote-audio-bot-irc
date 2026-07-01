@@ -975,6 +975,7 @@
               <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal;"><input type="checkbox" class="admin-perm-cb" value="tab-routes"> Links</label>
               <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal;"><input type="checkbox" class="admin-perm-cb" value="tab-submissions"> Submissions</label>
               <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal;"><input type="checkbox" class="admin-perm-cb" value="tab-manage-data"> Manage Data</label>
+              <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-weight: normal;"><input type="checkbox" class="admin-perm-cb" value="tab-audit"> Audit Logs</label>
             </div>
           </div>
           <button class="save-btn" style="background-color: #00ff7f; color: black; font-weight: bold; align-self: flex-start;" id="createAdminBtn">Create Admin</button>
@@ -1418,6 +1419,16 @@
           </div>
         `;
       });
+
+      // Global Command Cooldown
+      const globalCdKey = `cmd_${cmdName}_global_chat_cooldown`;
+      const globalCdVal = configData.globalConfig[globalCdKey] !== undefined && configData.globalConfig[globalCdKey] !== '' ? configData.globalConfig[globalCdKey] : '';
+      html += `
+        <div class="form-group">
+          <label>Global Chat Cooldown (ms) <span class="tooltip-icon" data-tooltip="If you ever want to make the entire command have a global chat-wide cooldown (meaning if anyone uses it, no one else can use it)">ⓘ</span></label>
+          <input type="number" data-key="${globalCdKey}" value="${globalCdVal}" placeholder="0">
+        </div>
+      `;
 
       card.innerHTML = html;
       commandsGrid.appendChild(card);

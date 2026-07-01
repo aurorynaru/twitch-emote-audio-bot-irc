@@ -1730,7 +1730,7 @@ async function start() {
     '!editpoints': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
         //  await sendChatMessage(`@${chatterName}, you do not have permission to edit points!`, chatterName);
           return;
@@ -1756,7 +1756,7 @@ async function start() {
     '!chatcooldown': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
         if (!isMod) {
         //  await sendChatMessage(`@${chatterName}, you do not have permission to edit the chat cooldown!`, chatterName);
           return;
@@ -1801,7 +1801,10 @@ async function start() {
       cost: 1,
       manualCost: true,
       execute: async (args, chatterName, event, hasPermission) => {
-         if (!await isStreamerLive()) return;
+        // if (!await isStreamerLive()) {
+        //   console.log(`[PLAYSOUND] Streamer is offline. Ignoring !playsound ${args[0]} from ${chatterName}.`);
+        //   return;
+        // }
         args = [args[0]]
 
         const filename = args.join('').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
@@ -1887,7 +1890,7 @@ async function start() {
     '!deleteplaysound': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
         if (!isMod) {
         //  await sendChatMessage(`${chatterName} you do not have permission to delete playsounds!`, chatterName);
           return;
@@ -2095,7 +2098,7 @@ async function start() {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
        
-        if( chatterName === 'aurorynaru' || hasPermission || chatterName === TARGET_CHANNEL  ) {
+        if(  hasPermission || chatterName === TARGET_CHANNEL  ) {
           if (args.length < 1) {
             await sendChatMessage(`${chatterName} invalid command! Try !masspointsadd 1000 10m`, chatterName);
             return;
@@ -2128,7 +2131,7 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
        
 
-        if ( chatterName === 'aurorynaru' ||  hasPermission || chatterName === TARGET_CHANNEL) { 
+        if (  hasPermission || chatterName === TARGET_CHANNEL) { 
 
           
                   if (args.length < 1) {
@@ -2454,7 +2457,7 @@ async function start() {
     '!dueltax': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
         if (!isMod) return;
 
         if (args.length === 0) {
@@ -2478,7 +2481,7 @@ async function start() {
     '!setfishtime': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
         if (!isMod) return;
 
         if (args.length === 0) {
@@ -3026,7 +3029,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     '!clearoverlay': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
         if (!isMod) {
         //  await sendChatMessage(`${chatterName} you do not have permission to clear the overlay!`, chatterName);
           return;
@@ -3474,7 +3477,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     '!editplaysound': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
         if (!isMod) return;
 
         if (args.length < 3) {
@@ -3671,7 +3674,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     '!subonly': {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
         if (!isMod) {
           return;
         }
@@ -4622,7 +4625,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           // Global sub-only check
           const isSubOnly = globalConfig[`cmd_${commandName}_sub_only`] === 'true';
           if (isSubOnly) {
-            const isSubOrMod = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'subscriber', 'founder'].includes(b.set_id)) || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+            const isSubOrMod = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'subscriber', 'founder'].includes(b.set_id)) || chatterName === TARGET_CHANNEL ;
             if (!isSubOrMod) {
               return;
             }
@@ -4671,10 +4674,12 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 }
               }
 
+              console.log(`[DEBUG] Executing alias command: ${commandName} for ${chatterName}`);
+
               // Re-check sub-only for the new resolved command
               const newIsSubOnly = globalConfig[`cmd_${commandName}_sub_only`] === 'true';
               if (newIsSubOnly) {
-                const isSubOrMod = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'subscriber', 'founder'].includes(b.set_id)) || chatterName === TARGET_CHANNEL || chatterName === 'aurorynaru';
+                const isSubOrMod = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'subscriber', 'founder'].includes(b.set_id)) || chatterName === TARGET_CHANNEL ;
                 if (!isSubOrMod) {
                   return;
                 }
@@ -4710,56 +4715,54 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               await db.run('UPDATE users SET points = points - ? WHERE username = ?', [activeCost, chatterName]);
             }
 
-            const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator'].includes(b.set_id)) || chatterName == "aurorynaru";
-            const isMod = hasPermission || chatterName === TARGET_CHANNEL || chatterName == "aurorynaru";
+            const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator'].includes(b.set_id)) ;
+            const isMod = hasPermission || chatterName === TARGET_CHANNEL;
 
-            if (!isMod) {
-              const now = Date.now();
-              
-              const chatWideCdRaw = globalConfig['chat_wide_cooldown'];
-              const chatWideCd = chatWideCdRaw !== undefined ? parseInt(chatWideCdRaw, 10) : 1500;
-              
-              if (now - lastChatWideCommandTime < chatWideCd) {
-                console.log(`[RATE LIMIT] Chat-wide cooldown active. Ignoring command from ${chatterName}.`);
-                return;
-              }
-
-              const globalCdRaw = globalConfig['cmd_!global_cooldown'];
-              const globalCd = globalCdRaw !== undefined ? parseInt(globalCdRaw, 10) : COMMAND_COOLDOWN;
-              const lastGlobalTime = userCooldowns.get(chatterName) || 0;
-              
-              if (now - lastGlobalTime < globalCd) {
-                console.log(`[COOLDOWN] ${chatterName} is on global cooldown.`);
-                return;
-              }
-
-              const cmdCdRaw = globalConfig[`cmd_${commandName}_cooldown`];
-              const cmdCd = cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
-              
-              if (cmdCd > 0) {
-                const lastCmdTime = commandCooldowns.get(`${chatterName}_${commandName}`) || 0;
-                if (now - lastCmdTime < cmdCd) {
-                  console.log(`[COOLDOWN] ${chatterName} is on command cooldown for ${commandName}.`);
-                  return;
-                }
-                commandCooldowns.set(`${chatterName}_${commandName}`, now);
-              }
-
-              const globalCmdCdRaw = globalConfig[`cmd_${commandName}_global_chat_cooldown`];
-              const globalCmdCd = globalCmdCdRaw !== undefined ? parseInt(globalCmdCdRaw, 10) : 0;
-              
-              if (globalCmdCd > 0) {
-                const lastGlobalCmdTime = commandCooldowns.get(`GLOBAL_${commandName}`) || 0;
-                if (now - lastGlobalCmdTime < globalCmdCd) {
-                  console.log(`[RATE LIMIT] ${commandName} is on global chat cooldown.`);
-                  return;
-                }
-                commandCooldowns.set(`GLOBAL_${commandName}`, now);
-              }
-
-              userCooldowns.set(chatterName, now);
-              lastChatWideCommandTime = now;
+            const now = Date.now();
+            
+            const chatWideCdRaw = globalConfig['chat_wide_cooldown'];
+            const chatWideCd = chatWideCdRaw !== undefined ? parseInt(chatWideCdRaw, 10) : 1500;
+            
+            if (!isMod && (now - lastChatWideCommandTime < chatWideCd)) {
+              console.log(`[RATE LIMIT] Chat-wide cooldown active. Ignoring command from ${chatterName}.`);
+              return;
             }
+
+            const globalCdRaw = globalConfig['cmd_!global_cooldown'];
+            const globalCd = globalCdRaw !== undefined ? parseInt(globalCdRaw, 10) : COMMAND_COOLDOWN;
+            const lastGlobalTime = userCooldowns.get(chatterName) || 0;
+            
+            if (!isMod && (now - lastGlobalTime < globalCd)) {
+              console.log(`[COOLDOWN] ${chatterName} is on global cooldown.`);
+              return;
+            }
+
+            const cmdCdRaw = globalConfig[`cmd_${commandName}_cooldown`];
+            const cmdCd = cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
+            
+            if (cmdCd > 0) {
+              const lastCmdTime = commandCooldowns.get(`${chatterName}_${commandName}`) || 0;
+              if (!isMod && (now - lastCmdTime < cmdCd)) {
+                console.log(`[COOLDOWN] ${chatterName} is on command cooldown for ${commandName}.`);
+                return;
+              }
+              commandCooldowns.set(`${chatterName}_${commandName}`, now);
+            }
+
+            const globalCmdCdRaw = globalConfig[`cmd_${commandName}_global_chat_cooldown`];
+            const globalCmdCd = globalCmdCdRaw !== undefined ? parseInt(globalCmdCdRaw, 10) : 0;
+            
+            if (globalCmdCd > 0) {
+              const lastGlobalCmdTime = commandCooldowns.get(`GLOBAL_${commandName}`) || 0;
+              if (now - lastGlobalCmdTime < globalCmdCd) {
+                console.log(`[RATE LIMIT] ${commandName} is on global chat cooldown.`);
+                return;
+              }
+              commandCooldowns.set(`GLOBAL_${commandName}`, now);
+            }
+
+            userCooldowns.set(chatterName, now);
+            lastChatWideCommandTime = now;
             
             await command.execute(args, chatterName, event, hasPermission);
             return;
