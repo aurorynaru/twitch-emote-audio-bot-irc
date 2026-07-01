@@ -2848,9 +2848,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             if (cost > 0) {
               await db.run('UPDATE users SET points = points - ? WHERE username = ?', [cost, chatterName]);
             }
-            await sendChatMessage(`${chatterName} paid ${cost} points to shoot ${target}! They are now timed out for a total of ${totalDurationSeconds} seconds! FatAim  `);
+            await sendChatMessage(` ${target} is now timed out for ${totalDurationSeconds} seconds FatAim `);
           } else {
-            // Silently fail if they try to shoot a Mod/VIP (API rejects it)
+            
             console.log(`[SHOOT] ${chatterName} failed to shoot ${target}. (Target is likely a mod/VIP, or missing scopes)`);
           }
         } catch (e) {
