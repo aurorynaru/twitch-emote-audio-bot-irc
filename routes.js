@@ -379,7 +379,7 @@ export function setupRoutes(app, {
     try {
       const db = getDb();
       const status = req.query.status || 'pending';
-      const order = status === 'pending' ? 'ASC' : 'DESC';
+      const order = 'DESC';
       const submissions = await db.all(`SELECT * FROM user_submissions WHERE status = ? ORDER BY created_at ${order}`, [status]);
       res.json({ success: true, submissions });
     } catch (e) {
