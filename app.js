@@ -1502,7 +1502,7 @@ async function start() {
             if (isGlobal) {
                chatMsgs.push(`✨ ${chatterName} applied a ${effectType} for everyone!`);
             } else {
-               chatMsgs.push(`${chatterName} applied a ${effectType} to ${finalTarget}!`);
+              // chatMsgs.push(`${chatterName} applied a ${effectType} to ${finalTarget}!`);
             }
           } else if (effectType === 'fishing_debuff_target') {
              const actualTarget = useTarget || chatterName;
