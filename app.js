@@ -800,7 +800,7 @@ async function start() {
     }
   }
   
-  async function addPointsWithBonus(username, amount, ignoreBoosts = false) {
+  async function addPointsWithBonus(username, amount, ignoreBoosts = false, isAction = false) {
     if (ignoreBoosts) {
       const finalAmount = amount;
       await db.run('UPDATE users SET xp = xp + ?, points = points + ? WHERE username = ?', [Math.max(1, Math.floor(finalAmount / 10)), finalAmount, username]);
@@ -853,7 +853,15 @@ async function start() {
     // Calculate final
     let itemBonus = Math.round((amount * multiplier) - amount);
     
-    const finalAmount = amount + lvlBonus + itemBonus;
+    let totalExtra = lvlBonus + itemBonus;
+    if (isAction && totalExtra > 0) {
+      const cap = parseInt(globalConfig['active_action_bonus_cap'] || '5000', 10);
+      if (totalExtra > cap) {
+        totalExtra = cap;
+      }
+    }
+    
+    const finalAmount = amount + totalExtra;
     await db.run('INSERT INTO users (username, points, xp) VALUES (?, ?, 0) ON CONFLICT(username) DO UPDATE SET points = points + ?', [username, finalAmount, finalAmount]);
     
     // Tax Collector (only global effect, but applies to the collector's points)
@@ -1565,7 +1573,7 @@ async function start() {
                         
                         const stealAmount = Math.floor(Math.min(targetRow.points, totalCalcAmount));
                         await db.run('UPDATE users SET points = points - ? WHERE username = ?', [stealAmount, actualTarget]);
-                        await addPointsWithBonus(chatterName, stealAmount, true);
+                        await addPointsWithBonus(chatterName, stealAmount, false, true);
                         chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} to steal ${stealAmount} points from ${actualTarget}!`);
                     }
                  } else {
@@ -2561,7 +2569,7 @@ async function start() {
              winAmount = Math.floor(betAmount * (multipliers[0].effect_value - 1)); 
           }
           
-          const addedAmount = await addPointsWithBonus(chatterName, winAmount, true);
+          const addedAmount = await addPointsWithBonus(chatterName, winAmount, false, true);
           const updatedUser = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
           const newPoints = updatedUser.points;
 
@@ -2720,7 +2728,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     await db.run('UPDATE users SET points = points + ? WHERE username = ?', [data.spent, user]);
     let finalProfit = profit;
     if (profit > 0) {
-      finalProfit = await addPointsWithBonus(user, profit, true);
+      finalProfit = await addPointsWithBonus(user, profit, false, true);
     } else if (profit < 0) {
       await db.run('UPDATE users SET points = MAX(0, points + ?) WHERE username = ?', [profit, user]);
     }
