@@ -1149,7 +1149,7 @@ async function start() {
         }
         activeTrivia = null;
         const answerMsg = a ? ` The answer was: ${a}` : '';
-        await sendChatMessage(`[TRIVIA] Trivia has been stopped by ${chatterName}.${answerMsg}`);
+        await sendChatMessage(`[TRIVIA] Trivia has been stopped by ${chatterName}.${answerMsg} WeirdChamp `);
       }
     },
     '!editconfig': {
@@ -4566,17 +4566,18 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               const a = completedTrivia.answer;
               
               await db.run('UPDATE users SET points = points + ? WHERE username = ?', [reward, chatterName]);
-              await sendChatMessage(`Congratulations ${chatterName}! You answered correctly and won ${reward} points! The answer was: ${a} `);
-              
+              let submitterText = '';
               if (completedTrivia.submitter && completedTrivia.submission_id) {
                 const authorRewardRaw = globalConfig['reward_trivia_submitter'];
                 const authorReward = authorRewardRaw !== undefined ? parseInt(authorRewardRaw, 10) : 50;
                 if (authorReward > 0) {
                   await db.run('UPDATE users SET points = points + ? WHERE username = ?', [authorReward, completedTrivia.submitter]);
                   await db.run('UPDATE user_submissions SET points_earned = points_earned + ? WHERE id = ?', [authorReward, completedTrivia.submission_id]);
-                  await sendChatMessage(`The submitter of this trivia, @${completedTrivia.submitter}, also earned ${authorReward} points!`);
+                  submitterText = ` (${completedTrivia.submitter} gets ${authorReward} pts for submitting the trivia!)`;
                 }
               }
+              
+              await sendChatMessage(`Congratulations ${chatterName}! You answered correctly and won ${reward} points! The answer was: ${a} PogChamp ${submitterText}`);
               
               if (triviaLoopActive) {
                 nextTriviaTimeout = setTimeout(startTriviaQuestion, 10000);
