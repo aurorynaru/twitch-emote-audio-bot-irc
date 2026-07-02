@@ -1157,7 +1157,7 @@ async function start() {
         }
         activeTrivia = null;
         const answerMsg = a ? ` The answer was: ${a}` : '';
-        await sendChatMessage(`[TRIVIA] Trivia has been stopped by ${chatterName}.${answerMsg} WeirdChamp `);
+        await sendChatMessage(`[TRIVIA] Trivia has been stopped by ${chatterName}. WeirdChamp `);
       }
     },
     '!editconfig': {
@@ -4279,7 +4279,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
              sendChatMessage(`[TRIVIA] Time's up! Nobody guessed the correct answer. The answer was: ${row.answer} MaxLOL `);
              activeTrivia = null;
              if (triviaLoopActive) {
-                nextTriviaTimeout = setTimeout(startTriviaQuestion, 10000);
+                nextTriviaTimeout = setTimeout(startTriviaQuestion, 20000);
              }
            }
         }, duration * 1000);
@@ -4585,10 +4585,10 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 }
               }
               
-              await sendChatMessage(`Congratulations ${chatterName}! You answered correctly and won ${reward} points! The answer was: ${a} PogChamp ${submitterText}`);
+              await sendChatMessage(`Congratulations ${chatterName} ! You answered correctly and won ${reward} points! The answer was: ${a} PogChamp ${submitterText}`);
               
               if (triviaLoopActive) {
-                nextTriviaTimeout = setTimeout(startTriviaQuestion, 10000);
+                nextTriviaTimeout = setTimeout(startTriviaQuestion, 20000);
               }
             }
           }
