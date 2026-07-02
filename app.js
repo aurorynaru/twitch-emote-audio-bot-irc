@@ -2309,7 +2309,7 @@ async function start() {
           await updateUserStat(winner, 'duels_points_won', actualBet);
           await updateUserStat(loser, 'duels_points_lost', actualBet);
 
-          await sendChatMessage(`🔪 ${chatterName} used a knife to force a duel on ${target}! ${winner} won ${reward} points!`, chatterName);
+          await sendChatMessage(`🔪 ${chatterName} used a knife to force a duel on ${target}! ${winner} won ${finalProfit} points!`, chatterName);
           return;
         }
 
@@ -2439,7 +2439,7 @@ async function start() {
         const msg = duelWinMessages[Math.floor(Math.random() * duelWinMessages.length)]
           .replace(/{winner}/g, `${winner}`)
           .replace(/{loser}/g, `${loser}`)
-          .replace(/{amount}/g, reward);
+          .replace(/{amount}/g, finalProfit);
         
         await sendChatMessage(msg);
       }
