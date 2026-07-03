@@ -1246,15 +1246,25 @@
     commands.forEach(cmd => {
       const card = document.createElement('div');
       card.className = 'card';
+      const encoded = encodeURIComponent(JSON.stringify(cmd));
       card.innerHTML = `
         <h3 style="color: #bf94ff;">${cmd.command}</h3>
         <p><strong>Cost:</strong> ${cmd.cost}</p>
         <p style="word-break: break-all;"><strong>Action:</strong> ${cmd.action}</p>
+        <button class="save-btn" style="background-color: #3b82f6; margin-top: 10px; margin-right: 5px; padding: 6px 12px; font-size: 14px;" onclick="editCustomCommand('${encoded}')">Edit</button>
         <button class="save-btn" style="background-color: #ff4a4a; margin-top: 10px; padding: 6px 12px; font-size: 14px;" onclick="deleteCustomCommand('${cmd.command}')">Delete</button>
       `;
       grid.appendChild(card);
     });
   }
+
+  window.editCustomCommand = function(encodedStr) {
+    const cmd = JSON.parse(decodeURIComponent(encodedStr));
+    document.getElementById('customCmdName').value = cmd.command;
+    document.getElementById('customCmdCost').value = cmd.cost;
+    document.getElementById('customCmdAction').value = cmd.action;
+    document.getElementById('customCmdName').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
 
   window.deleteCustomCommand = async function(cmd) {
     if (!confirm('Delete custom command ' + cmd + '?')) return;
