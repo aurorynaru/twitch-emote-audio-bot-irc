@@ -4279,7 +4279,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
              sendChatMessage(`[TRIVIA] Time's up! Nobody guessed the correct answer. The answer was: ${row.answer} MaxLOL `);
              activeTrivia = null;
              if (triviaLoopActive) {
-                nextTriviaTimeout = setTimeout(startTriviaQuestion, 20000);
+                nextTriviaTimeout = setTimeout(startTriviaQuestion, 30000);
              }
            }
         }, duration * 1000);
@@ -4563,7 +4563,39 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           }
 
           if (activeTrivia) {
-            if (chatText.toLowerCase() === activeTrivia.answer.toLowerCase()) {
+            const getLevenshteinDistance = (a, b) => {
+              const matrix = [];
+              if (a.length === 0) return b.length;
+              if (b.length === 0) return a.length;
+              for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+              for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+              for (let i = 1; i <= b.length; i++) {
+                for (let j = 1; j <= a.length; j++) {
+                  if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                    matrix[i][j] = matrix[i - 1][j - 1];
+                  } else {
+                    matrix[i][j] = Math.min(
+                      matrix[i - 1][j - 1] + 1,
+                      matrix[i][j - 1] + 1,
+                      matrix[i - 1][j] + 1
+                    );
+                  }
+                }
+              }
+              return matrix[b.length][a.length];
+            };
+
+            const getSimilarityPercentage = (guess, answer) => {
+              guess = guess.toLowerCase();
+              answer = answer.toLowerCase();
+              const distance = getLevenshteinDistance(guess, answer);
+              const longestLength = Math.max(guess.length, answer.length);
+              if (longestLength === 0) return 1.0;
+              return (longestLength - distance) / longestLength;
+            };
+
+            const similarity = getSimilarityPercentage(chatText, activeTrivia.answer);
+            if (similarity >= 0.8) {
               const completedTrivia = activeTrivia;
               activeTrivia = null;
               
@@ -4588,7 +4620,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               await sendChatMessage(`Congratulations ${chatterName} ! You answered correctly and won ${reward} points! The answer was: ${a} PogChamp ${submitterText}`);
               
               if (triviaLoopActive) {
-                nextTriviaTimeout = setTimeout(startTriviaQuestion, 20000);
+                nextTriviaTimeout = setTimeout(startTriviaQuestion, 30000);
               }
             }
           }
