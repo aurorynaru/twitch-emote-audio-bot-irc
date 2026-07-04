@@ -11,12 +11,43 @@ import crypto from 'crypto';
 import { parseTime } from './utils.js';
 import dotenv from 'dotenv';
 import { normalizeAudio } from './normalize_all_sounds.js';
+import { RegExpMatcher, englishRecommendedTransformers, DataSet, pattern } from 'obscenity';
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export let sseClients = [];
+
+let currentBannedWords = '';
+let obscenityMatcher = null;
+
+function createPattern(word) {
+  const strings = [word];
+  strings.raw = [word];
+  return pattern(strings);
+}
+
+function getMatcher(globalConfig) {
+  const wordsStr = globalConfig['banned_words_list'] || '';
+  if (wordsStr !== currentBannedWords) {
+    currentBannedWords = wordsStr;
+    const words = wordsStr.split(',').map(w => w.trim().toLowerCase()).filter(w => w.length > 0);
+    if (words.length === 0) {
+      obscenityMatcher = null;
+    } else {
+      const datasetBuilder = new DataSet();
+      for (const w of words) {
+        datasetBuilder.addPhrase(phrase => phrase.addPattern(createPattern(w)));
+      }
+      obscenityMatcher = new RegExpMatcher({
+        ...datasetBuilder.build(),
+        ...englishRecommendedTransformers,
+      });
+    }
+  }
+  return obscenityMatcher;
+}
 
 export function setupRoutes(app, {
   getDb,
@@ -345,6 +376,22 @@ export function setupRoutes(app, {
       const username = authData.login;
       const db = getDb();
       
+      const matcher = getMatcher(globalConfig);
+      if (matcher) {
+        if (type === 'trivia') {
+          if (matcher.hasMatch(content) || (answer && matcher.hasMatch(answer))) {
+            return res.status(400).json({ success: false, error: 'Submission contains inappropriate language.' });
+          }
+        } else if (type === 'playsound') {
+          const linkMatch = content.match(/^Link:\s*(.+)$/m);
+          const link = linkMatch ? linkMatch[1] : '';
+          const contentWithoutLink = content.replace(link, '');
+          if (matcher.hasMatch(contentWithoutLink)) {
+            return res.status(400).json({ success: false, error: 'Submission contains inappropriate language.' });
+          }
+        }
+      }
+
       // We will store both playsounds and trivia in user_submissions initially for admin review
       const submissionContent = type === 'trivia' ? JSON.stringify({ question: content, answer }) : content;
 
