@@ -3336,8 +3336,8 @@
             <td style="color: #bf94ff; font-weight: bold;">${log.admin_username}</td>
             <td>${log.action_type}</td>
             <td>${log.target_entity || ''}</td>
-            <td style="color: #ff4a4a; white-space: pre-wrap;">${log.old_value || ''}</td>
-            <td style="color: #00ff7f; white-space: pre-wrap;">${log.new_value || ''}</td>
+            <td style="color: #ff4a4a; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;">${log.old_value || ''}</td>
+            <td style="color: #00ff7f; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;">${log.new_value || ''}</td>
           `;
           tbody.appendChild(tr);
         });
@@ -3553,7 +3553,7 @@
 <div id="unhideBannedWordsModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
   <div style="background: #18181b; padding: 20px; border-radius: 8px; max-width: 400px; border: 1px solid #3f3f46; text-align: center;">
     <h3 style="margin-top: 0; color: #ff4444;">Warning</h3>
-    <p>Are you sure you want to unhide the list? It contains words that are bannable on stream.</p>
+    <p>Are you sure you want to unhide the banned words list?</p>
     <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
       <button class="save-btn" style="background: #3f3f46;" onclick="document.getElementById('unhideBannedWordsModal').style.display='none'; clearInterval(unhideCountdownInterval);">Cancel</button>
       <button class="save-btn" id="confirmUnhideBtn" style="background: #ff4444;" disabled>Confirm (3s)</button>

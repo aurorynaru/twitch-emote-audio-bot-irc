@@ -326,7 +326,9 @@ export function setupRoutes(app, {
         if (String(oldVal || '') !== val) {
           await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [update.key, val, val]);
           globalConfig[update.key] = val;
-          await logAudit(req.adminUser ? req.adminUser.username : 'admin', 'update_config', update.key, String(oldVal || ''), val);
+          if (update.key !== 'banned_words_list') {
+            await logAudit(req.adminUser ? req.adminUser.username : 'admin', 'update_config', update.key, String(oldVal || ''), val);
+          }
         }
       }
       
