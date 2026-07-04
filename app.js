@@ -1671,18 +1671,20 @@ async function start() {
               if (chatMsgs.length > chatMsgCountBefore) {
                   chatMsgs[chatMsgCountBefore] = itemConfig.rngPrefix + chatMsgs[chatMsgCountBefore];
               } else {
-                  chatMsgs.push(itemConfig.rngPrefix + `${chatterName} used ${amountToUse}x ${itemName} and got a **${effectType}** effect!`);
+                  chatMsgs.push(itemConfig.rngPrefix + `${chatterName} used ${amountToUse}x ${itemName} and got a ${effectType} effect!`);
               }
           }
         }
 
         if (totalUsed.length > 0 || chatMsgs.length > 0) {
+          let finalMsg = '';
           if (totalUsed.length > 0) {
-            await sendChatMessage(`${chatterName} redeemed: ${totalUsed.join(', ')} !${totalPointsGained > 0 ? ` (Gained ${totalPointsGained} pts)` : ''}`, chatterName);
+            finalMsg += `${chatterName} redeemed: ${totalUsed.join(', ')} !${totalPointsGained > 0 ? ` (Gained ${totalPointsGained} pts)` : ''}`;
           }
-          for (const msg of chatMsgs) {
-             await sendChatMessage(msg);
+          if (chatMsgs.length > 0) {
+            finalMsg += (finalMsg.length > 0 ? ' ' : '') + chatMsgs.join(' ');
           }
+          await sendChatMessage(finalMsg, chatterName);
         } else {
           await sendChatMessage(`${chatterName}, you don't have those items or they cannot be used!`, chatterName);
         }
@@ -4499,7 +4501,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             const pointsPerBit = parseInt(globalConfig['reward_bits'] || '10', 10);
             const pointsToAward = bits * pointsPerBit;
             if (db) {
-              const finalAwarded = await addPointsWithBonus(chatterName, pointsToAward);
+              const finalAwarded = await addPointsWithBonus(chatterName, pointsToAward, false, true);
               console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for cheering ${bits} bits!`);
               await sendChatMessage(`🎉 ${chatterName} cheered ${bits} bits! You received ${finalAwarded} points!`);
               setTimeout(async () => {
@@ -5018,7 +5020,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             if (msgId === 'sub' || msgId === 'resub') {
               if (db && chatterName) {
                 const subReward = parseInt(globalConfig['reward_sub'] || '5000', 10);
-                const finalAwarded = await addPointsWithBonus(chatterName, subReward);
+                const finalAwarded = await addPointsWithBonus(chatterName, subReward, false, true);
                 console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for subscribing!`);
                 await sendChatMessage(`🎉 ${chatterName} subscribed! You received ${finalAwarded} points! 🎉`);
                 setTimeout(async () => {
@@ -5032,7 +5034,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
                 const totalGifts = parseInt(tags['msg-param-mass-gift-count'], 10) || 1;
                 const giftReward = Math.min(maxCap, baseReward + Math.round((totalGifts * totalGifts) * scalingBonus));
-                const finalAwarded = await addPointsWithBonus(chatterName, giftReward);
+                const finalAwarded = await addPointsWithBonus(chatterName, giftReward, false, true);
                 console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting ${totalGifts} sub(s)!`);
                 await sendChatMessage(`🎉 ${chatterName} gifted ${totalGifts} sub(s)! You were awarded ${finalAwarded} points! 🎉`);
                 setTimeout(async () => {
@@ -5047,7 +5049,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
                 const totalGifts = 1;
                 const giftReward = Math.min(maxCap, baseReward + Math.round((totalGifts * totalGifts / 3) * scalingBonus));
-                const finalAwarded = await addPointsWithBonus(chatterName, giftReward);
+                const finalAwarded = await addPointsWithBonus(chatterName, giftReward, false, true);
                 console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting a direct sub!`);
                 await sendChatMessage(`🎉 ${chatterName} gifted a sub! You were awarded ${finalAwarded} points! 🎉`);
                 setTimeout(async () => {
