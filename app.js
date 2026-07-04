@@ -2540,7 +2540,7 @@ async function start() {
           return;
         }
 
-        let isWin = Math.random() < 0.5;
+        let isWin = Math.random() < 0.4;
 
         // Apply loaded dice
         const guaranteedWins = await getActiveEffects(chatterName, 'gamble_guaranteed_win');
