@@ -570,22 +570,39 @@ export function setupRoutes(app, {
   app.get('/api/admin/custom-commands', adminAuth, (req, res) => {
     const commands = [];
     for (const [cmd, details] of customAliasesMap.entries()) {
-      commands.push({ command: cmd, cost: details.cost, action: details.action });
+      commands.push({ 
+        command: cmd, 
+        cost: details.cost, 
+        action: details.action,
+        cooldown: parseInt(globalConfig[`cmd_${cmd}_cooldown`], 10) || 0,
+        globalCooldown: parseInt(globalConfig[`cmd_${cmd}_global_chat_cooldown`], 10) || 0
+      });
     }
     res.json({ success: true, commands });
   });
 
   app.post('/api/admin/custom-commands', adminAuth, express.json(), async (req, res) => {
     try {
-      const { command, cost, action } = req.body;
+      const { command, cost, action, cooldown, globalCooldown } = req.body;
       if (!command || !command.startsWith('!')) return res.status(400).json({ success: false, error: 'Command must start with !' });
       const c = parseInt(cost, 10) || 0;
+      const cd = parseInt(cooldown, 10) || 0;
+      const gcd = parseInt(globalCooldown, 10) || 0;
       
       const db = getDb();
       await db.run('INSERT INTO custom_aliases (command, cost, action) VALUES (?, ?, ?) ON CONFLICT(command) DO UPDATE SET cost = ?, action = ?', [command, c, action, c, action]);
       
+      const cdKey = `cmd_${command}_cooldown`;
+      const gcdKey = `cmd_${command}_global_chat_cooldown`;
+      
+      await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [cdKey, cd, cd]);
+      await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [gcdKey, gcd, gcd]);
+      
+      globalConfig[cdKey] = cd;
+      globalConfig[gcdKey] = gcd;
+      
       const oldCmd = customAliasesMap.get(command);
-      await logAudit(req.adminUser ? req.adminUser.username : 'admin', 'update_command', command, JSON.stringify(oldCmd || {}), JSON.stringify({cost: c, action}));
+      await logAudit(req.adminUser ? req.adminUser.username : 'admin', 'update_command', command, JSON.stringify(oldCmd || {}), JSON.stringify({cost: c, action, cooldown: cd, globalCooldown: gcd}));
       
       customAliasesMap.set(command, { cost: c, action });
       res.json({ success: true });
@@ -599,6 +616,13 @@ export function setupRoutes(app, {
       const command = req.params.cmd;
       const db = getDb();
       await db.run('DELETE FROM custom_aliases WHERE command = ?', [command]);
+      
+      const cdKey = `cmd_${command}_cooldown`;
+      const gcdKey = `cmd_${command}_global_chat_cooldown`;
+      await db.run('DELETE FROM app_config WHERE key = ? OR key = ?', [cdKey, gcdKey]);
+      delete globalConfig[cdKey];
+      delete globalConfig[gcdKey];
+
       const oldCmd = customAliasesMap.get(command);
       await logAudit(req.adminUser ? req.adminUser.username : 'admin', 'delete_command', command, JSON.stringify(oldCmd || {}), '');
       customAliasesMap.delete(command);

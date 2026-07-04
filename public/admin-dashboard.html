@@ -380,20 +380,28 @@
     <h2>Custom Commands</h2>
   <div class="card" style="margin-bottom: 20px;">
     <h3>Add / Update Custom Command <span class="tooltip-icon" data-tooltip="Create or update custom commands that respond with simple text messages.">ⓘ</span></h3>
-    <div style="display: flex; gap: 10px; align-items: flex-end;">
-      <div class="form-group" style="flex: 1; margin: 0;">
+    <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap;">
+      <div class="form-group" style="flex: 1; margin: 0; min-width: 120px;">
         <label>Command (e.g. !bot)</label>
         <input type="text" id="customCmdName" placeholder="!command">
       </div>
-      <div class="form-group" style="flex: 1; margin: 0;">
+      <div class="form-group" style="flex: 1; margin: 0; min-width: 80px;">
         <label>Cost</label>
         <input type="number" id="customCmdCost" placeholder="0">
       </div>
-      <div class="form-group" style="flex: 2; margin: 0;">
+      <div class="form-group" style="flex: 1; margin: 0; min-width: 100px;">
+        <label>Cooldown (ms)</label>
+        <input type="number" id="customCmdCooldown" placeholder="0">
+      </div>
+      <div class="form-group" style="flex: 1; margin: 0; min-width: 100px;">
+        <label>Global CD (ms)</label>
+        <input type="number" id="customCmdGlobalCooldown" placeholder="0">
+      </div>
+      <div class="form-group" style="flex: 2; margin: 0; min-width: 200px;">
         <label>Action / Text</label>
         <input type="text" id="customCmdAction" placeholder="bot: ...">
       </div>
-      <button class="save-btn" id="saveCustomCmdBtn">Save Command</button>
+      <button class="save-btn" id="saveCustomCmdBtn" style="margin-bottom: 2px;">Save Command</button>
     </div>
   </div>
   <div class="grid" id="customCommandsGrid">
@@ -1251,6 +1259,8 @@
       card.innerHTML = `
         <h3 style="color: #bf94ff;">${cmd.command}</h3>
         <p><strong>Cost:</strong> ${cmd.cost}</p>
+        <p><strong>Cooldown:</strong> ${cmd.cooldown || 0}ms</p>
+        <p><strong>Global CD:</strong> ${cmd.globalCooldown || 0}ms</p>
         <p style="word-break: break-all;"><strong>Action:</strong> ${cmd.action}</p>
         <button class="save-btn" style="background-color: #3b82f6; margin-top: 10px; margin-right: 5px; padding: 6px 12px; font-size: 14px;" onclick="editCustomCommand('${encoded}')">Edit</button>
         <button class="save-btn" style="background-color: #ff4a4a; margin-top: 10px; padding: 6px 12px; font-size: 14px;" onclick="deleteCustomCommand('${cmd.command}')">Delete</button>
@@ -1263,6 +1273,8 @@
     const cmd = JSON.parse(decodeURIComponent(encodedStr));
     document.getElementById('customCmdName').value = cmd.command;
     document.getElementById('customCmdCost').value = cmd.cost;
+    document.getElementById('customCmdCooldown').value = cmd.cooldown || 0;
+    document.getElementById('customCmdGlobalCooldown').value = cmd.globalCooldown || 0;
     document.getElementById('customCmdAction').value = cmd.action;
     document.getElementById('customCmdName').scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
@@ -1602,6 +1614,8 @@
   document.getElementById('saveCustomCmdBtn').addEventListener('click', async () => {
     const cmd = document.getElementById('customCmdName').value;
     const cost = document.getElementById('customCmdCost').value;
+    const cooldown = document.getElementById('customCmdCooldown').value;
+    const globalCooldown = document.getElementById('customCmdGlobalCooldown').value;
     const action = document.getElementById('customCmdAction').value;
     if (!cmd || !action) return alert('Command and Action are required.');
     
@@ -1609,12 +1623,14 @@
       const res = await fetch('/api/admin/custom-commands', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: cmd, cost, action })
+        body: JSON.stringify({ command: cmd, cost, cooldown, globalCooldown, action })
       });
       const data = await res.json();
       if (data.success) {
         document.getElementById('customCmdName').value = '';
         document.getElementById('customCmdCost').value = '';
+        document.getElementById('customCmdCooldown').value = '';
+        document.getElementById('customCmdGlobalCooldown').value = '';
         document.getElementById('customCmdAction').value = '';
         loadCustomCommands();
       } else alert('Error: ' + data.error);

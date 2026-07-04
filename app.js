@@ -4689,8 +4689,51 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               return;
             }
           }
-          
           if (customAliasesMap.has(commandName)) {
+            const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator'].includes(b.set_id)) ;
+            const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+            const now = Date.now();
+            
+            const chatWideCdRaw = globalConfig['chat_wide_cooldown'];
+            const chatWideCd = chatWideCdRaw !== undefined ? parseInt(chatWideCdRaw, 10) : 1500;
+            if (!isMod && (now - lastChatWideCommandTime < chatWideCd)) {
+              console.log(`[RATE LIMIT] Chat-wide cooldown active. Ignoring custom command from ${chatterName}.`);
+              return;
+            }
+
+            const globalCdRaw = globalConfig['cmd_!global_cooldown'];
+            const globalCd = globalCdRaw !== undefined ? parseInt(globalCdRaw, 10) : COMMAND_COOLDOWN;
+            const lastGlobalTime = userCooldowns.get(chatterName) || 0;
+            if (!isMod && (now - lastGlobalTime < globalCd)) {
+              console.log(`[COOLDOWN] ${chatterName} is on global cooldown.`);
+              return;
+            }
+
+            const cmdCdRaw = globalConfig[`cmd_${commandName}_cooldown`];
+            const cmdCd = cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
+            if (cmdCd > 0) {
+              const lastCmdTime = commandCooldowns.get(`${chatterName}_${commandName}`) || 0;
+              if (!isMod && (now - lastCmdTime < cmdCd)) {
+                console.log(`[COOLDOWN] ${chatterName} is on command cooldown for ${commandName}.`);
+                return;
+              }
+              commandCooldowns.set(`${chatterName}_${commandName}`, now);
+            }
+
+            const globalCmdCdRaw = globalConfig[`cmd_${commandName}_global_chat_cooldown`];
+            const globalCmdCd = globalCmdCdRaw !== undefined ? parseInt(globalCmdCdRaw, 10) : 0;
+            if (globalCmdCd > 0) {
+              const lastGlobalCmdTime = commandCooldowns.get(`GLOBAL_${commandName}`) || 0;
+              if (now - lastGlobalCmdTime < globalCmdCd) {
+                console.log(`[RATE LIMIT] ${commandName} is on global chat cooldown.`);
+                return;
+              }
+              commandCooldowns.set(`GLOBAL_${commandName}`, now);
+            }
+
+            userCooldowns.set(chatterName, now);
+            lastChatWideCommandTime = now;
+
             const alias = customAliasesMap.get(commandName);
             if (alias.cost > 0) {
               const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
