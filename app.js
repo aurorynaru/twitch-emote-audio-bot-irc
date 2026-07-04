@@ -5063,7 +5063,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                   const maxCap = parseInt(globalConfig['reward_watchstreak_cap'] || '100000', 10);
                   const reward = Math.min(maxCap, baseRate + Math.round((streak * streak / 3) * scalingBonus));
                   
-                  const finalAwarded = await addPointsWithBonus(chatterName, reward);
+                  const finalAwarded = await addPointsWithBonus(chatterName, reward, false, true);
                   console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for a ${streak} watch streak!`);
                   await sendChatMessage(`🔥 ${chatterName} is on a ${streak} stream watch streak! They were awarded ${finalAwarded} points! 🔥`);
                 }
