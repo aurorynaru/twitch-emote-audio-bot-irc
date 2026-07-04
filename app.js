@@ -4312,6 +4312,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     }
   }
   let lastChatWideCommandTime = 0;
+  
+  const recentMassGifters = new Set();
 
   async function triggerRandomRaffle(triggerName) {
     if (activeRaffle) return; 
@@ -5080,13 +5082,15 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 const finalAwarded = await addPointsWithBonus(chatterName, giftReward, false, true);
                 console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting ${totalGifts} sub(s)!`);
                 await sendChatMessage(`🎉 ${chatterName} gifted ${totalGifts} sub(s)! You were awarded ${finalAwarded} points! 🎉`);
+                recentMassGifters.add(chatterName);
+                setTimeout(() => recentMassGifters.delete(chatterName), 10000);
                 setTimeout(async () => {
                   await triggerRandomRaffle('gift sub');
                 }, 3000);
               }
             } else if (msgId === 'subgift') {
 
-              if (db && chatterName && !tags['msg-param-communitygift-id']) {
+              if (db && chatterName && !tags['msg-param-communitygift-id'] && !recentMassGifters.has(chatterName)) {
                 const baseReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
                 const scalingBonus = parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10);
                 const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
