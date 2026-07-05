@@ -2549,7 +2549,7 @@ async function start() {
           return;
         }
 
-        let isWin = Math.random() < 0.35;
+        let isWin = Math.random() < 0.4;
 
         // Apply loaded dice
         const guaranteedWins = await getActiveEffects(chatterName, 'gamble_guaranteed_win');
