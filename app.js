@@ -855,6 +855,15 @@ async function start() {
     
     let totalExtra = lvlBonus + itemBonus;
     if (isAction && totalExtra > 0) {
+      const pctCapStr = globalConfig['active_action_bonus_percent_cap'];
+      const pctCap = pctCapStr !== undefined ? parseFloat(pctCapStr) : 50;
+      if (!isNaN(pctCap)) {
+        const maxExtra = Math.floor(amount * (pctCap / 100));
+        if (totalExtra > maxExtra) {
+          totalExtra = maxExtra;
+        }
+      }
+
       const cap = parseInt(globalConfig['active_action_bonus_cap'] || '5000', 10);
       if (totalExtra > cap) {
         totalExtra = cap;
@@ -2540,7 +2549,7 @@ async function start() {
           return;
         }
 
-        let isWin = Math.random() < 0.4;
+        let isWin = Math.random() < 0.35;
 
         // Apply loaded dice
         const guaranteedWins = await getActiveEffects(chatterName, 'gamble_guaranteed_win');
