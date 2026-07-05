@@ -800,7 +800,7 @@ async function start() {
     }
   }
   
-  async function addPointsWithBonus(username, amount, ignoreBoosts = false, isAction = false) {
+  async function addPointsWithBonus(username, amount, ignoreBoosts = false, actionType = 'none') {
     if (ignoreBoosts) {
       const finalAmount = amount;
       await db.run('UPDATE users SET xp = xp + ?, points = points + ? WHERE username = ?', [Math.max(1, Math.floor(finalAmount / 10)), finalAmount, username]);
@@ -838,25 +838,40 @@ async function start() {
     }
     
     for (const b of personalDebuffs) {
-      const evaders = await db.all('SELECT * FROM active_effects WHERE target_user = ? AND effect_type = "tax_evader" AND uses_left > 0', [username]);
-      if (evaders.length > 0) {
-         if (evaders[0].uses_left > 1) {
-            await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [evaders[0].id]);
-         } else {
-            await db.run('DELETE FROM active_effects WHERE id = ?', [evaders[0].id]);
+      if (b.caster !== username) {
+         const evaders = await db.all('SELECT * FROM active_effects WHERE target_user = ? AND effect_type = "tax_evader" AND uses_left > 0', [username]);
+         if (evaders.length > 0) {
+            if (evaders[0].uses_left > 1) {
+               await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [evaders[0].id]);
+            } else {
+               await db.run('DELETE FROM active_effects WHERE id = ?', [evaders[0].id]);
+            }
+            continue;
          }
-         continue;
+         multiplier *= (1 - b.effect_value);
       }
-      multiplier *= (1 - b.effect_value);
     }
     
     // Calculate final
     let itemBonus = Math.round((amount * multiplier) - amount);
     
     let totalExtra = lvlBonus + itemBonus;
-    if (isAction && totalExtra > 0) {
-      const pctCapStr = globalConfig['active_action_bonus_percent_cap'];
-      const pctCap = pctCapStr !== undefined ? parseFloat(pctCapStr) : 50;
+    if (actionType !== 'none' && totalExtra > 0) {
+      let pctCapStr, flatCapStr, defPctCap, defFlatCap;
+      
+      if (actionType === 'gamble') {
+        pctCapStr = globalConfig['active_action_bonus_percent_cap'];
+        flatCapStr = globalConfig['active_action_bonus_cap'];
+        defPctCap = 50;
+        defFlatCap = 5000;
+      } else if (actionType === 'engagement') {
+        pctCapStr = globalConfig['engagement_action_bonus_percent_cap'];
+        flatCapStr = globalConfig['engagement_action_bonus_cap'];
+        defPctCap = 1000;
+        defFlatCap = 100000;
+      }
+
+      const pctCap = pctCapStr !== undefined ? parseFloat(pctCapStr) : defPctCap;
       if (!isNaN(pctCap)) {
         const maxExtra = Math.floor(amount * (pctCap / 100));
         if (totalExtra > maxExtra) {
@@ -864,7 +879,7 @@ async function start() {
         }
       }
 
-      const cap = parseInt(globalConfig['active_action_bonus_cap'] || '5000', 10);
+      const cap = parseInt(flatCapStr || defFlatCap.toString(), 10);
       if (totalExtra > cap) {
         totalExtra = cap;
       }
@@ -1582,7 +1597,7 @@ async function start() {
                         
                         const stealAmount = Math.floor(Math.min(targetRow.points, totalCalcAmount));
                         await db.run('UPDATE users SET points = points - ? WHERE username = ?', [stealAmount, actualTarget]);
-                        await addPointsWithBonus(chatterName, stealAmount, false, true);
+                        await addPointsWithBonus(chatterName, stealAmount, false, 'gamble');
                         chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} to steal ${stealAmount} points from ${actualTarget}!`);
                     }
                  } else {
@@ -2580,7 +2595,7 @@ async function start() {
              winAmount = Math.floor(betAmount * (multipliers[0].effect_value - 1)); 
           }
           
-          const addedAmount = await addPointsWithBonus(chatterName, winAmount, false, true);
+          const addedAmount = await addPointsWithBonus(chatterName, winAmount, false, 'gamble');
           const updatedUser = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
           const newPoints = updatedUser.points;
 
@@ -2739,7 +2754,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     await db.run('UPDATE users SET points = points + ? WHERE username = ?', [data.spent, user]);
     let finalProfit = profit;
     if (profit > 0) {
-      finalProfit = await addPointsWithBonus(user, profit, false, true);
+      finalProfit = await addPointsWithBonus(user, profit, false, 'gamble');
     } else if (profit < 0) {
       await db.run('UPDATE users SET points = MAX(0, points + ?) WHERE username = ?', [profit, user]);
     }
@@ -3936,7 +3951,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             winner = expanded[Math.floor(Math.random() * expanded.length)];
           }
 
-          const finalAdded = await addPointsWithBonus(winner, r.amount);
+          const finalAdded = await addPointsWithBonus(winner, r.amount, false, 'engagement');
 
           await updateRaffleStats(uniqueParticipants, [winner], finalAdded);
 
@@ -4035,7 +4050,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           const splitAmount = Math.floor(r.amount / actualWinnersCount);
 
           for (const w of allWinners) {
-            await addPointsWithBonus(w, splitAmount);
+            await addPointsWithBonus(w, splitAmount, false, 'engagement');
           }
 
           await updateRaffleStats(uniqueParticipants, allWinners, splitAmount);
@@ -4406,7 +4421,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         const splitAmount = Math.floor(r.amount / actualWinnersCount);
 
         for (const w of allWinners) {
-          await addPointsWithBonus(w, splitAmount);
+          await addPointsWithBonus(w, splitAmount, false, 'engagement');
         }
         await updateRaffleStats(uniqueParticipants, allWinners, splitAmount);
         const winnersText = allWinners.map(w => `${w}`).join(', ');
@@ -4419,7 +4434,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           winner = expanded[Math.floor(Math.random() * expanded.length)];
         }
         
-        const finalAdded = await addPointsWithBonus(winner, r.amount);
+        const finalAdded = await addPointsWithBonus(winner, r.amount, false, 'engagement');
         await updateRaffleStats(uniqueParticipants, [winner], finalAdded);
         await sendChatMessage(`🎉 The random raffle has ended! Congratulations ${winner} you won ${finalAdded} points!`);
       }
@@ -4512,7 +4527,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             const pointsPerBit = parseInt(globalConfig['reward_bits'] || '10', 10);
             const pointsToAward = bits * pointsPerBit;
             if (db) {
-              const finalAwarded = await addPointsWithBonus(chatterName, pointsToAward, false, true);
+              const finalAwarded = await addPointsWithBonus(chatterName, pointsToAward, false, 'engagement');
               console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for cheering ${bits} bits!`);
               await sendChatMessage(`🎉 ${chatterName} cheered ${bits} bits! You received ${finalAwarded} points!`);
               setTimeout(async () => {
@@ -5074,7 +5089,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             if (msgId === 'sub' || msgId === 'resub') {
               if (db && chatterName) {
                 const subReward = parseInt(globalConfig['reward_sub'] || '5000', 10);
-                const finalAwarded = await addPointsWithBonus(chatterName, subReward, false, true);
+                const finalAwarded = await addPointsWithBonus(chatterName, subReward, false, 'engagement');
                 console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for subscribing!`);
                 await sendChatMessage(`🎉 ${chatterName} subscribed! You received ${finalAwarded} points! 🎉`);
                 setTimeout(async () => {
@@ -5088,7 +5103,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
                 const totalGifts = parseInt(tags['msg-param-mass-gift-count'], 10) || 1;
                 const giftReward = Math.min(maxCap, (baseReward * totalGifts) + Math.round((totalGifts * totalGifts) * scalingBonus));
-                const finalAwarded = await addPointsWithBonus(chatterName, giftReward, false, true);
+                const finalAwarded = await addPointsWithBonus(chatterName, giftReward, false, 'engagement');
                 console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting ${totalGifts} sub(s)!`);
                 await sendChatMessage(`🎉 ${chatterName} gifted ${totalGifts} sub(s)! You were awarded ${finalAwarded} points! 🎉`);
                 recentMassGifters.add(chatterName);
@@ -5105,7 +5120,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
                 const totalGifts = 1;
                 const giftReward = Math.min(maxCap, (baseReward * totalGifts) + Math.round((totalGifts * totalGifts / 3) * scalingBonus));
-                const finalAwarded = await addPointsWithBonus(chatterName, giftReward, false, true);
+                const finalAwarded = await addPointsWithBonus(chatterName, giftReward, false, 'engagement');
                 console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting a direct sub!`);
                 await sendChatMessage(`🎉 ${chatterName} gifted a sub! You were awarded ${finalAwarded} points! 🎉`);
                 setTimeout(async () => {
@@ -5121,7 +5136,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                   const maxCap = parseInt(globalConfig['reward_watchstreak_cap'] || '100000', 10);
                   const reward = Math.min(maxCap, baseRate + Math.round((streak * streak / 3) * scalingBonus));
                   
-                  const finalAwarded = await addPointsWithBonus(chatterName, reward, false, true);
+                  const finalAwarded = await addPointsWithBonus(chatterName, reward, false, 'engagement');
                   console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for a ${streak} watch streak!`);
                   await sendChatMessage(`🔥 ${chatterName} is on a ${streak} stream watch streak! They were awarded ${finalAwarded} points! 🔥`);
                 }
