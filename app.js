@@ -1094,6 +1094,10 @@ async function start() {
                          }
                      }
                   }
+               } else {
+                  await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, 1) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + 1', [fish.username, item.originalName]);
+                  const prefix = rarityTier !== 'common' ? `[${item.rarity}] ` : '';
+                  allItemsCaught.push(`${prefix}${item.originalName}`);
                }
             } else {
                await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, 1) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + 1', [fish.username, item.originalName]);
