@@ -1427,6 +1427,10 @@ async function start() {
           return;
         }
 
+        if (useTarget && ignoredBots.includes(useTarget)) {
+          return;
+        }
+
         let totalUsed = [];
         let totalPointsGained = 0;
         let chatMsgs = [];
