@@ -5232,7 +5232,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             
             console.log(`[USERNOTICE DETECTED] MsgId: ${msgId}, Chatter: ${chatterName}, Raw Tags:`, JSON.stringify(tags));
           
-            if (msgId === 'sub' || msgId === 'resub') {
+            if (msgId === 'sub' || msgId === 'resub' || msgId === 'giftpaidupgrade') {
               if (db && chatterName) {
                 const subReward = parseInt(globalConfig['reward_sub'] || '5000', 10);
                 const finalAwarded = await addPointsWithBonus(chatterName, subReward, false, 'engagement');
