@@ -33,6 +33,13 @@ fetch('/api/config')
 
     const eventSource = new EventSource('/api/stream-emotes');
 
+    eventSource.addEventListener('open', () => {
+      if (window.hasConnectedBefore) {
+        window.location.reload();
+      }
+      window.hasConnectedBefore = true;
+    });
+
     eventSource.onmessage = function(event) {
       const parsedData = JSON.parse(event.data);
       if (parsedData.type === 'audio') {
