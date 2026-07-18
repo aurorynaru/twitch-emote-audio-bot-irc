@@ -31,69 +31,83 @@ fetch('/api/config')
     durationMs = data.durationMs;
     sizePx = data.sizePx;
 
-    const eventSource = new EventSource('/api/stream-emotes');
+    let eventSource;
 
-
-
-    eventSource.onmessage = function(event) {
-      const parsedData = JSON.parse(event.data);
-      if (parsedData.type === 'audio') {
-        const audio = new Audio('/playsounds/' + parsedData.file);
-        audio.crossOrigin = "anonymous";
-        
-        let shouldPlayDirectly = true;
-        const actx = getAudioContext();
-        
-        if (actx) {
-          shouldPlayDirectly = false;
-          const source = actx.createMediaElementSource(audio);
-          
-          if (parsedData.volume !== undefined) {
-            const vol = parseFloat(parsedData.volume);
-            const gainNode = actx.createGain();
-            gainNode.gain.value = Math.max(0, vol);
-            source.connect(gainNode);
-            gainNode.connect(globalCompressor);
-          } else {
-            source.connect(globalCompressor);
-          }
-          
-          audio.play().catch(err => console.error("Error playing compressed audio:", err));
-        } else {
-          // Fallback if AudioContext isn't supported
-          if (parsedData.volume !== undefined) {
-            const vol = parseFloat(parsedData.volume);
-            audio.volume = Math.min(1.0, Math.max(0, vol));
-          }
-        }
-        
-        if (shouldPlayDirectly) {
-          audio.play().catch(err => console.error("Error playing audio:", err));
-        }
-      } else if (parsedData.type === 'bet_update') {
-        updateBetUI(parsedData.bet);
-      } else if (parsedData.type === 'bet_clear') {
-        clearBetUI(parsedData.result);
-      } else if (parsedData.type === 'chatwar_update') {
-        updateChatWarUI(parsedData.war);
-      } else if (parsedData.type === 'chatwar_clear') {
-        clearChatWarUI(parsedData.winner);
-      } else if (parsedData.type === 'config_update') {
-        durationMs = parsedData.durationMs;
-        sizePx = parsedData.sizePx;
-      } else if (parsedData.type === 'emote') {
-        const emoteUrl = parsedData.url;
-        const isZeroWidth = parsedData.isZeroWidth || false;
-        const messageId = parsedData.messageId || null;
-        const customX = parsedData.customX !== undefined ? parsedData.customX : null;
-        const customY = parsedData.customY !== undefined ? parsedData.customY : null;
-        const modifiers = parsedData.modifiers || [];
-
-        displayEmote(emoteUrl, isZeroWidth, messageId, customX, customY, modifiers);
-      } else if (parsedData.type === 'clear_emotes') {
-        document.querySelectorAll('.emote-img').forEach(img => img.remove());
+    function connectSSE() {
+      if (eventSource) {
+        eventSource.close();
       }
-    };
+      eventSource = new EventSource('/api/stream-emotes');
+
+      eventSource.onerror = function() {
+
+        if (eventSource.readyState === EventSource.CLOSED) {
+          setTimeout(connectSSE, 5000);
+        }
+      };
+
+      eventSource.onmessage = function(event) {
+        const parsedData = JSON.parse(event.data);
+        if (parsedData.type === 'audio') {
+          const audio = new Audio('/playsounds/' + parsedData.file);
+          audio.crossOrigin = "anonymous";
+          
+          let shouldPlayDirectly = true;
+          const actx = getAudioContext();
+          
+          if (actx) {
+            shouldPlayDirectly = false;
+            const source = actx.createMediaElementSource(audio);
+            
+            if (parsedData.volume !== undefined) {
+              const vol = parseFloat(parsedData.volume);
+              const gainNode = actx.createGain();
+              gainNode.gain.value = Math.max(0, vol);
+              source.connect(gainNode);
+              gainNode.connect(globalCompressor);
+            } else {
+              source.connect(globalCompressor);
+            }
+            
+            audio.play().catch(err => console.error("Error playing compressed audio:", err));
+          } else {
+            // Fallback if AudioContext isn't supported
+            if (parsedData.volume !== undefined) {
+              const vol = parseFloat(parsedData.volume);
+              audio.volume = Math.min(1.0, Math.max(0, vol));
+            }
+          }
+          
+          if (shouldPlayDirectly) {
+            audio.play().catch(err => console.error("Error playing audio:", err));
+          }
+        } else if (parsedData.type === 'bet_update') {
+          updateBetUI(parsedData.bet);
+        } else if (parsedData.type === 'bet_clear') {
+          clearBetUI(parsedData.result);
+        } else if (parsedData.type === 'chatwar_update') {
+          updateChatWarUI(parsedData.war);
+        } else if (parsedData.type === 'chatwar_clear') {
+          clearChatWarUI(parsedData.winner);
+        } else if (parsedData.type === 'config_update') {
+          durationMs = parsedData.durationMs;
+          sizePx = parsedData.sizePx;
+        } else if (parsedData.type === 'emote') {
+          const emoteUrl = parsedData.url;
+          const isZeroWidth = parsedData.isZeroWidth || false;
+          const messageId = parsedData.messageId || null;
+          const customX = parsedData.customX !== undefined ? parsedData.customX : null;
+          const customY = parsedData.customY !== undefined ? parsedData.customY : null;
+          const modifiers = parsedData.modifiers || [];
+
+          displayEmote(emoteUrl, isZeroWidth, messageId, customX, customY, modifiers);
+        } else if (parsedData.type === 'clear_emotes') {
+          document.querySelectorAll('.emote-img').forEach(img => img.remove());
+        }
+      };
+    }
+
+    connectSSE();
   })
   .catch(err => {
     console.error("Failed to load config, using defaults.", err);
