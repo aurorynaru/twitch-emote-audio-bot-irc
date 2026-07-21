@@ -1170,8 +1170,15 @@ async function start() {
         const msg = `🎣 You reeled in your line and ${parts.join(' ')}`;
         
         const success = await sendWhisper(fish.username, msg, false);
-        if (!success) {
-           failedUsernames.push({ username: fish.username, partsStr: parts.join(' ') });
+        
+        const nonGlobalAuto = autoConsumedMsgs.filter(m => !globalMsgs.includes(m));
+        let fallbackParts = [];
+        if (allItemsCaught.length > 0) fallbackParts.push(`caught ${allItemsCaught.join(', ')}`);
+        if (nonGlobalAuto.length > 0) fallbackParts.push(`( ${nonGlobalAuto.join(' | ')} )`);
+        const fallbackPartsStr = fallbackParts.join(' ');
+
+        if (!success && fallbackPartsStr.length > 0) {
+           failedUsernames.push({ username: fish.username, partsStr: fallbackPartsStr });
         }
 
         if (globalMsgs.length > 0) {
