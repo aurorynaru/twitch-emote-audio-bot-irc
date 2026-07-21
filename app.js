@@ -1171,7 +1171,7 @@ async function start() {
         
         const success = await sendWhisper(fish.username, msg, false);
         if (!success) {
-           failedUsernames.push(fish.username);
+           failedUsernames.push({ username: fish.username, partsStr: parts.join(' ') });
         }
 
         if (globalMsgs.length > 0) {
@@ -1181,13 +1181,10 @@ async function start() {
 
       if (failedUsernames.length > 0) {
         if (failedUsernames.length === 1) {
-          // If only one failed, just tell them exactly what they got in public chat
-          // We need to fetch the parts again or just use a generic message?
-          // The user specifically asked for bulk message if multiple fail, but for single just normal
-          // Wait, we lost the `parts` for the single user here. Let's just use the generic one for all failures.
-          await sendChatMessage(`🎣 @${failedUsernames[0]} is done fishing! Type !inv to check what new items you caught (or points instantly awarded)!`);
+          const u = failedUsernames[0];
+          await sendChatMessage(`🎣 ${u.username} reeled in their line and ${u.partsStr}`);
         } else {
-          let displayNames = failedUsernames.slice(0, 3).map(u => `@${u}`).join(', ');
+          let displayNames = failedUsernames.slice(0, 3).map(u => `@${u.username}`).join(', ');
           if (failedUsernames.length > 3) {
             displayNames += ` and ${failedUsernames.length - 3} more`;
           }
