@@ -6,3 +6,8 @@ app_sqlite.js
 data/playsounds
 test_chat.js
 data/backup
+
+
+
+import-trivia.js
+trivia_questions.json

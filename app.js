@@ -15,6 +15,7 @@ import { setupRoutes, broadcastEmote, broadcastAudio, broadcastConfig, broadcast
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const CLIENT_ID = process.env.CLIENT_ID
 const CLIENT_SECRET = process.env.CLIENT_SECRET
@@ -1237,6 +1238,7 @@ async function start() {
           return;
         }
         triviaLoopActive = true;
+        consecutiveUnansweredTrivia = 0;
         startTriviaQuestion();
       }
     },
@@ -3534,14 +3536,52 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           return;
         }
 
-        if (args.length < 3) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !editcommand <command> <setting> <value>`, chatterName);
+        if (args.length < 2) {
+          await sendChatMessage(`${chatterName} invalid format! Use: !editcommand <command> <setting> [value]`, chatterName);
           return;
         }
 
         const targetCmd = args[0].toLowerCase();
         const setting = args[1].toLowerCase();
-        const value = args[2];
+        const value = args.length > 2 ? args[2] : '';
+
+        if (args.length < 3 && !['disable', 'enable'].includes(setting)) {
+          await sendChatMessage(`${chatterName} invalid format! Use: !editcommand <command> <setting> <value>`, chatterName);
+          return;
+        }
+
+        if (['offlineonly', 'subonly', 'disable', 'enable'].includes(setting)) {
+           if (!commandConfigSchema[targetCmd] && !customAliasesMap.has(targetCmd) && targetCmd !== '!fish') {
+              await sendChatMessage(`${chatterName} unknown command: ${targetCmd}`, chatterName);
+              return;
+           }
+           
+           if (setting === 'disable') {
+              const configKey = `cmd_${targetCmd}_disabled_until`;
+              await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, 'forever', 'forever']);
+              globalConfig[configKey] = 'forever';
+              await sendChatMessage(`Successfully disabled command ${targetCmd}!`);
+              return;
+           } else if (setting === 'enable') {
+              const configKey = `cmd_${targetCmd}_disabled_until`;
+              await db.run('DELETE FROM app_config WHERE key = ?', [configKey]);
+              delete globalConfig[configKey];
+              await sendChatMessage(`Successfully enabled command ${targetCmd}!`);
+              return;
+           } else if (setting === 'offlineonly' || setting === 'subonly') {
+              const valLower = value.toLowerCase();
+              if (valLower !== 'true' && valLower !== 'false') {
+                 await sendChatMessage(`${chatterName} invalid value for ${setting}! Use true or false.`, chatterName);
+                 return;
+              }
+              const configSetting = setting === 'offlineonly' ? 'offline_only' : 'sub_only';
+              const configKey = `cmd_${targetCmd}_${configSetting}`;
+              await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, valLower, valLower]);
+              globalConfig[configKey] = valLower;
+              await sendChatMessage(`Successfully set ${targetCmd} ${setting} to ${valLower}!`);
+              return;
+           }
+        }
 
         const validSettings = commandConfigSchema[targetCmd];
         if (!validSettings) {
@@ -4356,6 +4396,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
   let activeTrivia = null;
   let triviaLoopActive = false;
   let nextTriviaTimeout = null;
+  let consecutiveUnansweredTrivia = 0;
 
   async function startTriviaQuestion() {
     if (!triviaLoopActive) return;
@@ -4382,18 +4423,49 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         if (row.hint) {
           hintTimeout = setTimeout(() => {
             if (activeTrivia && activeTrivia.answer === row.answer) {
-              sendChatMessage(`[TRIVIA HINT] ${row.hint} CaitThinking `);
+              sendChatMessage(`${row.hint} CaitThinking `);
             }
           }, hintDelay * 1000);
         }
 
-        endTimeout = setTimeout(() => {
-           if (activeTrivia && activeTrivia.answer === row.answer) {
-             sendChatMessage(`[TRIVIA] Time's up! Nobody guessed the correct answer. The answer was: ${row.answer} MaxLOL `);
-             activeTrivia = null;
-             if (triviaLoopActive) {
-                nextTriviaTimeout = setTimeout(startTriviaQuestion, 30000);
+        endTimeout = setTimeout(async () => {
+           try {
+             if (activeTrivia && activeTrivia.answer === row.answer) {
+               const completedTrivia = activeTrivia;
+               activeTrivia = null;
+               
+               let submitterText = '';
+               if (completedTrivia.submitter) {
+                 const authorRewardRaw = globalConfig['reward_trivia_submitter'];
+                 const authorReward = authorRewardRaw !== undefined ? parseInt(authorRewardRaw, 10) : 50;
+                 if (authorReward > 0) {
+                   await db.run('UPDATE users SET points = points + ? WHERE username = ?', [authorReward, completedTrivia.submitter]);
+                   if (completedTrivia.submission_id) {
+                     await db.run('UPDATE user_submissions SET points_earned = points_earned + ? WHERE id = ?', [authorReward, completedTrivia.submission_id]);
+                   }
+                   submitterText = ` (${completedTrivia.submitter} gets ${authorReward} pts because no one answered!)`;
+                 }
+               }
+
+               sendChatMessage(`Time's up! Nobody guessed the correct answer. The answer was: ${row.answer} MaxLOL ${submitterText}`);
+               
+               if (completedTrivia.attempts === 0) {
+                 consecutiveUnansweredTrivia++;
+               } else {
+                 consecutiveUnansweredTrivia = 0;
+               }
+               await sleep(2000);
+               if (consecutiveUnansweredTrivia >= 1) {
+                  sendChatMessage(`no one is here... CaitThinking  stopping trivia... `);
+                  triviaLoopActive = false;
+               }
+
+               if (triviaLoopActive) {
+                  nextTriviaTimeout = setTimeout(startTriviaQuestion, 30000);
+               }
              }
+           } catch(e) {
+             console.error("Error in trivia end timeout:", e);
            }
         }, duration * 1000);
 
@@ -4404,7 +4476,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
            hintTimeout: hintTimeout,
            endTimeout: endTimeout,
            submitter: row.submitter,
-           submission_id: row.submission_id
+           submission_id: row.submission_id,
+           attempts: 0
         };
         
         let catsStr = "Uncategorized";
@@ -4740,11 +4813,12 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           // --- COMMAND LOGIC START ---
      
           const isBotBadge = event.badges.some(b => b.set_id === 'bot');
-          if (isBotBadge || ignoredBots.includes(chatterName.toLowerCase())) {
+          if (isBotBadge || ignoredBots.includes(chatterName.toLowerCase()) || chatterName.toLowerCase() === BOT_USERNAME.toLowerCase()) {
             return;
           }
 
           if (activeTrivia) {
+            activeTrivia.attempts++;
             const getLevenshteinDistance = (a, b) => {
               const matrix = [];
               if (a.length === 0) return b.length;
@@ -4780,6 +4854,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             if (similarity >= 0.8) {
               const completedTrivia = activeTrivia;
               activeTrivia = null;
+              consecutiveUnansweredTrivia = 0;
               
               if (completedTrivia.hintTimeout) clearTimeout(completedTrivia.hintTimeout);
               if (completedTrivia.endTimeout) clearTimeout(completedTrivia.endTimeout);
@@ -4788,18 +4863,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               const a = completedTrivia.answer;
               
               await db.run('UPDATE users SET points = points + ? WHERE username = ?', [reward, chatterName]);
-              let submitterText = '';
-              if (completedTrivia.submitter && completedTrivia.submission_id) {
-                const authorRewardRaw = globalConfig['reward_trivia_submitter'];
-                const authorReward = authorRewardRaw !== undefined ? parseInt(authorRewardRaw, 10) : 50;
-                if (authorReward > 0) {
-                  await db.run('UPDATE users SET points = points + ? WHERE username = ?', [authorReward, completedTrivia.submitter]);
-                  await db.run('UPDATE user_submissions SET points_earned = points_earned + ? WHERE id = ?', [authorReward, completedTrivia.submission_id]);
-                  submitterText = ` (${completedTrivia.submitter} gets ${authorReward} pts for submitting the trivia!)`;
-                }
-              }
               
-              await sendChatMessage(`Congratulations ${chatterName} ! You answered correctly and won ${reward} points! The answer was: ${a} PogChamp ${submitterText}`);
+              await sendChatMessage(`Congratulations ${chatterName} ! You answered correctly and won ${reward} points! The answer was: ${a} PogChamp`);
               
               if (triviaLoopActive) {
                 nextTriviaTimeout = setTimeout(startTriviaQuestion, 30000);
