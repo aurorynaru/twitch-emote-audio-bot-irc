@@ -4455,7 +4455,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                  consecutiveUnansweredTrivia = 0;
                }
                await sleep(2000);
-               if (consecutiveUnansweredTrivia >= 1) {
+               if (consecutiveUnansweredTrivia >= 3) {
                   sendChatMessage(`no one is here... CaitThinking  stopping trivia... `);
                   triviaLoopActive = false;
                }
