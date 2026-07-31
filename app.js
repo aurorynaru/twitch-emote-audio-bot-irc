@@ -3018,7 +3018,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         if (pending) {
           const timeLeft = Math.max(0, Math.ceil((pending.catch_time - Date.now()) / 1000));
           if (timeLeft > 0) {
-            await sendWhisper(chatterName, `You are already fishing! Wait ${timeLeft} more seconds.`, true);
+           // await sendWhisper(chatterName, `You are already fishing! Wait ${timeLeft} more seconds.`, true);
             return;
           }
         }
