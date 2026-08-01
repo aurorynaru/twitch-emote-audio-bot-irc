@@ -5024,7 +5024,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                          userSpamHistory.set(chatterName, []);
                          const timeInSeconds = timeoutMs / 1000;
                          const timeString = timeInSeconds >= 60 ? `${Math.floor(timeInSeconds / 60)} minute${Math.floor(timeInSeconds / 60) > 1 ? 's' : ''}` : `${timeInSeconds} seconds`;
-                         await sendChatMessage(`${chatterName} WARNING! stop spamming commands or you will lose ${penaltyPercent}% of your points and be unable to use any commands for ${timeString}! monkaO  `);
+                         await sendChatMessage(`${chatterName} stop spamming or you will lose ${penaltyPercent}% of your points and be unable to use any commands for ${timeString}`);
                       } else {
                         // NORMAL PUNISHMENT
                         spamTimeouts.set(chatterName, now + timeoutMs);
