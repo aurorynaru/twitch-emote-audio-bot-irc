@@ -5040,7 +5040,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                         
                         const timeInSeconds = timeoutMs / 1000;
                         const timeString = timeInSeconds >= 60 ? `${Math.floor(timeInSeconds / 60)} minute${Math.floor(timeInSeconds / 60) > 1 ? 's' : ''}` : `${timeInSeconds} seconds`;
-                        await sendChatMessage(` Stop command spamming ${chatterName} WeirdChamp you lost ${penaltyPercent}% of your points and cannot use commands for ${timeString}.`);
+                        await sendChatMessage(` Stop spamming ${chatterName} WeirdChamp you lost ${penaltyPercent}% of your points and cannot use commands for ${timeString}.`);
                       }
                    }
                    return;
