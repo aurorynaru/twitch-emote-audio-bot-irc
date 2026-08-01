@@ -650,6 +650,7 @@ function clearOverlaySystem() {
   sendChatMessage(`Overlay cleared by Admin Dashboard!`);
 }
 
+const spamTimeouts = new Map();
 setupRoutes(app, {
   getDb: () => db,
   globalConfig,
@@ -659,7 +660,8 @@ setupRoutes(app, {
   FISHING_RARITIES,
   swapDatabase,
   clearOverlaySystem,
-  loadItemsConfig
+  loadItemsConfig,
+  spamTimeouts
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -4390,6 +4392,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
   const userCooldowns = new Map();
   const commandCooldowns = new Map();
   const playsoundCooldowns = new Map();
+  const userSpamHistory = new Map();
+
   const activeBets = new Map();
   let activeChatWar = null;
   let activeRaffle = null;
@@ -4907,6 +4911,57 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           
           if (builtInAliases[commandName]) {
             commandName = builtInAliases[commandName];
+          }
+
+          // Spam Reduction System Check
+          const spamTimeout = spamTimeouts.get(chatterName) || 0;
+          if (Date.now() < spamTimeout) {
+            const blockedStr = globalConfig['spam_reduction_blocked_commands'] || '';
+            const blockedCmds = blockedStr.split(',').map(c => c.trim().toLowerCase()).filter(c => c !== '');
+            if (blockedCmds.length === 0 || blockedCmds.includes(commandName)) {
+              return; // Ignore command while banned
+            }
+          }
+
+          // Spam Reduction Tracking
+          const spamEnabled = parseInt(globalConfig['spam_reduction_enabled'] || '0', 10) === 1;
+          if (spamEnabled) {
+            const spamCmdsStr = globalConfig['spam_reduction_commands'] || '!gamble,!roll';
+            const monitoredCmds = spamCmdsStr.split(',').map(c => c.trim().toLowerCase()).filter(c => c !== '');
+            
+            if (monitoredCmds.includes(commandName)) {
+              const now = Date.now();
+              const limitCount = parseInt(globalConfig['spam_reduction_count'] || '3', 10);
+              const limitWindow = parseInt(globalConfig['spam_reduction_window'] || '8000', 10);
+              
+              let history = userSpamHistory.get(chatterName) || [];
+              history.push({ cmd: commandName, time: now });
+              
+              history = history.filter(h => (now - h.time) <= limitWindow);
+              userSpamHistory.set(chatterName, history);
+              
+              const specificCmdHistory = history.filter(h => h.cmd === commandName);
+              if (specificCmdHistory.length >= limitCount) {
+                 const penaltyPercent = parseInt(globalConfig['spam_reduction_percent_loss'] || '15', 10);
+                 const timeoutMs = parseInt(globalConfig['spam_reduction_timeout'] || '600000', 10);
+                 
+                 spamTimeouts.set(chatterName, now + timeoutMs);
+                 userSpamHistory.set(chatterName, []); 
+                 
+                 if (db) {
+                   const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+                   if (user && user.points > 0) {
+                     const lostPoints = Math.floor(user.points * (penaltyPercent / 100));
+                     await db.run('UPDATE users SET points = points - ? WHERE username = ?', [lostPoints, chatterName]);
+                   }
+                 }
+                 
+                 const timeInSeconds = timeoutMs / 1000;
+                 const timeString = timeInSeconds >= 60 ? `${Math.floor(timeInSeconds / 60)} minute${Math.floor(timeInSeconds / 60) > 1 ? 's' : ''}` : `${timeInSeconds} seconds`;
+                 await sendChatMessage(`[Spam Protection] @${chatterName} spammed ${commandName} too fast! You lost ${penaltyPercent}% of your points and cannot use commands for ${timeString}.`);
+                 return;
+              }
+            }
           }
 
           // Global disable check

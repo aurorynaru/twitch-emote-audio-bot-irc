@@ -1122,7 +1122,14 @@
     { key: 'mod_arrive_cost', label: 'Modifier: Arrive Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the arrive modifier for emotes' },
     { key: 'mod_jam_cost', label: 'Modifier: Jam Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the jam modifier for emotes' },
     { key: 'mod_rainbow_cost', label: 'Modifier: Rainbow Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the rainbow modifier for emotes' },
-    { key: 'mod_hyper_cost', label: 'Modifier: Hyper Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the hyper modifier for emotes' }
+    { key: 'mod_hyper_cost', label: 'Modifier: Hyper Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the hyper modifier for emotes' },
+    { key: 'spam_reduction_enabled', label: 'Spam Reduction Enabled (1=Yes, 0=No)', type: 'number', def: 0, category: 'Spam Protection', tooltip: 'Enable or disable the automatic spam reduction system.' },
+    { key: 'spam_reduction_commands', label: 'Commands to Monitor (comma separated)', type: 'text', def: '!gamble,!roll', category: 'Spam Protection', tooltip: 'Which commands should count towards the spam limit.' },
+    { key: 'spam_reduction_count', label: 'Spam Limit Count', type: 'number', def: 3, category: 'Spam Protection', tooltip: 'How many times the command must be used to trigger the penalty.' },
+    { key: 'spam_reduction_window', label: 'Spam Limit Window (ms)', type: 'number', def: 8000, category: 'Spam Protection', tooltip: 'The time window (e.g. 8000 for 8s) in which the commands must be sent.' },
+    { key: 'spam_reduction_percent_loss', label: 'Point Deduction (%)', type: 'number', def: 15, category: 'Spam Protection', tooltip: 'Percentage of points the user loses when penalized.' },
+    { key: 'spam_reduction_timeout', label: 'Command Ban Duration (ms)', type: 'number', def: 600000, category: 'Spam Protection', tooltip: 'How long the user is banned from using commands.' },
+    { key: 'spam_reduction_blocked_commands', label: 'Commands to Block (empty=all)', type: 'text', def: '', category: 'Spam Protection', tooltip: 'Comma-separated list of commands to block during the ban, or leave empty to block all commands.' }
   ];
 
   const commandDefaults = {
