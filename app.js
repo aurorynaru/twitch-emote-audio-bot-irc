@@ -652,6 +652,7 @@ function clearOverlaySystem() {
 
 const spamTimeouts = new Map();
 const spamPunishMsgDebounce = new Map();
+const spamWarnings = new Map();
 
 setupRoutes(app, {
   getDb: () => db,
@@ -1268,7 +1269,7 @@ async function start() {
         }
         activeTrivia = null;
         const answerMsg = a ? ` The answer was: ${a}` : '';
-        await sendChatMessage(`[TRIVIA] Trivia has been stopped by ${chatterName}. WeirdChamp `);
+        await sendChatMessage(`Trivia has been stopped by ${chatterName}. WeirdChamp `);
       }
     },
     '!editconfig': {
@@ -4331,7 +4332,11 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         isStreamLiveCached = data.data.length > 0;
         lastStreamCheckTime = Date.now();
         if (isStreamLiveCached && data.data[0].started_at) {
-          streamStartTime = new Date(data.data[0].started_at).getTime();
+          const newStartTime = new Date(data.data[0].started_at).getTime();
+          if (streamStartTime !== newStartTime) {
+            spamWarnings.clear();
+            streamStartTime = newStartTime;
+          }
         }
       } else {
         console.error('! Twitch API Error during isStreamerLive:', data);
@@ -5003,9 +5008,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                         const lastMsgTime = spamPunishMsgDebounce.get(chatterName) || 0;
                         if (Date.now() - lastMsgTime > 10000) {
                            const remainingMins = Math.ceil((newTimeout - Date.now()) / 60000);
-                           let msg = `@${chatterName} stopped! `;
-                           if (lost > 0) msg += `You lost ${lost.toLocaleString()} points and `;
-                           msg += `your timeout is extended to ${remainingMins} minutes for continued spam!`;
+                           let msg = `${chatterName} `;
+                           if (lost > 0) msg += `lost ${lost.toLocaleString()} points and `;
+                           msg += `is unable to use any commands for ${remainingMins} minutes for continued spam monkaO `;
                            sendChatMessage(msg);
                            spamPunishMsgDebounce.set(chatterName, Date.now());
                         }
@@ -5013,21 +5018,30 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                         console.error('Error applying progressive spam punishment:', e);
                       }
                    } else {
-                      // NORMAL PUNISHMENT
-                      spamTimeouts.set(chatterName, now + timeoutMs);
-                      userSpamHistory.set(chatterName, []); 
-                      
-                      if (db) {
-                        const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
-                        if (user && user.points > 0) {
-                          const lostPoints = Math.floor(user.points * (penaltyPercent / 100));
-                          await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE username = ?', [lostPoints, chatterName]);
+                      if (!spamWarnings.has(chatterName)) {
+                         // WARNING
+                         spamWarnings.set(chatterName, now);
+                         userSpamHistory.set(chatterName, []);
+                         const timeInSeconds = timeoutMs / 1000;
+                         const timeString = timeInSeconds >= 60 ? `${Math.floor(timeInSeconds / 60)} minute${Math.floor(timeInSeconds / 60) > 1 ? 's' : ''}` : `${timeInSeconds} seconds`;
+                         await sendChatMessage(`${chatterName} WARNING! stop spamming commands or you will lose ${penaltyPercent}% of your points and be unable to use any commands for ${timeString}! monkaO  `);
+                      } else {
+                        // NORMAL PUNISHMENT
+                        spamTimeouts.set(chatterName, now + timeoutMs);
+                        userSpamHistory.set(chatterName, []); 
+                        
+                        if (db) {
+                          const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+                          if (user && user.points > 0) {
+                            const lostPoints = Math.floor(user.points * (penaltyPercent / 100));
+                            await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE username = ?', [lostPoints, chatterName]);
+                          }
                         }
+                        
+                        const timeInSeconds = timeoutMs / 1000;
+                        const timeString = timeInSeconds >= 60 ? `${Math.floor(timeInSeconds / 60)} minute${Math.floor(timeInSeconds / 60) > 1 ? 's' : ''}` : `${timeInSeconds} seconds`;
+                        await sendChatMessage(` Stop command spamming ${chatterName} WeirdChamp you lost ${penaltyPercent}% of your points and cannot use commands for ${timeString}.`);
                       }
-                      
-                      const timeInSeconds = timeoutMs / 1000;
-                      const timeString = timeInSeconds >= 60 ? `${Math.floor(timeInSeconds / 60)} minute${Math.floor(timeInSeconds / 60) > 1 ? 's' : ''}` : `${timeInSeconds} seconds`;
-                      await sendChatMessage(` Stop command spamming ${chatterName} WeirdChamp you lost ${penaltyPercent}% of your points and cannot use commands for ${timeString}.`);
                    }
                    return;
                 }
