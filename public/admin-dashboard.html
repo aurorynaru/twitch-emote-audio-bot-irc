@@ -424,7 +424,13 @@
       </div>
 
       <div id="userDataSection" style="display: none; border-top: 1px solid #3a3a44; padding-top: 20px;">
-        <h4 style="margin-top: 0; color: #bf94ff; font-size: 18px;" id="loadedUsernameDisplay">Username</h4>
+        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+          <h4 style="margin: 0; color: #bf94ff; font-size: 18px;" id="loadedUsernameDisplay">Username</h4>
+          <div id="spamTimeoutDisplay" style="display: none; align-items: center; gap: 10px;">
+            <span id="spamTimeoutText" style="font-size: 12px; background: #ef4444; color: white; padding: 2px 8px; border-radius: 12px;">Spam Blocked</span>
+            <button id="removeSpamTimeoutBtn" class="save-btn" style="padding: 4px 8px; font-size: 12px; margin: 0; background-color: #3b82f6;">Remove Timeout</button>
+          </div>
+        </div>
         
         <div class="grid" style="margin-bottom: 20px;">
           <div class="form-group">
@@ -1678,6 +1684,15 @@
         loadedUser = user;
         document.getElementById('userDataSection').style.display = 'block';
         document.getElementById('loadedUsernameDisplay').textContent = user;
+        
+        if (data.spamTimeout) {
+          document.getElementById('spamTimeoutDisplay').style.display = 'flex';
+          const minsLeft = Math.ceil((data.spamTimeout - Date.now()) / 60000);
+          document.getElementById('spamTimeoutText').textContent = `Spam Blocked (${minsLeft}m left)`;
+        } else {
+          document.getElementById('spamTimeoutDisplay').style.display = 'none';
+        }
+        
         document.getElementById('editUserPoints').value = data.points;
         document.getElementById('editUserXp').value = data.xp;
         document.getElementById('editUserLevelDisplay').textContent = data.level;
@@ -1686,6 +1701,23 @@
       } else {
         showToast('Error: ' + data.error, 'error');
         document.getElementById('userDataSection').style.display = 'none';
+      }
+    } catch (e) { showToast(e.message, 'error'); }
+  });
+
+  document.getElementById('removeSpamTimeoutBtn').addEventListener('click', async () => {
+    if (!loadedUser) return;
+    try {
+      const res = await fetch(`/api/dashboard/spam-timeout/${encodeURIComponent(loadedUser)}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': localStorage.getItem('adminToken') }
+      });
+      const result = await res.json();
+      if (result.success) {
+        showToast('Spam timeout removed!', 'success');
+        document.getElementById('loadUserBtn').click();
+      } else {
+        showToast('Error: ' + result.error, 'error');
       }
     } catch (e) { showToast(e.message, 'error'); }
   });

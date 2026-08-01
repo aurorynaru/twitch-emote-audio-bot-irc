@@ -885,7 +885,17 @@ export function setupRoutes(app, {
       const activeEffects = await db.all('SELECT * FROM active_effects WHERE target_user = ? AND (expires_at > ? OR uses_left > 0)', [username, now]);
       const modifiers = await db.all('SELECT * FROM user_modifiers WHERE username = ?', [username]);
       
-      res.json({ success: true, points: userRow.points, xp: userRow.xp || 0, level, inventory, activeEffects, modifiers });
+      let spamTimeout = null;
+      if (spamTimeouts && spamTimeouts.has(username)) {
+        const t = spamTimeouts.get(username);
+        if (t > now) {
+          spamTimeout = t;
+        } else {
+          spamTimeouts.delete(username);
+        }
+      }
+      
+      res.json({ success: true, points: userRow.points, xp: userRow.xp || 0, level, inventory, activeEffects, modifiers, spamTimeout });
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
   });
 
@@ -1074,12 +1084,7 @@ export function setupRoutes(app, {
         const disabledRaw = globalConfig[`cmd_${cmd}_disabled_until`];
         const isDisabled = disabledRaw === 'forever' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw));
         
-        return {
-          command: cmd,
-          isDisabled: isDisabled,
-          isSubOnly: globalConfig[`cmd_${cmd}_sub_only`] === 'true',
-          isOfflineOnly: globalConfig[`cmd_${cmd}_offline_only`] === 'true',
-          settings: commandConfigSchema[cmd].reduce((acc, setting) => {
+          let commandSettings = commandConfigSchema[cmd].reduce((acc, setting) => {
              let val = globalConfig[`cmd_${cmd}_${setting}`];
              if (val === undefined) {
                if (defaultSettingsFallback[cmd] && defaultSettingsFallback[cmd][setting] !== undefined) {
@@ -1090,8 +1095,20 @@ export function setupRoutes(app, {
              }
              acc[setting] = val;
              return acc;
-          }, {})
-        };
+          }, {});
+          
+          let globalCdVal = globalConfig[`cmd_${cmd}_global_chat_cooldown`];
+          if (globalCdVal !== undefined && globalCdVal !== '') {
+            commandSettings['global_chat_cooldown'] = globalCdVal;
+          }
+
+          return {
+            command: cmd,
+            isDisabled: isDisabled,
+            isSubOnly: globalConfig[`cmd_${cmd}_sub_only`] === 'true',
+            isOfflineOnly: globalConfig[`cmd_${cmd}_offline_only`] === 'true',
+            settings: commandSettings
+          };
       });
 
       const customCommands = [];
@@ -1270,6 +1287,18 @@ export function setupRoutes(app, {
       }
 
       res.json({ success: true, inventory, activeEffects, userModifiers, pendingFish, spamProtectedUsers });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.delete('/api/dashboard/spam-timeout/:username', adminAuth, (req, res) => {
+    try {
+      const username = req.params.username;
+      if (spamTimeouts && spamTimeouts.has(username)) {
+        spamTimeouts.delete(username);
+      }
+      res.json({ success: true });
     } catch (error) {
       res.status(500).json({ success: false, error: error.message });
     }
