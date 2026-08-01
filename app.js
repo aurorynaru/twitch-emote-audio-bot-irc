@@ -1619,7 +1619,13 @@ async function start() {
              const actualTarget = useTarget || chatterName;
              let timeToAddMinutes = baseValue * amountToUse;
              if (itemConfig.isPercentage) {
-                const baseTimeMinutes = parseFloat(globalConfig['cmd_!fish_time'] !== undefined ? globalConfig['cmd_!fish_time'] : '5');
+                const isLive = await isStreamerLive();
+                let baseTimeMinutes;
+                if (isLive) {
+                    baseTimeMinutes = parseFloat(globalConfig['cmd_!fish_time_online'] !== undefined ? globalConfig['cmd_!fish_time_online'] : '5');
+                } else {
+                    baseTimeMinutes = parseFloat(globalConfig['cmd_!fish_time_offline'] !== undefined ? globalConfig['cmd_!fish_time_offline'] : '15');
+                }
                 timeToAddMinutes = baseTimeMinutes * baseValue * amountToUse;
              }
              const timeToAddMs = timeToAddMinutes * 60 * 1000;
@@ -2609,18 +2615,26 @@ async function start() {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
         if (!isMod) return;
 
-        if (args.length === 0) {
-          const currentFishTime = parseFloat(globalConfig['cmd_!fish_time'] !== undefined ? globalConfig['cmd_!fish_time'] : '5');
-          await sendChatMessage(`Current fishing time is ${currentFishTime} minutes.`, chatterName);
+        if (args.length < 2) {
+          const onlineTime = parseFloat(globalConfig['cmd_!fish_time_online'] !== undefined ? globalConfig['cmd_!fish_time_online'] : '5');
+          const offlineTime = parseFloat(globalConfig['cmd_!fish_time_offline'] !== undefined ? globalConfig['cmd_!fish_time_offline'] : '15');
+          await sendChatMessage(`Usage: !setfishtime <online/offline> <minutes>. Current times - Online: ${onlineTime}m, Offline: ${offlineTime}m.`, chatterName);
           return;
         }
 
-        let newTime = parseFloat(args[0]);
+        const mode = args[0].toLowerCase();
+        if (mode !== 'online' && mode !== 'offline') {
+           await sendChatMessage(`Usage: !setfishtime <online/offline> <minutes>. Invalid mode.`, chatterName);
+           return;
+        }
+
+        let newTime = parseFloat(args[1]);
         if (!isNaN(newTime) && newTime > 0) {
-          await db.run('INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', ['cmd_!fish_time', newTime.toString(), newTime.toString()]);
-          globalConfig['cmd_!fish_time'] = newTime.toString();
+          const configKey = mode === 'online' ? 'cmd_!fish_time_online' : 'cmd_!fish_time_offline';
+          await db.run('INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, newTime.toString(), newTime.toString()]);
+          globalConfig[configKey] = newTime.toString();
           broadcastConfig(globalConfig);
-          await sendChatMessage(`Fishing time is now set to ${newTime} minutes.`, chatterName);
+          await sendChatMessage(`Fishing time (${mode}) is now set to ${newTime} minutes.`, chatterName);
         } else {
           await sendChatMessage(`Invalid time amount. Use a number greater than 0.`, chatterName);
         }
@@ -3048,7 +3062,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           multiplier *= (1 - r.effect_value);
         }
         
-        const baseTimeMinutes = parseFloat(globalConfig['cmd_!fish_time'] !== undefined ? globalConfig['cmd_!fish_time'] : '5');
+        const isLive = await isStreamerLive();
+        let baseTimeMinutes;
+        if (isLive) {
+            baseTimeMinutes = parseFloat(globalConfig['cmd_!fish_time_online'] !== undefined ? globalConfig['cmd_!fish_time_online'] : '5');
+        } else {
+            baseTimeMinutes = parseFloat(globalConfig['cmd_!fish_time_offline'] !== undefined ? globalConfig['cmd_!fish_time_offline'] : '15');
+        }
         const finalTimeMinutes = baseTimeMinutes * multiplier;
         const finalTimeMs = Math.floor(finalTimeMinutes * 60 * 1000);
 
