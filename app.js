@@ -2669,7 +2669,7 @@ async function start() {
         }
 
         if (isNaN(betAmount) || betAmount <= 0 || betAmount > user.points) {
-          await sendWhisper(chatterName, "Invalid amount! Try !gamble 50, !gamble 50%, or !gamble all", true);
+          //await sendWhisper(chatterName, "Invalid amount! Try !gamble 50, !gamble 50%, or !gamble all", true);
           return;
         }
 
