@@ -4924,42 +4924,57 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           }
 
           // Spam Reduction Tracking
-          const spamEnabled = parseInt(globalConfig['spam_reduction_enabled'] || '0', 10) === 1;
+          const spamEnabledRaw = globalConfig['spam_reduction_enabled'] || '0';
+          const spamEnabled = spamEnabledRaw === '1' || spamEnabledRaw === 'true';
+          
           if (spamEnabled) {
-            const spamCmdsStr = globalConfig['spam_reduction_commands'] || '!gamble,!roll';
-            const monitoredCmds = spamCmdsStr.split(',').map(c => c.trim().toLowerCase()).filter(c => c !== '');
+            const isLive = await isStreamerLive();
+            const onlineEnabledRaw = globalConfig['spam_reduction_online_enabled'] || '1';
+            const onlineEnabled = onlineEnabledRaw === '1' || onlineEnabledRaw === 'true';
+            const offlineEnabledRaw = globalConfig['spam_reduction_offline_enabled'] || '1';
+            const offlineEnabled = offlineEnabledRaw === '1' || offlineEnabledRaw === 'true';
             
-            if (monitoredCmds.includes(commandName)) {
-              const now = Date.now();
-              const limitCount = parseInt(globalConfig['spam_reduction_count'] || '3', 10);
-              const limitWindow = parseInt(globalConfig['spam_reduction_window'] || '8000', 10);
+            if ((isLive && onlineEnabled) || (!isLive && offlineEnabled)) {
+              const spamCmdsStr = globalConfig['spam_reduction_commands'] || '!gamble,!roll';
+              const monitoredCmds = spamCmdsStr.split(',').map(c => c.trim().toLowerCase()).filter(c => c !== '');
               
-              let history = userSpamHistory.get(chatterName) || [];
-              history.push({ cmd: commandName, time: now });
-              
-              history = history.filter(h => (now - h.time) <= limitWindow);
-              userSpamHistory.set(chatterName, history);
-              
-              const specificCmdHistory = history.filter(h => h.cmd === commandName);
-              if (specificCmdHistory.length >= limitCount) {
-                 const penaltyPercent = parseInt(globalConfig['spam_reduction_percent_loss'] || '15', 10);
-                 const timeoutMs = parseInt(globalConfig['spam_reduction_timeout'] || '600000', 10);
-                 
-                 spamTimeouts.set(chatterName, now + timeoutMs);
-                 userSpamHistory.set(chatterName, []); 
-                 
-                 if (db) {
-                   const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
-                   if (user && user.points > 0) {
-                     const lostPoints = Math.floor(user.points * (penaltyPercent / 100));
-                     await db.run('UPDATE users SET points = points - ? WHERE username = ?', [lostPoints, chatterName]);
+              if (monitoredCmds.includes(commandName)) {
+                const now = Date.now();
+                const sameCount = parseInt(globalConfig['spam_reduction_same_count'] || '3', 10);
+                const sameWindow = parseInt(globalConfig['spam_reduction_same_window'] || '8000', 10);
+                const diffCount = parseInt(globalConfig['spam_reduction_diff_count'] || '5', 10);
+                const diffWindow = parseInt(globalConfig['spam_reduction_diff_window'] || '12000', 10);
+                
+                let history = userSpamHistory.get(chatterName) || [];
+                history.push({ cmd: commandName, time: now });
+                
+                const maxWindow = Math.max(sameWindow, diffWindow);
+                history = history.filter(h => (now - h.time) <= maxWindow);
+                userSpamHistory.set(chatterName, history);
+                
+                const sameCmdHistory = history.filter(h => h.cmd === commandName && (now - h.time) <= sameWindow);
+                const diffCmdHistory = history.filter(h => (now - h.time) <= diffWindow);
+                
+                if (sameCmdHistory.length >= sameCount || diffCmdHistory.length >= diffCount) {
+                   const penaltyPercent = parseInt(globalConfig['spam_reduction_percent_loss'] || '15', 10);
+                   const timeoutMs = parseInt(globalConfig['spam_reduction_timeout'] || '600000', 10);
+                   
+                   spamTimeouts.set(chatterName, now + timeoutMs);
+                   userSpamHistory.set(chatterName, []); 
+                   
+                   if (db) {
+                     const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+                     if (user && user.points > 0) {
+                       const lostPoints = Math.floor(user.points * (penaltyPercent / 100));
+                       await db.run('UPDATE users SET points = points - ? WHERE username = ?', [lostPoints, chatterName]);
+                     }
                    }
-                 }
-                 
-                 const timeInSeconds = timeoutMs / 1000;
-                 const timeString = timeInSeconds >= 60 ? `${Math.floor(timeInSeconds / 60)} minute${Math.floor(timeInSeconds / 60) > 1 ? 's' : ''}` : `${timeInSeconds} seconds`;
-                 await sendChatMessage(`[Spam Protection] @${chatterName} spammed ${commandName} too fast! You lost ${penaltyPercent}% of your points and cannot use commands for ${timeString}.`);
-                 return;
+                   
+                   const timeInSeconds = timeoutMs / 1000;
+                   const timeString = timeInSeconds >= 60 ? `${Math.floor(timeInSeconds / 60)} minute${Math.floor(timeInSeconds / 60) > 1 ? 's' : ''}` : `${timeInSeconds} seconds`;
+                   await sendChatMessage(` Stop command spamming ${chatterName} WeirdChamp you lost ${penaltyPercent}% of your points and cannot use commands for ${timeString}.`);
+                   return;
+                }
               }
             }
           }

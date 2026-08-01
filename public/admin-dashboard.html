@@ -1123,10 +1123,14 @@
     { key: 'mod_jam_cost', label: 'Modifier: Jam Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the jam modifier for emotes' },
     { key: 'mod_rainbow_cost', label: 'Modifier: Rainbow Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the rainbow modifier for emotes' },
     { key: 'mod_hyper_cost', label: 'Modifier: Hyper Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the hyper modifier for emotes' },
-    { key: 'spam_reduction_enabled', label: 'Spam Reduction Enabled (1=Yes, 0=No)', type: 'number', def: 0, category: 'Spam Protection', tooltip: 'Enable or disable the automatic spam reduction system.' },
+    { key: 'spam_reduction_enabled', label: 'Spam Reduction Enabled', type: 'checkbox', def: 0, category: 'Spam Protection', tooltip: 'Enable or disable the automatic spam reduction system.' },
+    { key: 'spam_reduction_online_enabled', label: 'Enable in Online Chat', type: 'checkbox', def: 1, category: 'Spam Protection', tooltip: 'Should spam protection run while the stream is online?' },
+    { key: 'spam_reduction_offline_enabled', label: 'Enable in Offline Chat', type: 'checkbox', def: 1, category: 'Spam Protection', tooltip: 'Should spam protection run while the stream is offline?' },
     { key: 'spam_reduction_commands', label: 'Commands to Monitor (comma separated)', type: 'text', def: '!gamble,!roll', category: 'Spam Protection', tooltip: 'Which commands should count towards the spam limit.' },
-    { key: 'spam_reduction_count', label: 'Spam Limit Count', type: 'number', def: 3, category: 'Spam Protection', tooltip: 'How many times the command must be used to trigger the penalty.' },
-    { key: 'spam_reduction_window', label: 'Spam Limit Window (ms)', type: 'number', def: 8000, category: 'Spam Protection', tooltip: 'The time window (e.g. 8000 for 8s) in which the commands must be sent.' },
+    { key: 'spam_reduction_same_count', label: 'Same Command Spam Limit Count', type: 'number', def: 3, category: 'Spam Protection', tooltip: 'How many times the EXACT SAME command must be used to trigger the penalty.' },
+    { key: 'spam_reduction_same_window', label: 'Same Command Limit Window (ms)', type: 'number', def: 8000, category: 'Spam Protection', tooltip: 'The time window (e.g. 8000 for 8s) in which the SAME command must be sent.' },
+    { key: 'spam_reduction_diff_count', label: 'Different Commands Spam Limit Count', type: 'number', def: 5, category: 'Spam Protection', tooltip: 'How many times ANY monitored commands must be used to trigger the penalty.' },
+    { key: 'spam_reduction_diff_window', label: 'Different Commands Limit Window (ms)', type: 'number', def: 12000, category: 'Spam Protection', tooltip: 'The time window (e.g. 12000 for 12s) in which ANY monitored commands must be sent.' },
     { key: 'spam_reduction_percent_loss', label: 'Point Deduction (%)', type: 'number', def: 15, category: 'Spam Protection', tooltip: 'Percentage of points the user loses when penalized.' },
     { key: 'spam_reduction_timeout', label: 'Command Ban Duration (ms)', type: 'number', def: 600000, category: 'Spam Protection', tooltip: 'How long the user is banned from using commands.' },
     { key: 'spam_reduction_blocked_commands', label: 'Commands to Block (empty=all)', type: 'text', def: '', category: 'Spam Protection', tooltip: 'Comma-separated list of commands to block during the ban, or leave empty to block all commands.' }
@@ -1383,7 +1387,13 @@
         const card = document.createElement('div');
         card.className = 'card';
         
-        let inputHtml = `<input type="${g.type}" data-key="${g.key}" value="${value}">`;
+        let inputHtml = '';
+        if (g.type === 'checkbox') {
+          const isChecked = (value === '1' || value === 1 || value === 'true' || value === true);
+          inputHtml = `<input type="checkbox" data-key="${g.key}" ${isChecked ? 'checked' : ''}>`;
+        } else {
+          inputHtml = `<input type="${g.type}" data-key="${g.key}" value="${value}">`;
+        }
         
         if (g.key === 'banned_words_list') {
           inputHtml = `
