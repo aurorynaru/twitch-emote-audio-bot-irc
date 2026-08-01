@@ -651,6 +651,8 @@ function clearOverlaySystem() {
 }
 
 const spamTimeouts = new Map();
+const spamPunishMsgDebounce = new Map();
+
 setupRoutes(app, {
   getDb: () => db,
   globalConfig,
@@ -4938,12 +4940,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           }
 
           // Spam Reduction System Check
-          const spamTimeout = spamTimeouts.get(chatterName) || 0;
-          if (Date.now() < spamTimeout) {
+          let isSpamBlocked = false;
+          let currentSpamTimeout = spamTimeouts.get(chatterName) || 0;
+          if (Date.now() < currentSpamTimeout) {
             const blockedStr = globalConfig['spam_reduction_blocked_commands'] || '';
             const blockedCmds = blockedStr.split(',').map(c => c.trim().toLowerCase()).filter(c => c !== '');
             if (blockedCmds.length === 0 || blockedCmds.includes(commandName)) {
-              return; // Ignore command while banned
+              isSpamBlocked = true;
             }
           }
 
@@ -4980,27 +4983,60 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 const diffCmdHistory = history.filter(h => (now - h.time) <= diffWindow);
                 
                 if (sameCmdHistory.length >= sameCount || diffCmdHistory.length >= diffCount) {
-                   const penaltyPercent = parseInt(globalConfig['spam_reduction_percent_loss'] || '15', 10);
+                   const penaltyPercent = parseFloat(globalConfig['spam_reduction_percent_loss']) || 15;
                    const timeoutMs = parseInt(globalConfig['spam_reduction_timeout'] || '600000', 10);
                    
-                   spamTimeouts.set(chatterName, now + timeoutMs);
-                   userSpamHistory.set(chatterName, []); 
-                   
-                   if (db) {
-                     const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
-                     if (user && user.points > 0) {
-                       const lostPoints = Math.floor(user.points * (penaltyPercent / 100));
-                       await db.run('UPDATE users SET points = points - ? WHERE username = ?', [lostPoints, chatterName]);
-                     }
+                   if (isSpamBlocked) {
+                      // PROGRESSIVE PUNISHMENT (Triggered inside the window)
+                      try {
+                        const user = await db.get('SELECT points FROM users WHERE username = ?', [chatterName]);
+                        let lost = 0;
+                        if (user && user.points > 0) {
+                          lost = Math.floor(user.points * (penaltyPercent / 100));
+                          await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE username = ?', [lost, chatterName]);
+                        }
+                        
+                        const newTimeout = (spamTimeouts.get(chatterName) || currentSpamTimeout) + timeoutMs;
+                        spamTimeouts.set(chatterName, newTimeout);
+                        userSpamHistory.set(chatterName, []); 
+                        
+                        const lastMsgTime = spamPunishMsgDebounce.get(chatterName) || 0;
+                        if (Date.now() - lastMsgTime > 10000) {
+                           const remainingMins = Math.ceil((newTimeout - Date.now()) / 60000);
+                           let msg = `@${chatterName} stopped! `;
+                           if (lost > 0) msg += `You lost ${lost.toLocaleString()} points and `;
+                           msg += `your timeout is extended to ${remainingMins} minutes for continued spam!`;
+                           sendChatMessage(msg);
+                           spamPunishMsgDebounce.set(chatterName, Date.now());
+                        }
+                      } catch (e) {
+                        console.error('Error applying progressive spam punishment:', e);
+                      }
+                   } else {
+                      // NORMAL PUNISHMENT
+                      spamTimeouts.set(chatterName, now + timeoutMs);
+                      userSpamHistory.set(chatterName, []); 
+                      
+                      if (db) {
+                        const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+                        if (user && user.points > 0) {
+                          const lostPoints = Math.floor(user.points * (penaltyPercent / 100));
+                          await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE username = ?', [lostPoints, chatterName]);
+                        }
+                      }
+                      
+                      const timeInSeconds = timeoutMs / 1000;
+                      const timeString = timeInSeconds >= 60 ? `${Math.floor(timeInSeconds / 60)} minute${Math.floor(timeInSeconds / 60) > 1 ? 's' : ''}` : `${timeInSeconds} seconds`;
+                      await sendChatMessage(` Stop command spamming ${chatterName} WeirdChamp you lost ${penaltyPercent}% of your points and cannot use commands for ${timeString}.`);
                    }
-                   
-                   const timeInSeconds = timeoutMs / 1000;
-                   const timeString = timeInSeconds >= 60 ? `${Math.floor(timeInSeconds / 60)} minute${Math.floor(timeInSeconds / 60) > 1 ? 's' : ''}` : `${timeInSeconds} seconds`;
-                   await sendChatMessage(` Stop command spamming ${chatterName} WeirdChamp you lost ${penaltyPercent}% of your points and cannot use commands for ${timeString}.`);
                    return;
                 }
               }
             }
+          }
+
+          if (isSpamBlocked) {
+             return; // Ignore command since they are blocked
           }
 
           // Global disable check
