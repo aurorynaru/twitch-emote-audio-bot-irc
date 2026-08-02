@@ -1225,7 +1225,9 @@ export function setupRoutes(app, {
           raffle_max: parseInt(globalConfig['reward_raffle_max'] || '25000', 10),
           multiraffle_min: parseInt(globalConfig['reward_multiraffle_min'] || '3', 10),
           multiraffle_max: parseInt(globalConfig['reward_multiraffle_max'] || '12', 10),
-          chat_cooldown: parseInt(globalConfig['reward_chat_cooldown'] || '25', 10)
+          chat_cooldown: parseInt(globalConfig['reward_chat_cooldown'] || '25', 10),
+          chat_sub: parseInt(globalConfig['reward_chat_sub'] || '750', 10),
+          chat_nonsub: parseInt(globalConfig['reward_chat_nonsub'] || '500', 10)
         },
         emoteModifiers: ['wide', 'cursed', 'flipx', 'flipy', 'bounce', 'leave', 'arrive', 'jam', 'rainbow', 'hyper'].reduce((acc, mod) => {
           const disabledRaw = globalConfig[`disabled_mod_${mod}`];
