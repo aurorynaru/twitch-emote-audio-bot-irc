@@ -401,6 +401,24 @@
         <label>Action / Text</label>
         <input type="text" id="customCmdAction" placeholder="bot: ...">
       </div>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 15px;">
+      <div class="form-group" style="flex: 1; margin: 0; min-width: 120px;">
+        <label>Auto-Send Interval (Mins, 0 to disable)</label>
+        <input type="number" id="customCmdAutoInterval" placeholder="0">
+      </div>
+      <div class="form-group" style="flex: 1; margin: 0; min-width: 120px;">
+        <label>Minimum Chat Messages</label>
+        <input type="number" id="customCmdAutoMinMsgs" placeholder="0">
+      </div>
+      <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin: 0; padding-bottom: 10px;">
+        <input type="checkbox" id="customCmdAutoOnline" checked style="width: 20px; height: 20px; cursor: pointer;">
+        <label style="margin: 0; cursor: pointer;" for="customCmdAutoOnline">Run when Live</label>
+      </div>
+      <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin: 0; padding-bottom: 10px;">
+        <input type="checkbox" id="customCmdAutoOffline" style="width: 20px; height: 20px; cursor: pointer;">
+        <label style="margin: 0; cursor: pointer;" for="customCmdAutoOffline">Run when Offline</label>
+      </div>
       <button class="save-btn" id="saveCustomCmdBtn" style="margin-bottom: 2px;">Save Command</button>
     </div>
   </div>
@@ -1282,6 +1300,7 @@
         <p><strong>Cost:</strong> ${cmd.cost}</p>
         <p><strong>Cooldown:</strong> ${cmd.cooldown || 0}ms</p>
         <p><strong>Global CD:</strong> ${cmd.globalCooldown || 0}ms</p>
+        <p><strong>Auto-Timer:</strong> ${cmd.auto_interval_minutes ? `Every ${cmd.auto_interval_minutes}m (Min Msgs: ${cmd.auto_min_messages || 0})` : 'Disabled'}</p>
         <p style="word-break: break-all;"><strong>Action:</strong> ${cmd.action}</p>
         <button class="save-btn" style="background-color: #3b82f6; margin-top: 10px; margin-right: 5px; padding: 6px 12px; font-size: 14px;" onclick="editCustomCommand('${encoded}')">Edit</button>
         <button class="save-btn" style="background-color: #ff4a4a; margin-top: 10px; padding: 6px 12px; font-size: 14px;" onclick="deleteCustomCommand('${cmd.command}')">Delete</button>
@@ -1296,6 +1315,10 @@
     document.getElementById('customCmdCost').value = cmd.cost;
     document.getElementById('customCmdCooldown').value = cmd.cooldown || 0;
     document.getElementById('customCmdGlobalCooldown').value = cmd.globalCooldown || 0;
+    document.getElementById('customCmdAutoInterval').value = cmd.auto_interval_minutes || 0;
+    document.getElementById('customCmdAutoMinMsgs').value = cmd.auto_min_messages || 0;
+    document.getElementById('customCmdAutoOnline').checked = cmd.auto_run_online === undefined ? true : Boolean(cmd.auto_run_online);
+    document.getElementById('customCmdAutoOffline').checked = Boolean(cmd.auto_run_offline);
     document.getElementById('customCmdAction').value = cmd.action;
     document.getElementById('customCmdName').scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
@@ -1644,13 +1667,23 @@
     const cooldown = document.getElementById('customCmdCooldown').value;
     const globalCooldown = document.getElementById('customCmdGlobalCooldown').value;
     const action = document.getElementById('customCmdAction').value;
+    const autoInterval = document.getElementById('customCmdAutoInterval').value;
+    const autoMinMsgs = document.getElementById('customCmdAutoMinMsgs').value;
+    const autoRunOnline = document.getElementById('customCmdAutoOnline').checked;
+    const autoRunOffline = document.getElementById('customCmdAutoOffline').checked;
     if (!cmd || !action) return alert('Command and Action are required.');
     
     try {
       const res = await fetch('/api/admin/custom-commands', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: cmd, cost, cooldown, globalCooldown, action })
+        body: JSON.stringify({ 
+          command: cmd, cost, cooldown, globalCooldown, action,
+          auto_interval_minutes: autoInterval,
+          auto_min_messages: autoMinMsgs,
+          auto_run_online: autoRunOnline,
+          auto_run_offline: autoRunOffline
+        })
       });
       const data = await res.json();
       if (data.success) {
@@ -1659,6 +1692,10 @@
         document.getElementById('customCmdCooldown').value = '';
         document.getElementById('customCmdGlobalCooldown').value = '';
         document.getElementById('customCmdAction').value = '';
+        document.getElementById('customCmdAutoInterval').value = '';
+        document.getElementById('customCmdAutoMinMsgs').value = '';
+        document.getElementById('customCmdAutoOnline').checked = true;
+        document.getElementById('customCmdAutoOffline').checked = false;
         loadCustomCommands();
       } else alert('Error: ' + data.error);
     } catch (e) { alert(e.message); }

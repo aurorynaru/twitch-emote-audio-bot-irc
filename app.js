@@ -37,6 +37,8 @@ if (!fs.existsSync(path.join(__dirname, 'data', 'playsounds'))) {
 
 const globalConfig = {};
 const customAliasesMap = new Map();
+const customAliasTimers = new Map();
+let globalValidMessageCount = 0;
 const ignoredBots = ['nightbot', 'streamelements', 'streamlabs', 'moobot', 'dotabod', 'wizebot', 'fossabot', 'kofibot', 'soundalerts','Tangiabot'];
 let streamStartTime = Date.now();
 
@@ -395,7 +397,11 @@ async function initDb() {
     CREATE TABLE IF NOT EXISTS custom_aliases (
       command TEXT PRIMARY KEY,
       cost INTEGER,
-      action TEXT
+      action TEXT,
+      auto_interval_minutes INTEGER DEFAULT 0,
+      auto_min_messages INTEGER DEFAULT 0,
+      auto_run_online BOOLEAN DEFAULT 1,
+      auto_run_offline BOOLEAN DEFAULT 0
     )
   `);
 
@@ -450,13 +456,30 @@ async function initDb() {
 
   const aliases = await db.all('SELECT * FROM custom_aliases');
   for (const row of aliases) {
-    customAliasesMap.set(row.command, { cost: row.cost, action: row.action });
+    customAliasesMap.set(row.command, { 
+      cost: row.cost, 
+      action: row.action,
+      auto_interval_minutes: row.auto_interval_minutes,
+      auto_min_messages: row.auto_min_messages,
+      auto_run_online: row.auto_run_online,
+      auto_run_offline: row.auto_run_offline
+    });
   }
 
 
   try {
     await db.run('UPDATE users SET points = CAST(points AS INTEGER)');
     console.log('* Ensured all user points are integers.');
+
+    try {
+      await db.run('ALTER TABLE custom_aliases ADD COLUMN auto_interval_minutes INTEGER DEFAULT 0');
+      await db.run('ALTER TABLE custom_aliases ADD COLUMN auto_min_messages INTEGER DEFAULT 0');
+      await db.run('ALTER TABLE custom_aliases ADD COLUMN auto_run_online BOOLEAN DEFAULT 1');
+      await db.run('ALTER TABLE custom_aliases ADD COLUMN auto_run_offline BOOLEAN DEFAULT 0');
+      console.log('* Added timer columns to custom_aliases table.');
+    } catch (e) {
+      // Columns likely already exist, ignore error.
+    }
 
     await db.exec(`
       CREATE TABLE IF NOT EXISTS admin_users (
@@ -1054,6 +1077,43 @@ async function start() {
 
   setInterval(async () => {
     try {
+      if (!db) return;
+      const aliases = await db.all('SELECT * FROM custom_aliases WHERE auto_interval_minutes > 0');
+      if (!aliases || !aliases.length) return;
+
+      const isLive = await isStreamerLive();
+      const now = Date.now();
+
+      for (const alias of aliases) {
+        if (isLive && !alias.auto_run_online) continue;
+        if (!isLive && !alias.auto_run_offline) continue;
+
+        let state = customAliasTimers.get(alias.command);
+        if (!state) {
+          state = { lastFiredTime: now, lastFiredMsgCount: globalValidMessageCount };
+          customAliasTimers.set(alias.command, state);
+          continue; 
+        }
+
+        const msPassed = now - state.lastFiredTime;
+        const reqIntervalMs = alias.auto_interval_minutes * 60 * 1000;
+        
+        const msgsPassed = globalValidMessageCount - state.lastFiredMsgCount;
+        const reqMinMsgs = alias.auto_min_messages || 0;
+
+        if (msPassed >= reqIntervalMs && msgsPassed >= reqMinMsgs) {
+          await sendChatMessage(alias.action);
+          state.lastFiredTime = now;
+          state.lastFiredMsgCount = globalValidMessageCount;
+        }
+      }
+    } catch (e) {
+      console.error('Custom commands timer error:', e);
+    }
+  }, 60000);
+
+  setInterval(async () => {
+    try {
       const now = Date.now();
       const readyFishes = await db.all('SELECT * FROM pending_fish WHERE catch_time <= ?', [now]);
       
@@ -1481,6 +1541,7 @@ async function start() {
 
         let chatMsgs = [];
         let hasGlobalItem = false;
+        let affectedTargets = new Set();
 
         for (const req of requestedItems) {
           const lowerItemName = req.name;
@@ -1570,6 +1631,7 @@ async function start() {
                      chatMsgs.push(`⚠️ You must specify another user as a target to use ${itemName} !`);
                      continue;
                  }
+                 affectedTargets.add(actualTarget);
              }
           }
 
@@ -1841,7 +1903,22 @@ async function start() {
           if (hasGlobalItem) {
              await sendChatMessage(finalMsg, chatterName);
           } else {
-             await sendWhisper(chatterName, finalMsg, true);
+             let fallbackToChat = false;
+             
+             // Send whisper to attacker
+             const attackerSuccess = await sendWhisper(chatterName, finalMsg, false);
+             if (!attackerSuccess) fallbackToChat = true;
+             
+             // Send whisper to any victims
+             for (const target of affectedTargets) {
+                 if (target === chatterName) continue;
+                 const targetSuccess = await sendWhisper(target, finalMsg, false);
+                 if (!targetSuccess) fallbackToChat = true;
+             }
+             
+             if (fallbackToChat) {
+                 await sendChatMessage(finalMsg, chatterName);
+             }
           }
         } else {
           await sendWhisper(chatterName, "You don't have those items or they cannot be used!", true);
@@ -4829,6 +4906,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           }
 
           if (db && chatterName && !ignoredBots.includes(chatterName)) {
+            globalValidMessageCount++;
             const now = Date.now();
             let user = await db.get('SELECT last_message_time FROM users WHERE username = ?', chatterName);
             const isLive = await isStreamerLive();

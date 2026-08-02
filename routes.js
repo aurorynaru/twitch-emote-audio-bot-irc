@@ -575,6 +575,10 @@ export function setupRoutes(app, {
         command: cmd, 
         cost: details.cost, 
         action: details.action,
+        auto_interval_minutes: details.auto_interval_minutes,
+        auto_min_messages: details.auto_min_messages,
+        auto_run_online: details.auto_run_online,
+        auto_run_offline: details.auto_run_offline,
         cooldown: parseInt(globalConfig[`cmd_${cmd}_cooldown`], 10) || 0,
         globalCooldown: parseInt(globalConfig[`cmd_${cmd}_global_chat_cooldown`], 10) || 0
       });
@@ -584,14 +588,34 @@ export function setupRoutes(app, {
 
   app.post('/api/admin/custom-commands', adminAuth, express.json(), async (req, res) => {
     try {
-      const { command, cost, action, cooldown, globalCooldown } = req.body;
+      const { 
+        command, 
+        cost, 
+        action, 
+        cooldown, 
+        globalCooldown,
+        auto_interval_minutes = 0,
+        auto_min_messages = 0,
+        auto_run_online = true,
+        auto_run_offline = false
+      } = req.body;
       if (!command || !command.startsWith('!')) return res.status(400).json({ success: false, error: 'Command must start with !' });
       const c = parseInt(cost, 10) || 0;
       const cd = parseInt(cooldown, 10) || 0;
       const gcd = parseInt(globalCooldown, 10) || 0;
       
+      const interval = parseInt(auto_interval_minutes, 10) || 0;
+      const minMessages = parseInt(auto_min_messages, 10) || 0;
+      const runOnline = auto_run_online ? 1 : 0;
+      const runOffline = auto_run_offline ? 1 : 0;
+
       const db = getDb();
-      await db.run('INSERT INTO custom_aliases (command, cost, action) VALUES (?, ?, ?) ON CONFLICT(command) DO UPDATE SET cost = ?, action = ?', [command, c, action, c, action]);
+      await db.run(
+        `INSERT INTO custom_aliases (command, cost, action, auto_interval_minutes, auto_min_messages, auto_run_online, auto_run_offline) 
+         VALUES (?, ?, ?, ?, ?, ?, ?) 
+         ON CONFLICT(command) DO UPDATE SET cost = ?, action = ?, auto_interval_minutes = ?, auto_min_messages = ?, auto_run_online = ?, auto_run_offline = ?`, 
+        [command, c, action, interval, minMessages, runOnline, runOffline, c, action, interval, minMessages, runOnline, runOffline]
+      );
       
       const cdKey = `cmd_${command}_cooldown`;
       const gcdKey = `cmd_${command}_global_chat_cooldown`;
@@ -605,7 +629,14 @@ export function setupRoutes(app, {
       const oldCmd = customAliasesMap.get(command);
       await logAudit(req.adminUser ? req.adminUser.username : 'admin', 'update_command', command, JSON.stringify(oldCmd || {}), JSON.stringify({cost: c, action, cooldown: cd, globalCooldown: gcd}));
       
-      customAliasesMap.set(command, { cost: c, action });
+      customAliasesMap.set(command, { 
+        cost: c, 
+        action,
+        auto_interval_minutes: interval,
+        auto_min_messages: minMessages,
+        auto_run_online: runOnline,
+        auto_run_offline: runOffline
+      });
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ success: false, error: e.message });
