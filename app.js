@@ -37,6 +37,9 @@ if (!fs.existsSync(path.join(__dirname, 'data', 'playsounds'))) {
 
 const globalConfig = {};
 const customAliasesMap = new Map();
+const userCooldowns = new Map();
+const commandCooldowns = new Map();
+const playsoundCooldowns = new Map();
 const customAliasTimers = new Map();
 let globalValidMessageCount = 0;
 const ignoredBots = ['nightbot', 'streamelements', 'streamlabs', 'moobot', 'dotabod', 'wizebot', 'fossabot', 'kofibot', 'soundalerts','Tangiabot'];
@@ -677,6 +680,8 @@ const spamTimeouts = new Map();
 const spamPunishMsgDebounce = new Map();
 const spamWarnings = new Map();
 
+let globalIsStreamerLive = null;
+
 setupRoutes(app, {
   getDb: () => db,
   globalConfig,
@@ -687,7 +692,10 @@ setupRoutes(app, {
   swapDatabase,
   clearOverlaySystem,
   loadItemsConfig,
-  spamTimeouts
+  spamTimeouts,
+  commandCooldowns,
+  playsoundCooldowns,
+  isStreamerLive: async () => globalIsStreamerLive ? await globalIsStreamerLive() : false
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -4453,6 +4461,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     }
     return isStreamLiveCached;
   }
+  
+  globalIsStreamerLive = isStreamerLive;
 
   function connect7TV(broadcasterId) {
     if (!sevenTvEmoteSetId) return;
@@ -4527,9 +4537,6 @@ for (const [user, data] of Object.entries(war.userVotes)) {
   }
 
   let activeWs = null;
-  const userCooldowns = new Map();
-  const commandCooldowns = new Map();
-  const playsoundCooldowns = new Map();
   const userSpamHistory = new Map();
 
   const activeBets = new Map();
@@ -5178,13 +5185,14 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             }
           }
 
+          // Stream status cache for this command execution
+          const isLive = await isStreamerLive();
+          const isOffline = !isLive;
+
           // Global offline-only check
           const isOfflineOnly = globalConfig[`cmd_${commandName}_offline_only`] === 'true';
-          if (isOfflineOnly) {
-            const isLive = await isStreamerLive();
-            if (isLive) {
-              return;
-            }
+          if (isOfflineOnly && isLive) {
+            return;
           }
           if (customAliasesMap.has(commandName)) {
             const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator'].includes(b.set_id)) ;
@@ -5206,7 +5214,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               return;
             }
 
-            const cmdCdRaw = globalConfig[`cmd_${commandName}_cooldown`];
+            const cmdCdOnlineRaw = globalConfig[`cmd_${commandName}_cooldown`];
+            const cmdCdOfflineRaw = globalConfig[`cmd_${commandName}_offline_cooldown`];
+            const cmdCdRaw = (isOffline && cmdCdOfflineRaw !== undefined && cmdCdOfflineRaw !== '') ? cmdCdOfflineRaw : cmdCdOnlineRaw;
             const cmdCd = cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
             if (cmdCd > 0) {
               const lastCmdTime = commandCooldowns.get(`${chatterName}_${commandName}`) || 0;
@@ -5217,7 +5227,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               commandCooldowns.set(`${chatterName}_${commandName}`, now);
             }
 
-            const globalCmdCdRaw = globalConfig[`cmd_${commandName}_global_chat_cooldown`];
+            const globalCmdCdOnlineRaw = globalConfig[`cmd_${commandName}_global_chat_cooldown`];
+            const globalCmdCdOfflineRaw = globalConfig[`cmd_${commandName}_offline_global_chat_cooldown`];
+            const globalCmdCdRaw = (isOffline && globalCmdCdOfflineRaw !== undefined && globalCmdCdOfflineRaw !== '') ? globalCmdCdOfflineRaw : globalCmdCdOnlineRaw;
             const globalCmdCd = globalCmdCdRaw !== undefined ? parseInt(globalCmdCdRaw, 10) : 0;
             if (globalCmdCd > 0) {
               const lastGlobalCmdTime = commandCooldowns.get(`GLOBAL_${commandName}`) || 0;
@@ -5327,7 +5339,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               return;
             }
 
-            const cmdCdRaw = globalConfig[`cmd_${commandName}_cooldown`];
+            const cmdCdOnlineRaw = globalConfig[`cmd_${commandName}_cooldown`];
+            const cmdCdOfflineRaw = globalConfig[`cmd_${commandName}_offline_cooldown`];
+            const cmdCdRaw = (isOffline && cmdCdOfflineRaw !== undefined && cmdCdOfflineRaw !== '') ? cmdCdOfflineRaw : cmdCdOnlineRaw;
             const cmdCd = cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
             
             if (cmdCd > 0) {
@@ -5339,7 +5353,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               commandCooldowns.set(`${chatterName}_${commandName}`, now);
             }
 
-            const globalCmdCdRaw = globalConfig[`cmd_${commandName}_global_chat_cooldown`];
+            const globalCmdCdOnlineRaw = globalConfig[`cmd_${commandName}_global_chat_cooldown`];
+            const globalCmdCdOfflineRaw = globalConfig[`cmd_${commandName}_offline_global_chat_cooldown`];
+            const globalCmdCdRaw = (isOffline && globalCmdCdOfflineRaw !== undefined && globalCmdCdOfflineRaw !== '') ? globalCmdCdOfflineRaw : globalCmdCdOnlineRaw;
             const globalCmdCd = globalCmdCdRaw !== undefined ? parseInt(globalCmdCdRaw, 10) : 0;
             
             if (globalCmdCd > 0) {
@@ -5386,7 +5402,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 return;
               }
 
-              const cmdCdRaw = globalConfig[`cmd_!showemote_cooldown`];
+              const cmdCdOnlineRaw = globalConfig[`cmd_!showemote_cooldown`];
+              const cmdCdOfflineRaw = globalConfig[`cmd_!showemote_offline_cooldown`];
+              const cmdCdRaw = (isOffline && cmdCdOfflineRaw !== undefined && cmdCdOfflineRaw !== '') ? cmdCdOfflineRaw : cmdCdOnlineRaw;
               const cmdCd = cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
               
               if (cmdCd > 0) {
@@ -5398,7 +5416,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 commandCooldowns.set(`${chatterName}_!showemote`, now);
               }
 
-              const globalCmdCdRaw = globalConfig[`cmd_!showemote_global_chat_cooldown`];
+              const globalCmdCdOnlineRaw = globalConfig[`cmd_!showemote_global_chat_cooldown`];
+              const globalCmdCdOfflineRaw = globalConfig[`cmd_!showemote_offline_global_chat_cooldown`];
+              const globalCmdCdRaw = (isOffline && globalCmdCdOfflineRaw !== undefined && globalCmdCdOfflineRaw !== '') ? globalCmdCdOfflineRaw : globalCmdCdOnlineRaw;
               const globalCmdCd = globalCmdCdRaw !== undefined ? parseInt(globalCmdCdRaw, 10) : 0;
               
               if (globalCmdCd > 0) {

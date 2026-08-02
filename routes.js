@@ -59,7 +59,10 @@ export function setupRoutes(app, {
   swapDatabase,
   clearOverlaySystem,
   loadItemsConfig,
-  spamTimeouts
+  spamTimeouts,
+  commandCooldowns,
+  playsoundCooldowns,
+  isStreamerLive
 }) {
 
   const adminAuth = async (req, res, next) => {
@@ -1103,8 +1106,11 @@ export function setupRoutes(app, {
   });
 
 
-  app.get('/api/dashboard/commands', (req, res) => {
+  app.get('/api/dashboard/commands', async (req, res) => {
     try {
+      const isLive = await isStreamerLive();
+      const isOffline = !isLive;
+
       const defaultSettingsFallback = {
         '!showemote': { cost: 0, duration: parseInt(process.env.EMOTE_DURATION_MS) || 5000, size: parseInt(process.env.EMOTE_SIZE_PX) || 150, cooldown: 0 },
         '!playsound': { cost: parseInt(process.env.DEFAULT_PLAYSOUND_COST) || 0, cooldown: 0 },
@@ -1117,6 +1123,12 @@ export function setupRoutes(app, {
         
           let commandSettings = commandConfigSchema[cmd].reduce((acc, setting) => {
              let val = globalConfig[`cmd_${cmd}_${setting}`];
+             
+             if (setting === 'cooldown' && isOffline) {
+               let offlineVal = globalConfig[`cmd_${cmd}_offline_cooldown`];
+               if (offlineVal !== undefined && offlineVal !== '') val = offlineVal;
+             }
+
              if (val === undefined) {
                if (defaultSettingsFallback[cmd] && defaultSettingsFallback[cmd][setting] !== undefined) {
                  val = defaultSettingsFallback[cmd][setting];
@@ -1129,6 +1141,10 @@ export function setupRoutes(app, {
           }, {});
           
           let globalCdVal = globalConfig[`cmd_${cmd}_global_chat_cooldown`];
+          if (isOffline) {
+             let offlineGlobalCdVal = globalConfig[`cmd_${cmd}_offline_global_chat_cooldown`];
+             if (offlineGlobalCdVal !== undefined && offlineGlobalCdVal !== '') globalCdVal = offlineGlobalCdVal;
+          }
           if (globalCdVal !== undefined && globalCdVal !== '') {
             commandSettings['global_chat_cooldown'] = globalCdVal;
           }
@@ -1147,10 +1163,24 @@ export function setupRoutes(app, {
         const disabledRaw = globalConfig[`cmd_${cmd}_disabled_until`];
         const isDisabled = disabledRaw === 'forever' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw));
         
+        let cmdCdVal = globalConfig[`cmd_${cmd}_cooldown`];
+        if (isOffline) {
+          let offlineCdVal = globalConfig[`cmd_${cmd}_offline_cooldown`];
+          if (offlineCdVal !== undefined && offlineCdVal !== '') cmdCdVal = offlineCdVal;
+        }
+
+        let globalCdVal = globalConfig[`cmd_${cmd}_global_chat_cooldown`];
+        if (isOffline) {
+          let offlineGlobalCdVal = globalConfig[`cmd_${cmd}_offline_global_chat_cooldown`];
+          if (offlineGlobalCdVal !== undefined && offlineGlobalCdVal !== '') globalCdVal = offlineGlobalCdVal;
+        }
+
         customCommands.push({
           command: cmd,
           action: data.action,
           cost: data.cost,
+          cooldown: cmdCdVal || 0,
+          global_chat_cooldown: globalCdVal || 0,
           isDisabled: isDisabled,
           isSubOnly: globalConfig[`cmd_${cmd}_sub_only`] === 'true',
           isOfflineOnly: globalConfig[`cmd_${cmd}_offline_only`] === 'true'
@@ -1228,6 +1258,11 @@ export function setupRoutes(app, {
           chat_cooldown: parseInt(globalConfig['reward_chat_cooldown'] || '25', 10),
           chat_sub: parseInt(globalConfig['reward_chat_sub'] || '750', 10),
           chat_nonsub: parseInt(globalConfig['reward_chat_nonsub'] || '500', 10)
+        },
+        builtInAliases: customAliasesMap ? Object.fromEntries(customAliasesMap) : {},
+        cooldowns: {
+          command: commandCooldowns ? Object.fromEntries(commandCooldowns) : {},
+          playsound: playsoundCooldowns ? Object.fromEntries(playsoundCooldowns) : {}
         },
         emoteModifiers: ['wide', 'cursed', 'flipx', 'flipy', 'bounce', 'leave', 'arrive', 'jam', 'rainbow', 'hyper'].reduce((acc, mod) => {
           const disabledRaw = globalConfig[`disabled_mod_${mod}`];

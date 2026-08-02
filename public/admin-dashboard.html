@@ -1503,6 +1503,17 @@
             <input type="number" data-key="${configKey}" value="${val}">
           </div>
         `;
+
+        if (field === 'cooldown') {
+          const offlineCdKey = `cmd_${cmdName}_offline_cooldown`;
+          const offlineCdVal = configData.globalConfig[offlineCdKey] !== undefined && configData.globalConfig[offlineCdKey] !== '' ? configData.globalConfig[offlineCdKey] : '';
+          html += `
+            <div class="form-group">
+              <label>Offline Cooldown (ms) <span class="tooltip-icon" data-tooltip="Overrides user cooldown when stream is offline. Leave blank to use online value.">ⓘ</span></label>
+              <input type="number" data-key="${offlineCdKey}" value="${offlineCdVal}" placeholder="Use online value">
+            </div>
+          `;
+        }
       });
 
       // Global Command Cooldown
@@ -1512,6 +1523,16 @@
         <div class="form-group">
           <label>Global Chat Cooldown (ms) <span class="tooltip-icon" data-tooltip="If you ever want to make the entire command have a global chat-wide cooldown (meaning if anyone uses it, no one else can use it)">ⓘ</span></label>
           <input type="number" data-key="${globalCdKey}" value="${globalCdVal}" placeholder="0">
+        </div>
+      `;
+
+      // Offline Global Command Cooldown
+      const globalOfflineCdKey = `cmd_${cmdName}_offline_global_chat_cooldown`;
+      const globalOfflineCdVal = configData.globalConfig[globalOfflineCdKey] !== undefined && configData.globalConfig[globalOfflineCdKey] !== '' ? configData.globalConfig[globalOfflineCdKey] : '';
+      html += `
+        <div class="form-group">
+          <label>Offline Global Chat Cooldown (ms) <span class="tooltip-icon" data-tooltip="Overrides global chat cooldown when stream is offline. Leave blank to use online value.">ⓘ</span></label>
+          <input type="number" data-key="${globalOfflineCdKey}" value="${globalOfflineCdVal}" placeholder="Use online value">
         </div>
       `;
 
