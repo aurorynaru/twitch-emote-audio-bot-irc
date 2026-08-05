@@ -1125,6 +1125,8 @@ async function start() {
       const now = Date.now();
       const readyFishes = await db.all('SELECT * FROM pending_fish WHERE catch_time <= ?', [now]);
       
+      const isLive = await isStreamerLive();
+      
       let processedUsernames = [];
       let failedUsernames = [];
 
@@ -1241,28 +1243,27 @@ async function start() {
         let parts = [];
         if (allItemsCaught.length > 0) parts.push(`caught ${allItemsCaught.join(', ')}`);
         if (autoConsumedMsgs.length > 0) parts.push(`( ${autoConsumedMsgs.join(' | ')} )`);
-        /*
         const msg = `🎣 You reeled in your line and ${parts.join(' ')}`;
         
-        const success = await sendWhisper(fish.username, msg, false);
-        
-        const nonGlobalAuto = autoConsumedMsgs.filter(m => !globalMsgs.includes(m));
-        let fallbackParts = [];
-        if (allItemsCaught.length > 0) fallbackParts.push(`caught ${allItemsCaught.join(', ')}`);
-        if (nonGlobalAuto.length > 0) fallbackParts.push(`( ${nonGlobalAuto.join(' | ')} )`);
-        const fallbackPartsStr = fallbackParts.join(' ');
+        if (!isLive) {
+            const success = await sendWhisper(fish.username, msg, false);
+            
+            const nonGlobalAuto = autoConsumedMsgs.filter(m => !globalMsgs.includes(m));
+            let fallbackParts = [];
+            if (allItemsCaught.length > 0) fallbackParts.push(`caught ${allItemsCaught.join(', ')}`);
+            if (nonGlobalAuto.length > 0) fallbackParts.push(`( ${nonGlobalAuto.join(' | ')} )`);
+            const fallbackPartsStr = fallbackParts.join(' ');
 
-        if (!success && fallbackPartsStr.length > 0) {
-           failedUsernames.push({ username: fish.username, partsStr: fallbackPartsStr });
-        }
+            if (!success && fallbackPartsStr.length > 0) {
+               failedUsernames.push({ username: fish.username, partsStr: fallbackPartsStr });
+            }
 
-        if (globalMsgs.length > 0) {
-           await sendChatMessage(`🎣 ${fish.username} caught a GLOBAL ITEM: ${globalMsgs.join(' | ')}`);
+            if (globalMsgs.length > 0) {
+               await sendChatMessage(`🎣 ${fish.username} caught a GLOBAL ITEM: ${globalMsgs.join(' | ')}`);
+            }
         }
-        */
       }
 
-      /*
       if (failedUsernames.length > 0) {
         if (failedUsernames.length === 1) {
           const u = failedUsernames[0];
@@ -1275,7 +1276,6 @@ async function start() {
           await sendChatMessage(`🎣 ${displayNames} are done fishing! Type !inv to check what new items you caught (or points instantly awarded)!`);
         }
       }
-      */
     } catch (err) {
       console.error('Error resolving fishes:', err);
     }
