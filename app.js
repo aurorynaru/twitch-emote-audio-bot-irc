@@ -2862,7 +2862,7 @@ async function start() {
           await updateUserStat(chatterName, 'gamble_played', 1);
           await updateUserStat(chatterName, 'gamble_lost', 1);
           await updateUserStat(chatterName, 'gamble_points_lost', actualLoss);
-          await sendWhisper(chatterName, `You lost ${actualLoss} points in a gamble...${shieldedMsg} You now have ${newPoints} points. LMAO`, true);
+          await sendWhisper(chatterName, `You lost ${actualLoss} points ${shieldedMsg} You now have ${newPoints} points. LMAO`, true);
         }
       }
     },
