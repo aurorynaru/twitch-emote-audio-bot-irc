@@ -1550,6 +1550,7 @@ async function start() {
         let chatMsgs = [];
         let hasGlobalItem = false;
         let affectedTargets = new Set();
+        let itemsConsumed = false;
 
         for (const req of requestedItems) {
           const lowerItemName = req.name;
@@ -1644,6 +1645,7 @@ async function start() {
           }
 
           await db.run('UPDATE user_inventory SET quantity = quantity - ? WHERE username = ? AND item_name = ?', [amountToUse, chatterName, itemName]);
+          itemsConsumed = true;
 
           if (isLegacy) {
             const usesPerItem = itemConfig ? (itemConfig.uses || 1) : 1;
@@ -1723,7 +1725,10 @@ async function start() {
             if (isGlobal) {
                chatMsgs.push(`✨ ${chatterName} used ${amountToUse}x ${itemName}! Applied ${chatCommands.getEffectDisplayName(effectType)} for everyone!`);
             } else {
-              // chatMsgs.push(`${chatterName} applied a ${effectType} to ${finalTarget}!`);
+               const isLive = await isStreamerLive();
+               if (!isLive) {
+                 chatMsgs.push(`✨ ${chatterName} used ${amountToUse}x ${itemName}! Applied ${chatCommands.getEffectDisplayName(effectType)}!`);
+               }
             }
           } else if (effectType === 'fishing_debuff_target') {
              const actualTarget = useTarget || chatterName;
@@ -1928,7 +1933,7 @@ async function start() {
                  await sendChatMessage(finalMsg, chatterName);
              }
           }
-        } else {
+        } else if (!itemsConsumed) {
           await sendWhisper(chatterName, "You don't have those items or they cannot be used!", true);
         }
       }
