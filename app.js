@@ -2836,9 +2836,9 @@ async function start() {
           await updateUserStat(chatterName, 'gamble_points_won', addedAmount);
           
           if (multipliers.length > 0) {
-            await sendWhisper(chatterName, `✨ MIDAS TOUCH! You won ${addedAmount + betAmount} points in a gamble! You now have ${newPoints} points.`, true);
+            await sendWhisper(chatterName, `✨ MIDAS TOUCH! You won ${addedAmount + betAmount} points! You now have ${newPoints} points.`, true);
           } else {
-            await sendWhisper(chatterName, `You won ${addedAmount} points in a gamble! You now have ${newPoints} points. EZ`, true);
+            await sendWhisper(chatterName, `You won ${addedAmount} points! You now have ${newPoints} points. EZ`, true);
           }
         } else {
           const shields = await getActiveEffects(chatterName, 'gamble_shield');
