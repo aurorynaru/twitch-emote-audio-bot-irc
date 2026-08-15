@@ -149,6 +149,8 @@ No channel-owner authorization is required. Twitch does not show subscriber stat
 
 Automatic support-event raffles are also configured per stream with **Automatic Support-Event Raffles**. They remain enabled by default for the main stream and are disabled by default for secondary streams. Turning this off prevents bits, subscriptions, resubscriptions, gift subs, and continuing gifted subscriptions from starting random raffles; support-event point rewards and manually started raffles are unaffected.
 
+Support-event point rewards are controlled separately per stream with **Subscription Point Rewards**, **Bits Point Rewards**, **Gift-Sub Point Rewards**, and **Watch-Streak Point Rewards**. These controls default to enabled for the main stream and disabled for secondary streams. Turning one off prevents that event from adding points or announcing a point award, without changing automatic or manually started raffles.
+
 **If running on Railway:**
 
 1. Ensure your Railway project has successfully deployed.

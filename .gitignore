@@ -12,3 +12,4 @@ data/backup
 import-trivia.js
 trivia_questions.json
 dedupe-and-hint.js
+multi-channel.test.js

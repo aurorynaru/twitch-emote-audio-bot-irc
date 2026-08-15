@@ -222,6 +222,14 @@ function areRandomSupportRafflesEnabled(runtime = getChannelRuntime()) {
   return ['1', 'true', 'yes', 'on'].includes(String(configuredValue).trim().toLowerCase());
 }
 
+function isSupportPointRewardEnabled(configKey, runtime = getChannelRuntime()) {
+  const configuredValue = runtime.config[configKey];
+  if (configuredValue === undefined || configuredValue === null || configuredValue === '') {
+    return runtime.isMain;
+  }
+  return ['1', 'true', 'yes', 'on'].includes(String(configuredValue).trim().toLowerCase());
+}
+
 const channelState = new Proxy({}, {
   get: (_target, property) => getChannelRuntime().state[property],
   set: (_target, property, value) => {
@@ -787,6 +795,16 @@ async function initDb(runtime = getChannelRuntime()) {
   if (runtime.config.reward_passive_nonsub === undefined) runtime.config.reward_passive_nonsub = '60';
   if (runtime.config.random_support_raffles_enabled === undefined) {
     runtime.config.random_support_raffles_enabled = runtime.isMain ? 'true' : 'false';
+  }
+  for (const rewardToggle of [
+    'reward_sub_enabled',
+    'reward_bits_enabled',
+    'reward_giftsub_enabled',
+    'reward_watchstreak_enabled'
+  ]) {
+    if (runtime.config[rewardToggle] === undefined) {
+      runtime.config[rewardToggle] = runtime.isMain ? 'true' : 'false';
+    }
   }
 
   const aliases = await db.all('SELECT * FROM custom_aliases');
@@ -5421,9 +5439,11 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             const pointsPerBit = parseInt(globalConfig['reward_bits'] || '10', 10);
             const pointsToAward = bits * pointsPerBit;
             if (db) {
-              const finalAwarded = await addPointsWithBonus(chatterName, pointsToAward, false, 'engagement');
-              console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for cheering ${bits} bits!`);
-              await sendChatMessage(`🎉 ${chatterName} cheered ${bits} bits! You received ${finalAwarded} points!`);
+              if (isSupportPointRewardEnabled('reward_bits_enabled')) {
+                const finalAwarded = await addPointsWithBonus(chatterName, pointsToAward, false, 'engagement');
+                console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for cheering ${bits} bits!`);
+                await sendChatMessage(`🎉 ${chatterName} cheered ${bits} bits! You received ${finalAwarded} points!`);
+              }
               setTimeout(async () => {
                 await triggerRandomRaffle('bit cheer');
               }, 3000);
@@ -6104,26 +6124,30 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           
             if (msgId === 'sub' || msgId === 'resub' || msgId === 'giftpaidupgrade') {
               if (db && chatterName) {
-                const subReward = parseInt(globalConfig['reward_sub'] || '5000', 10);
-                const finalAwarded = await addPointsWithBonus(chatterName, subReward, false, 'engagement');
-                console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for subscribing!`);
-                await sendChatMessage(`🎉 ${chatterName} subscribed! You received ${finalAwarded} points! 🎉`);
+                if (isSupportPointRewardEnabled('reward_sub_enabled')) {
+                  const subReward = parseInt(globalConfig['reward_sub'] || '5000', 10);
+                  const finalAwarded = await addPointsWithBonus(chatterName, subReward, false, 'engagement');
+                  console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for subscribing!`);
+                  await sendChatMessage(`🎉 ${chatterName} subscribed! You received ${finalAwarded} points! 🎉`);
+                }
                 setTimeout(async () => {
                   await triggerRandomRaffle('subscription');
                 }, 3000);
               }
             } else if (msgId === 'submysterygift') {
               if (db && chatterName) {
-                const baseReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
-                const scalingBonus = parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10);
-                const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
-                const totalGifts = parseInt(tags['msg-param-mass-gift-count'], 10) || 1;
-                const giftReward = Math.min(maxCap, (baseReward * totalGifts) + Math.round((totalGifts * totalGifts) * scalingBonus));
-                const finalAwarded = await addPointsWithBonus(chatterName, giftReward, false, 'engagement');
-                console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting ${totalGifts} sub(s)!`);
-                await sendChatMessage(`🎉 ${chatterName} gifted ${totalGifts} sub(s)! You were awarded ${finalAwarded} points! 🎉`);
                 recentMassGifters.add(chatterName);
                 setTimeout(() => recentMassGifters.delete(chatterName), 10000);
+                if (isSupportPointRewardEnabled('reward_giftsub_enabled')) {
+                  const baseReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
+                  const scalingBonus = parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10);
+                  const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
+                  const totalGifts = parseInt(tags['msg-param-mass-gift-count'], 10) || 1;
+                  const giftReward = Math.min(maxCap, (baseReward * totalGifts) + Math.round((totalGifts * totalGifts) * scalingBonus));
+                  const finalAwarded = await addPointsWithBonus(chatterName, giftReward, false, 'engagement');
+                  console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting ${totalGifts} sub(s)!`);
+                  await sendChatMessage(`🎉 ${chatterName} gifted ${totalGifts} sub(s)! You were awarded ${finalAwarded} points! 🎉`);
+                }
                 setTimeout(async () => {
                   await triggerRandomRaffle('gift sub');
                 }, 3000);
@@ -6131,14 +6155,16 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             } else if (msgId === 'subgift') {
 
               if (db && chatterName && !tags['msg-param-communitygift-id'] && !recentMassGifters.has(chatterName)) {
-                const baseReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
-                const scalingBonus = parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10);
-                const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
-                const totalGifts = 1;
-                const giftReward = Math.min(maxCap, (baseReward * totalGifts) + Math.round((totalGifts * totalGifts / 3) * scalingBonus));
-                const finalAwarded = await addPointsWithBonus(chatterName, giftReward, false, 'engagement');
-                console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting a direct sub!`);
-                await sendChatMessage(`🎉 ${chatterName} gifted a sub! You were awarded ${finalAwarded} points! 🎉`);
+                if (isSupportPointRewardEnabled('reward_giftsub_enabled')) {
+                  const baseReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
+                  const scalingBonus = parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10);
+                  const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
+                  const totalGifts = 1;
+                  const giftReward = Math.min(maxCap, (baseReward * totalGifts) + Math.round((totalGifts * totalGifts / 3) * scalingBonus));
+                  const finalAwarded = await addPointsWithBonus(chatterName, giftReward, false, 'engagement');
+                  console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting a direct sub!`);
+                  await sendChatMessage(`🎉 ${chatterName} gifted a sub! You were awarded ${finalAwarded} points! 🎉`);
+                }
                 setTimeout(async () => {
                   await triggerRandomRaffle('gift sub');
                 }, 3000);
@@ -6146,7 +6172,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             } else if (msgId === 'viewermilestone') {
               if (tags['msg-param-category'] === 'watch-streak') {
                 const streak = parseInt(tags['msg-param-value'], 10) || 0;
-                if (streak > 0 && db && chatterName) {
+                if (streak > 0 && db && chatterName && isSupportPointRewardEnabled('reward_watchstreak_enabled')) {
                   const baseRate = parseInt(globalConfig['reward_watchstreak'] || '1000', 10);
                   const scalingBonus = parseInt(globalConfig['reward_watchstreak_scaling'] || '20', 10);
                   const maxCap = parseInt(globalConfig['reward_watchstreak_cap'] || '100000', 10);
@@ -6206,5 +6232,6 @@ export const testInternals = {
   getPointEarningMode,
   getPassiveRewardSettings,
   hasSubscriberChatBadge,
-  areRandomSupportRafflesEnabled
+  areRandomSupportRafflesEnabled,
+  isSupportPointRewardEnabled
 };
