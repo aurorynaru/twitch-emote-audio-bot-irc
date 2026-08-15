@@ -18,6 +18,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export let sseClients = [];
+let resolveCurrentChannelId = () => 'main';
 
 let currentBannedWords = '';
 let obscenityMatcher = null;
@@ -62,8 +63,15 @@ export function setupRoutes(app, {
   spamTimeouts,
   commandCooldowns,
   playsoundCooldowns,
+  getCurrentChannelId,
+  getCurrentDbPath,
+  getSoundsDir,
+  adjustRecentChannelUserPoints,
+  channels = [],
   isStreamerLive
 }) {
+  resolveCurrentChannelId = getCurrentChannelId || resolveCurrentChannelId;
+  const validChannelIds = new Set(channels.flatMap(channel => [channel.id, channel.login]));
 
   const adminAuth = async (req, res, next) => {
     const password = process.env.ADMIN_PASSWORD;
@@ -102,6 +110,10 @@ export function setupRoutes(app, {
     res.status(401).send('Authentication required.');
   };
 
+  app.get('/api/admin/channels', adminAuth, (req, res) => {
+    res.json({ success: true, channels });
+  });
+
   const requirePermission = (permission) => {
     return (req, res, next) => {
       if (req.adminUser.permissions.includes('all') || req.adminUser.permissions.includes(permission)) {
@@ -123,7 +135,7 @@ export function setupRoutes(app, {
       const db = getDb();
       await db.run(
         'INSERT INTO audit_logs (admin_username, action_type, target_entity, old_value, new_value) VALUES (?, ?, ?, ?, ?)',
-        [admin_username, action_type, target_entity, old_value, new_value]
+        [admin_username, action_type, `[${resolveCurrentChannelId()}] ${target_entity}`, old_value, new_value]
       );
     } catch (e) {
       console.error('Failed to write audit log:', e);
@@ -205,7 +217,7 @@ export function setupRoutes(app, {
 
   const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-      cb(null, path.join(__dirname, 'data', 'playsounds'))
+      cb(null, getSoundsDir())
     },
     filename: function (req, file, cb) {
       const originalExt = path.extname(file.originalname).toLowerCase();
@@ -266,7 +278,7 @@ export function setupRoutes(app, {
           for (const zipEntry of zipEntries) {
              const name = zipEntry.entryName.toLowerCase();
              if (!zipEntry.isDirectory && (name.endsWith('.mp3') || name.endsWith('.ogg'))) {
-                const outPath = path.join(__dirname, 'data', 'playsounds', path.basename(zipEntry.entryName));
+                const outPath = path.join(getSoundsDir(), path.basename(zipEntry.entryName));
                 fs.writeFileSync(outPath, zipEntry.getData());
                 await normalizeAudio(outPath);
                 finalFilenames.push(path.basename(zipEntry.entryName));
@@ -320,6 +332,21 @@ export function setupRoutes(app, {
       const updates = req.body.updates;
       if (!Array.isArray(updates)) {
          return res.status(400).json({ success: false, error: 'Invalid payload' });
+      }
+
+      for (const update of updates) {
+        if (!update.key) continue;
+        const val = update.value == null ? '' : String(update.value);
+        if (update.key === 'points_earning_mode' && !['legacy', 'passive'].includes(val)) {
+          return res.status(400).json({ success: false, error: 'Point earning mode must be legacy or passive.' });
+        }
+        if (['reward_passive_sub', 'reward_passive_nonsub', 'reward_passive_interval_minutes'].includes(update.key)) {
+          const parsedValue = Number(val);
+          const minimum = update.key === 'reward_passive_interval_minutes' ? 1 : 0;
+          if (!Number.isInteger(parsedValue) || parsedValue < minimum) {
+            return res.status(400).json({ success: false, error: `${update.key} must be a whole number of at least ${minimum}.` });
+          }
+        }
       }
 
       const db = getDb();
@@ -537,7 +564,7 @@ export function setupRoutes(app, {
             }
             
             const ext = linkLower.endsWith('.ogg') ? '.ogg' : '.mp3';
-            const filePath = path.join(__dirname, 'data', 'playsounds', `${name}${ext}`);
+            const filePath = path.join(getSoundsDir(), `${name}${ext}`);
             
             try {
               const response = await fetch(link);
@@ -749,10 +776,7 @@ export function setupRoutes(app, {
       if (isNaN(parsedAmount) || parsedAmount <= 0) return res.status(400).json({ success: false, error: 'Invalid amount' });
       const durationMs = parseTime(timeStr || '5m');
       const threshold = Date.now() - durationMs;
-      const ignoredBots = ['nightbot', 'streamelements', 'streamlabs', 'moobot', 'dotabod', 'wizebot', 'fossabot', 'kofibot', 'soundalerts'];
-      const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
-      const db = getDb();
-      await db.run(`UPDATE users SET points = points + ? WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [parsedAmount, threshold]);
+      await adjustRecentChannelUserPoints(parsedAmount, threshold);
       await logAudit(req.adminUser ? req.adminUser.username : 'admin', 'mass_points_add', `active_users_past_${timeStr}`, '', String(parsedAmount));
       res.json({ success: true });
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
@@ -765,10 +789,7 @@ export function setupRoutes(app, {
       if (isNaN(parsedAmount) || parsedAmount <= 0) return res.status(400).json({ success: false, error: 'Invalid amount' });
       const durationMs = parseTime(timeStr || '5m');
       const threshold = Date.now() - durationMs;
-      const ignoredBots = ['nightbot', 'streamelements', 'streamlabs', 'moobot', 'dotabod', 'wizebot', 'fossabot', 'kofibot', 'soundalerts'];
-      const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
-      const db = getDb();
-      await db.run(`UPDATE users SET points = MAX(0, points - ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [parsedAmount, threshold]);
+      await adjustRecentChannelUserPoints(-parsedAmount, threshold);
       await logAudit(req.adminUser ? req.adminUser.username : 'admin', 'mass_points_sub', `active_users_past_${timeStr}`, '', String(parsedAmount));
       res.json({ success: true });
     } catch (e) { res.status(500).json({ success: false, error: e.message }); }
@@ -818,8 +839,8 @@ export function setupRoutes(app, {
     try {
       const db = getDb();
       const filename = req.params.name;
-      const oggPath = path.join(__dirname, 'data', 'playsounds', filename + '.ogg');
-      const mp3Path = path.join(__dirname, 'data', 'playsounds', filename + '.mp3');
+      const oggPath = path.join(getSoundsDir(), filename + '.ogg');
+      const mp3Path = path.join(getSoundsDir(), filename + '.mp3');
       
       let deleted = false;
       if (fs.existsSync(oggPath)) { fs.unlinkSync(oggPath); deleted = true; }
@@ -991,7 +1012,7 @@ export function setupRoutes(app, {
 
   app.get('/api/admin/playsounds', adminAuth, (req, res) => {
     try {
-      const dir = path.join(__dirname, 'data', 'playsounds');
+      const dir = getSoundsDir();
       if (!fs.existsSync(dir)) return res.json({ success: true, sounds: [] });
       const files = fs.readdirSync(dir);
       const sounds = files.map(f => f.split('.')[0]).filter((v, i, a) => a.indexOf(v) === i);
@@ -1002,8 +1023,8 @@ export function setupRoutes(app, {
   app.delete('/api/admin/playsounds/:name', adminAuth, (req, res) => {
     try {
       const filename = req.params.name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
-      const oggPath = path.join(__dirname, 'data', 'playsounds', filename + '.ogg');
-      const mp3Path = path.join(__dirname, 'data', 'playsounds', filename + '.mp3');
+      const oggPath = path.join(getSoundsDir(), filename + '.ogg');
+      const mp3Path = path.join(getSoundsDir(), filename + '.mp3');
       
       let deleted = false;
       if (fs.existsSync(oggPath)) { fs.unlinkSync(oggPath); deleted = true; }
@@ -1079,18 +1100,33 @@ export function setupRoutes(app, {
     });
   });
 
-  app.get('/api/stream-emotes', (req, res) => {
+  const registerOverlayStream = (req, res, explicitChannelId = null) => {
+    const channelId = explicitChannelId || resolveCurrentChannelId();
+    if (!validChannelIds.has(channelId)) {
+      return res.status(404).json({ success: false, error: `Unknown channel: ${channelId}` });
+    }
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    sseClients.push(res);
+    const client = { res, channelId };
+    sseClients.push(client);
     req.on('close', () => {
-      sseClients = sseClients.filter(client => client !== res);
+      sseClients = sseClients.filter(entry => entry !== client);
     });
-  });
+  };
+
+  app.get('/api/stream-emotes', (req, res) => registerOverlayStream(req, res));
+  app.get('/api/stream-emotes/:channelId', (req, res) => registerOverlayStream(req, res, req.params.channelId));
 
   app.get('/overlay', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'overlay.html'));
+  });
+
+  app.get('/overlay/:channelId', (req, res) => {
+    if (!validChannelIds.has(req.params.channelId)) {
+      return res.status(404).send('Unknown channel');
+    }
     res.sendFile(path.join(__dirname, 'public', 'overlay.html'));
   });
 
@@ -1202,7 +1238,7 @@ export function setupRoutes(app, {
         metaMap[row.name] = row;
       }
 
-      const soundsDir = path.join(__dirname, 'data', 'playsounds');
+      const soundsDir = getSoundsDir();
       let sounds = [];
       if (fs.existsSync(soundsDir)) {
         const files = fs.readdirSync(soundsDir).filter(f => f.endsWith('.mp3') || f.endsWith('.ogg'));
@@ -1373,16 +1409,16 @@ export function setupRoutes(app, {
   });
 
   app.get('/export-database', adminAuth, (req, res) => {
-    const dbPath = path.join(__dirname, 'data', 'database.sqlite');
+    const dbPath = getCurrentDbPath ? getCurrentDbPath() : path.join(__dirname, 'data', 'database.sqlite');
     if (fs.existsSync(dbPath)) {
-      res.download(dbPath, `database_backup_${Date.now()}.sqlite`);
+      res.download(dbPath, `database_backup_${resolveCurrentChannelId()}_${Date.now()}.sqlite`);
     } else {
       res.status(404).send('Database not found!');
     }
   });
 
   app.get('/export-playsounds', adminAuth, (req, res) => {
-    const soundsDir = path.join(__dirname, 'data', 'playsounds');
+    const soundsDir = getSoundsDir();
     if (!fs.existsSync(soundsDir)) {
       return res.status(404).send('Playsounds directory not found!');
     }
@@ -1404,6 +1440,13 @@ export function setupRoutes(app, {
   });
 }
 
+function broadcastToCurrentChannel(payload) {
+  const channelId = resolveCurrentChannelId();
+  sseClients
+    .filter(client => client.channelId === channelId)
+    .forEach(client => client.res.write(payload));
+}
+
 export function broadcastEmote(url, isZeroWidth = false, messageId = null, customX = null, customY = null, modifiers = []) {
   const data = JSON.stringify({ 
     type: 'emote', 
@@ -1414,19 +1457,19 @@ export function broadcastEmote(url, isZeroWidth = false, messageId = null, custo
     customY,
     modifiers
   });
-  sseClients.forEach(client => client.write(`data: ${data}\n\n`));
+  broadcastToCurrentChannel(`data: ${data}\n\n`);
 }
 
 export function broadcastAudio(filename, volume = 1.0) {
   const payload = `data: ${JSON.stringify({ type: 'audio', file: filename, volume: volume })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
+  broadcastToCurrentChannel(payload);
 }
 
 export function broadcastConfig(globalConfig) {
   const duration = parseInt(globalConfig['cmd_!showemote_duration']) || parseInt(process.env.EMOTE_DURATION_MS) || 5000;
   const size = parseInt(globalConfig['cmd_!showemote_size']) || parseInt(process.env.EMOTE_SIZE_PX) || 150;
   const payload = `data: ${JSON.stringify({ type: 'config_update', durationMs: duration, sizePx: size })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
+  broadcastToCurrentChannel(payload);
 }
 
 export function broadcastBetState(bet) {
@@ -1472,12 +1515,12 @@ export function broadcastBetState(bet) {
   });
 
   const payload = `data: ${JSON.stringify({ type: 'bet_update', bet: payloadData })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
+  broadcastToCurrentChannel(payload);
 }
 
 export function clearBetState(resultData = null) {
   const payload = `data: ${JSON.stringify({ type: 'bet_clear', result: resultData })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
+  broadcastToCurrentChannel(payload);
 }
 
 export function broadcastChatWarState(war) {
@@ -1494,16 +1537,16 @@ export function broadcastChatWarState(war) {
     durationMs: war.durationMs || null
   };
   const payload = `data: ${JSON.stringify({ type: 'chatwar_update', war: payloadData })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
+  broadcastToCurrentChannel(payload);
 }
 
 export function clearChatWarState(winnerData = null) {
   const payload = `data: ${JSON.stringify({ type: 'chatwar_clear', winner: winnerData })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
+  broadcastToCurrentChannel(payload);
 }
 
 export function clearEmotes() {
   const payload = `data: ${JSON.stringify({ type: 'clear_emotes' })}\n\n`;
-  sseClients.forEach(client => client.write(payload));
+  broadcastToCurrentChannel(payload);
 }
 

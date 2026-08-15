@@ -152,7 +152,11 @@
     statusDiv.textContent = '';
 
     try {
-      const response = await fetch('/api/upload-sound', {
+      const channel = new URLSearchParams(window.location.search).get('channel');
+      const uploadUrl = channel
+        ? `/api/upload-sound?channel=${encodeURIComponent(channel)}`
+        : '/api/upload-sound';
+      const response = await fetch(uploadUrl, {
         method: 'POST',
         body: formData
       });

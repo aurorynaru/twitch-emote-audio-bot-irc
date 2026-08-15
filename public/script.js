@@ -4,6 +4,14 @@ let sizePx = 150;
 
 let audioCtx = null;
 let globalCompressor = null;
+const overlayPathParts = window.location.pathname.split('/').filter(Boolean);
+const overlayChannelId = overlayPathParts[0] === 'overlay' && overlayPathParts[1]
+  ? overlayPathParts[1]
+  : null;
+const overlayChannelQuery = overlayChannelId ? `?channel=${encodeURIComponent(overlayChannelId)}` : '';
+const overlayEventPath = overlayChannelId
+  ? `/api/stream-emotes/${encodeURIComponent(overlayChannelId)}`
+  : '/api/stream-emotes';
 
 function getAudioContext() {
   if (!audioCtx) {
@@ -25,7 +33,7 @@ function getAudioContext() {
   return audioCtx;
 }
 
-fetch('/api/config')
+fetch(`/api/config${overlayChannelQuery}`)
   .then(res => res.json())
   .then(data => {
     durationMs = data.durationMs;
@@ -37,7 +45,7 @@ fetch('/api/config')
       if (eventSource) {
         eventSource.close();
       }
-      eventSource = new EventSource('/api/stream-emotes');
+      eventSource = new EventSource(overlayEventPath);
 
       eventSource.onerror = function() {
 
@@ -49,7 +57,10 @@ fetch('/api/config')
       eventSource.onmessage = function(event) {
         const parsedData = JSON.parse(event.data);
         if (parsedData.type === 'audio') {
-          const audio = new Audio('/playsounds/' + parsedData.file);
+          const audioBasePath = overlayChannelId
+            ? `/playsounds/${encodeURIComponent(overlayChannelId)}/`
+            : '/playsounds/';
+          const audio = new Audio(audioBasePath + encodeURIComponent(parsedData.file));
           audio.crossOrigin = "anonymous";
           
           let shouldPlayDirectly = true;

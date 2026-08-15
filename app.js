@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import cors from 'cors';
+import { AsyncLocalStorage } from 'async_hooks';
 dotenv.config();
 
 import { parseFlexibleTime, parseAmount, parseTime } from './utils.js';
@@ -20,7 +21,6 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const CLIENT_ID = process.env.CLIENT_ID
 const CLIENT_SECRET = process.env.CLIENT_SECRET
 const AUTH_CODE = process.env.AUTH_CODE
-const TARGET_CHANNEL = process.env.TARGET_CHANNEL;
 let USER_ACCESS_TOKEN = '';
 let BOT_USERNAME = ''
 const TOKEN_FILE = path.join(__dirname, 'data', 'tokens.json');
@@ -34,16 +34,233 @@ if (!fs.existsSync(path.join(__dirname, 'data'))) {
 if (!fs.existsSync(path.join(__dirname, 'data', 'playsounds'))) {
   fs.mkdirSync(path.join(__dirname, 'data', 'playsounds'));
 }
+if (!fs.existsSync(path.join(__dirname, 'data', 'channels'))) {
+  fs.mkdirSync(path.join(__dirname, 'data', 'channels'), { recursive: true });
+}
 
-const globalConfig = {};
-const customAliasesMap = new Map();
-const userCooldowns = new Map();
-const commandCooldowns = new Map();
-const playsoundCooldowns = new Map();
-const customAliasTimers = new Map();
-let globalValidMessageCount = 0;
+const configuredChannelLogins = Array.from(new Set(
+  (process.env.TARGET_CHANNELS || process.env.TARGET_CHANNEL || '')
+    .split(',')
+    .map(channel => channel.trim().replace(/^#/, '').toLowerCase())
+    .filter(Boolean)
+));
+
+if (configuredChannelLogins.length === 0) {
+  throw new Error('Set TARGET_CHANNEL or TARGET_CHANNELS to at least one Twitch channel.');
+}
+
+const requestedMainChannel = (process.env.MAIN_CHANNEL || process.env.TARGET_CHANNEL || configuredChannelLogins[0])
+  .trim()
+  .replace(/^#/, '')
+  .toLowerCase();
+const MAIN_CHANNEL_LOGIN = configuredChannelLogins.includes(requestedMainChannel)
+  ? requestedMainChannel
+  : configuredChannelLogins[0];
+const orderedChannelLogins = [
+  MAIN_CHANNEL_LOGIN,
+  ...configuredChannelLogins.filter(channel => channel !== MAIN_CHANNEL_LOGIN)
+];
+
+const channelStorage = new AsyncLocalStorage();
+const channelRuntimes = new Map();
+
+function createChannelRuntime(login, index) {
+  const id = login.replace(/[^a-z0-9_]/g, '_');
+  return {
+    id,
+    login,
+    isMain: index === 0,
+    broadcasterId: null,
+    db: null,
+    dbPath: index === 0 ? DB_PATH : path.join(__dirname, 'data', 'channels', `${id}.sqlite`),
+    config: {},
+    maps: {},
+    state: {
+      globalValidMessageCount: 0,
+      streamStartTime: Date.now(),
+      sevenTvEmoteSetId: null,
+      lastRefreshTime: 0,
+      activeChatWar: null,
+      activeRaffle: null,
+      activeTrivia: null,
+      triviaLoopActive: false,
+      nextTriviaTimeout: null,
+      consecutiveUnansweredTrivia: 0,
+      lastChatWideCommandTime: 0,
+      currentEmoteSizePx: null,
+      currentEmoteDurationMs: null,
+      isStreamLiveCached: false,
+      lastStreamCheckTime: 0,
+      isStreamerLive: null,
+      sendChatMessage: null,
+      passiveRewardLastRun: null,
+      passiveRewardRunning: false,
+      passiveRewardLastError: null
+    }
+  };
+}
+
+orderedChannelLogins.forEach((login, index) => {
+  const runtime = createChannelRuntime(login, index);
+  channelRuntimes.set(runtime.id, runtime);
+  channelRuntimes.set(runtime.login, runtime);
+});
+
+const channelList = orderedChannelLogins.map(login => channelRuntimes.get(login));
+const mainChannelRuntime = channelRuntimes.get(MAIN_CHANNEL_LOGIN);
+const SHARED_CONFIG_KEYS = new Set(['level_base_cost']);
+const getChannelRuntime = () => channelStorage.getStore() || mainChannelRuntime;
+const getCurrentChannelLogin = () => getChannelRuntime().login;
+const getCurrentBroadcasterId = () => getChannelRuntime().broadcasterId;
+const getCurrentChannelId = () => getChannelRuntime().id;
+const getCurrentDbPath = () => getChannelRuntime().dbPath;
+
+function getSoundsDir(runtime = getChannelRuntime()) {
+  const directory = runtime.isMain
+    ? path.join(__dirname, 'data', 'playsounds')
+    : path.join(__dirname, 'data', 'channels', runtime.id, 'playsounds');
+  if (!fs.existsSync(directory)) fs.mkdirSync(directory, { recursive: true });
+  return directory;
+}
+
+function resolveChannelRuntime(value) {
+  if (!value) return mainChannelRuntime;
+  const normalized = String(value).trim().replace(/^#/, '').toLowerCase();
+  return channelRuntimes.get(normalized) || null;
+}
+
+function runInChannel(runtimeOrId, callback) {
+  const runtime = typeof runtimeOrId === 'string' ? resolveChannelRuntime(runtimeOrId) : runtimeOrId;
+  if (!runtime) throw new Error(`Unknown channel: ${runtimeOrId}`);
+  return channelStorage.run(runtime, callback);
+}
+
+function getChannelMap(name) {
+  const runtime = getChannelRuntime();
+  if (!runtime.maps[name]) runtime.maps[name] = new Map();
+  return runtime.maps[name];
+}
+
+function createChannelMapProxy(name) {
+  return new Proxy(new Map(), {
+    get(_target, property) {
+      const map = getChannelMap(name);
+      const value = Reflect.get(map, property, map);
+      return typeof value === 'function' ? value.bind(map) : value;
+    }
+  });
+}
+
+function getChannelSet(name) {
+  const runtime = getChannelRuntime();
+  if (!runtime.maps[name]) runtime.maps[name] = new Set();
+  return runtime.maps[name];
+}
+
+function createChannelSetProxy(name) {
+  return new Proxy(new Set(), {
+    get(_target, property) {
+      const set = getChannelSet(name);
+      const value = Reflect.get(set, property, set);
+      return typeof value === 'function' ? value.bind(set) : value;
+    }
+  });
+}
+
+const globalConfig = new Proxy({}, {
+  get: (_target, property) => SHARED_CONFIG_KEYS.has(property)
+    ? mainChannelRuntime.config[property]
+    : getChannelRuntime().config[property],
+  set: (_target, property, value) => {
+    const runtime = SHARED_CONFIG_KEYS.has(property) ? mainChannelRuntime : getChannelRuntime();
+    runtime.config[property] = value;
+    return true;
+  },
+  deleteProperty: (_target, property) => delete (SHARED_CONFIG_KEYS.has(property) ? mainChannelRuntime : getChannelRuntime()).config[property],
+  ownKeys: () => Array.from(new Set([
+    ...Reflect.ownKeys(getChannelRuntime().config),
+    ...Reflect.ownKeys(mainChannelRuntime.config).filter(key => SHARED_CONFIG_KEYS.has(key))
+  ])),
+  getOwnPropertyDescriptor: () => ({ enumerable: true, configurable: true })
+});
+
+const POINT_EARNING_MODE_LEGACY = 'legacy';
+const POINT_EARNING_MODE_PASSIVE = 'passive';
+
+function getPointEarningMode(runtime = getChannelRuntime()) {
+  const configuredMode = String(runtime.config.points_earning_mode || '').trim().toLowerCase();
+  if (configuredMode === POINT_EARNING_MODE_PASSIVE) return POINT_EARNING_MODE_PASSIVE;
+  if (configuredMode === POINT_EARNING_MODE_LEGACY) return POINT_EARNING_MODE_LEGACY;
+  return runtime.isMain ? POINT_EARNING_MODE_LEGACY : POINT_EARNING_MODE_PASSIVE;
+}
+
+function getPassiveRewardSettings(runtime = getChannelRuntime()) {
+  const parseNonNegativeInteger = (value, fallback) => {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+  };
+
+  return {
+    intervalMinutes: Math.max(1, parseNonNegativeInteger(runtime.config.reward_passive_interval_minutes, 10)),
+    subscriberPoints: parseNonNegativeInteger(runtime.config.reward_passive_sub, 300),
+    nonSubscriberPoints: parseNonNegativeInteger(runtime.config.reward_passive_nonsub, 60)
+  };
+}
+
+function hasSubscriberChatBadge(tags = {}) {
+  return tags.subscriber === '1' || String(tags.badges || '').split(',').some(badge => {
+    const badgeName = badge.split('/')[0];
+    return badgeName === 'subscriber' || badgeName === 'founder';
+  });
+}
+
+function areRandomSupportRafflesEnabled(runtime = getChannelRuntime()) {
+  const configuredValue = runtime.config.random_support_raffles_enabled;
+  if (configuredValue === undefined || configuredValue === null || configuredValue === '') {
+    return runtime.isMain;
+  }
+  return ['1', 'true', 'yes', 'on'].includes(String(configuredValue).trim().toLowerCase());
+}
+
+const channelState = new Proxy({}, {
+  get: (_target, property) => getChannelRuntime().state[property],
+  set: (_target, property, value) => {
+    getChannelRuntime().state[property] = value;
+    return true;
+  }
+});
+
+for (const stateProperty of [
+  'activeChatWar',
+  'activeRaffle',
+  'activeTrivia',
+  'triviaLoopActive',
+  'nextTriviaTimeout',
+  'consecutiveUnansweredTrivia',
+  'lastChatWideCommandTime'
+]) {
+  Object.defineProperty(globalThis, stateProperty, {
+    configurable: true,
+    get: () => getChannelRuntime().state[stateProperty],
+    set: value => { getChannelRuntime().state[stateProperty] = value; }
+  });
+}
+
+Object.defineProperty(globalThis, 'TARGET_CHANNEL', {
+  configurable: true,
+  get: getCurrentChannelLogin
+});
+
+const customAliasesMap = createChannelMapProxy('customAliasesMap');
+const userCooldowns = createChannelMapProxy('userCooldowns');
+const commandCooldowns = createChannelMapProxy('commandCooldowns');
+const playsoundCooldowns = createChannelMapProxy('playsoundCooldowns');
+const customAliasTimers = createChannelMapProxy('customAliasTimers');
 const ignoredBots = ['nightbot', 'streamelements', 'streamlabs', 'moobot', 'dotabod', 'wizebot', 'fossabot', 'kofibot', 'soundalerts','Tangiabot'];
-let streamStartTime = Date.now();
+
+function setChannelInterval(callback, delay) {
+  return channelList.map(runtime => runInChannel(runtime, () => setInterval(callback, delay)));
+}
 
 const builtInAliases = {
   '!point': '!points',
@@ -128,7 +345,15 @@ const commandConfigSchema = {
   '!bet': ['cooldown']
 };
 
-const activeDuels = new Map();
+const activeDuels = createChannelMapProxy('activeDuels');
+const activeBets = createChannelMapProxy('activeBets');
+const pendingActivityUpdates = createChannelMapProxy('pendingActivityUpdates');
+const spamTimeouts = createChannelMapProxy('spamTimeouts');
+const spamPunishMsgDebounce = createChannelMapProxy('spamPunishMsgDebounce');
+const spamWarnings = createChannelMapProxy('spamWarnings');
+const userSpamHistory = createChannelMapProxy('userSpamHistory');
+const recentMassGifters = createChannelSetProxy('recentMassGifters');
+const thirdPartyEmotes = createChannelMapProxy('thirdPartyEmotes');
 
 const duelWinMessages = [
   "{winner} absolutely destroyed {loser} and took their {amount} points!",
@@ -257,12 +482,93 @@ const FISHING_RARITIES = [
   { rarity: 'common', threshold: 100.0 }
 ];
 
-let db;
-async function initDb() {
-  db = await open({
-    filename: DB_PATH,
+const SHARED_TABLES = ['user_inventory', 'admin_users', 'audit_logs', 'items'];
+
+function rewriteChannelSql(sql, runtime = getChannelRuntime()) {
+  if (!runtime || runtime.isMain || typeof sql !== 'string') return sql;
+
+  let rewritten = sql;
+  const referencesChannelActivity = /\b(last_message_time|true_last_chat_time|timeout_until)\b/i.test(sql);
+  const tables = referencesChannelActivity ? SHARED_TABLES : ['users', ...SHARED_TABLES];
+
+  for (const table of tables) {
+    const tablePattern = new RegExp(`\\b(FROM|JOIN|UPDATE|INTO)\\s+${table}\\b`, 'gi');
+    rewritten = rewritten.replace(tablePattern, (_match, keyword) => `${keyword} shared.${table}`);
+  }
+  return rewritten;
+}
+
+const db = new Proxy({}, {
+  get(_target, property) {
+    const runtime = getChannelRuntime();
+    const connection = runtime.db;
+    if (!connection) {
+      if (property === 'then') return undefined;
+      return () => { throw new Error(`Database is not ready for channel ${runtime.login}`); };
+    }
+    const value = connection[property];
+    if (typeof value !== 'function') return value;
+    return (...args) => {
+      const parameterList = Array.isArray(args[1]) ? args[1] : args.slice(1);
+      const configKey = parameterList[0];
+      if (
+        !runtime.isMain &&
+        property === 'run' &&
+        typeof args[0] === 'string' &&
+        /\bapp_config\b/i.test(args[0]) &&
+        SHARED_CONFIG_KEYS.has(configKey)
+      ) {
+        return mainChannelRuntime.db.run(args[0], ...(Array.isArray(args[1]) ? [args[1]] : args.slice(1)));
+      }
+      if (['run', 'get', 'all'].includes(property) && typeof args[0] === 'string') {
+        args[0] = rewriteChannelSql(args[0], runtime);
+      }
+      return value.apply(connection, args);
+    };
+  }
+});
+
+async function getRecentChannelUsernames(since) {
+  const placeholders = ignoredBots.map(() => '?').join(',');
+  const rows = await db.all(
+    `SELECT username FROM users WHERE true_last_chat_time >= ? AND username NOT IN (${placeholders})`,
+    [since, ...ignoredBots]
+  );
+  return rows.map(row => row.username);
+}
+
+async function adjustRecentChannelUserPoints(amount, since, { percentage = false } = {}) {
+  const usernames = await getRecentChannelUsernames(since);
+  if (usernames.length === 0) return 0;
+
+  const placeholders = usernames.map(() => '?').join(',');
+  const expression = percentage
+    ? 'MAX(0, points + (points * ?))'
+    : 'MAX(0, points + ?)';
+  await db.run(
+    `UPDATE users SET points = ${expression} WHERE username IN (${placeholders})`,
+    [amount, ...usernames]
+  );
+  return usernames.length;
+}
+
+async function addPointsToRecentChannelUsers(amount, since) {
+  return adjustRecentChannelUserPoints(amount, since);
+}
+
+async function initDb(runtime = getChannelRuntime()) {
+  for (const key of Object.keys(runtime.config)) delete runtime.config[key];
+  if (runtime.maps.customAliasesMap) runtime.maps.customAliasesMap.clear();
+  runtime.db = await open({
+    filename: runtime.dbPath,
     driver: sqlite3.Database
   });
+  await runtime.db.exec('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;');
+
+  if (!runtime.isMain) {
+    await runtime.db.run('ATTACH DATABASE ? AS shared', [DB_PATH]);
+  }
+
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       username TEXT PRIMARY KEY,
@@ -286,6 +592,17 @@ async function initDb() {
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_users_points ON users (points DESC);
     CREATE INDEX IF NOT EXISTS idx_users_true_last_chat_time ON users (true_last_chat_time);
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS chatter_subscription_status (
+      twitch_user_id TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      is_subscriber INTEGER NOT NULL DEFAULT 0,
+      last_observed_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_chatter_subscription_observed
+      ON chatter_subscription_status (last_observed_at);
   `);
 
   await db.exec(`
@@ -457,6 +774,21 @@ async function initDb() {
     globalConfig[row.key] = row.value;
   }
 
+  // Point earning is selected per stream. Existing/main streams retain the
+  // message-based system, while newly configured secondary streams default to
+  // Twitch chat-presence rewards.
+  if (!runtime.config.points_earning_mode) {
+    runtime.config.points_earning_mode = runtime.isMain
+      ? POINT_EARNING_MODE_LEGACY
+      : POINT_EARNING_MODE_PASSIVE;
+  }
+  if (runtime.config.reward_passive_interval_minutes === undefined) runtime.config.reward_passive_interval_minutes = '10';
+  if (runtime.config.reward_passive_sub === undefined) runtime.config.reward_passive_sub = '300';
+  if (runtime.config.reward_passive_nonsub === undefined) runtime.config.reward_passive_nonsub = '60';
+  if (runtime.config.random_support_raffles_enabled === undefined) {
+    runtime.config.random_support_raffles_enabled = runtime.isMain ? 'true' : 'false';
+  }
+
   const aliases = await db.all('SELECT * FROM custom_aliases');
   for (const row of aliases) {
     customAliasesMap.set(row.command, { 
@@ -525,9 +857,11 @@ async function initDb() {
 }
 
 async function swapDatabase() {
-  if (db) {
-    await db.close();
-    db = null;
+  for (const runtime of channelList) {
+    if (runtime.db) {
+      await runtime.db.close();
+      runtime.db = null;
+    }
   }
   const stagingPath = path.join(__dirname, 'data', 'database_staging.sqlite');
   const actualPath = path.join(__dirname, 'data', 'database.sqlite');
@@ -535,8 +869,10 @@ async function swapDatabase() {
     if (fs.existsSync(actualPath)) fs.unlinkSync(actualPath);
     fs.renameSync(stagingPath, actualPath);
   }
-  await initDb();
-  await loadItemsConfig();
+  for (const runtime of channelList) {
+    await runInChannel(runtime, () => initDb(runtime));
+  }
+  await runInChannel(mainChannelRuntime, loadItemsConfig);
 }
 
 
@@ -655,10 +991,18 @@ async function getValidAccessToken() {
   return tokens.access_token;
 }
 
-
 const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
+
+app.use((req, res, next) => {
+  const requestedChannel = req.query.channel || req.headers['x-irc-overlay-channel'];
+  const runtime = resolveChannelRuntime(requestedChannel);
+  if (requestedChannel && !runtime) {
+    return res.status(400).json({ success: false, error: `Unknown channel: ${requestedChannel}` });
+  }
+  return runInChannel(runtime || mainChannelRuntime, next);
+});
 
 function clearOverlaySystem() {
   if (activeBets.has('default')) {
@@ -667,20 +1011,16 @@ function clearOverlaySystem() {
     clearBetState(null);
   }
   
-  if (activeChatWar) {
-    activeChatWar.isHidden = true;
+  if (channelState.activeChatWar) {
+    channelState.activeChatWar.isHidden = true;
     clearChatWarState(null);
   }
 
   clearEmotes();
-  sendChatMessage(`Overlay cleared by Admin Dashboard!`);
+  if (channelState.sendChatMessage) {
+    channelState.sendChatMessage(`Overlay cleared by Admin Dashboard!`);
+  }
 }
-
-const spamTimeouts = new Map();
-const spamPunishMsgDebounce = new Map();
-const spamWarnings = new Map();
-
-let globalIsStreamerLive = null;
 
 setupRoutes(app, {
   getDb: () => db,
@@ -695,24 +1035,34 @@ setupRoutes(app, {
   spamTimeouts,
   commandCooldowns,
   playsoundCooldowns,
-  isStreamerLive: async () => globalIsStreamerLive ? await globalIsStreamerLive() : false
+  getCurrentChannelId,
+  getCurrentDbPath,
+  getSoundsDir,
+  adjustRecentChannelUserPoints,
+  channels: channelList.map(({ id, login, isMain }) => ({ id, login, isMain })),
+  isStreamerLive: async () => channelState.isStreamerLive ? await channelState.isStreamerLive() : false
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
+app.get('/playsounds/:channelId/:filename', (req, res) => {
+  const runtime = resolveChannelRuntime(req.params.channelId);
+  if (!runtime) return res.status(404).send('Unknown channel');
+  const filename = path.basename(req.params.filename);
+  res.sendFile(path.join(getSoundsDir(runtime), filename));
+});
 app.use('/playsounds', express.static(path.join(__dirname, 'data', 'playsounds')));
 
-app.listen(PORT, () => {
-  console.log(`==================================================`);
-  console.log(`* Emote Overlay Server running on port ${PORT}!`);
-  console.log(`* OBS Users: Add Browser Source: http://localhost:${PORT}/overlay`);
-  console.log(`==================================================\n`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`==================================================`);
+    console.log(`* Emote Overlay Server running on port ${PORT}!`);
+    console.log(`* OBS Users: Add Browser Source: http://localhost:${PORT}/overlay`);
+    console.log(`==================================================\n`);
+  });
+}
 
 
 
-let thirdPartyEmotes = new Map();
-let sevenTvEmoteSetId = null;
-let lastRefreshTime = 0;
 const REFRESH_COOLDOWN_MS = 10000;
 
 async function loadThirdPartyEmotes(broadcasterId) {
@@ -722,7 +1072,7 @@ async function loadThirdPartyEmotes(broadcasterId) {
     if (res7tv.ok) {
       const data = await res7tv.json();
       if (data.emote_set && data.emote_set.emotes) {
-        sevenTvEmoteSetId = data.emote_set.id;
+        channelState.sevenTvEmoteSetId = data.emote_set.id;
         data.emote_set.emotes.forEach(emote => {
           const flags = emote.data ? emote.data.flags : emote.flags;
           const isZeroWidth = (flags & 256) === 256;
@@ -774,9 +1124,11 @@ async function loadThirdPartyEmotes(broadcasterId) {
 }
 
 async function start() {
-  await initDb();
-  await loadItemsConfig();
-  console.log('* SQLite Database Initialized!');
+  for (const runtime of channelList) {
+    await runInChannel(runtime, () => initDb(runtime));
+  }
+  await runInChannel(mainChannelRuntime, loadItemsConfig);
+  console.log(`* SQLite databases initialized for ${channelList.length} channel(s)!`);
 
   try {
     USER_ACCESS_TOKEN = await getValidAccessToken();
@@ -788,11 +1140,17 @@ async function start() {
 
   console.log('* Fetching Twitch User IDs...');
 
-  const userRes = await fetch(`https://api.twitch.tv/helix/users?login=${TARGET_CHANNEL}`, {
-    headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
-  });
-  const userData = await userRes.json();
-  const BROADCASTER_USER_ID = userData.data[0].id;
+  for (const runtime of channelList) {
+    const userRes = await fetch(`https://api.twitch.tv/helix/users?login=${runtime.login}`, {
+      headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
+    });
+    const userData = await userRes.json();
+    if (!userRes.ok || !userData.data || userData.data.length === 0) {
+      throw new Error(`Unable to resolve Twitch channel ${runtime.login}`);
+    }
+    runtime.broadcasterId = userData.data[0].id;
+    console.log(`* Target channel: ${runtime.login} (Broadcaster ID: ${runtime.broadcasterId})`);
+  }
 
   const myRes = await fetch('https://api.twitch.tv/helix/users', {
     headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
@@ -801,10 +1159,90 @@ async function start() {
   const YOUR_USER_ID = myData.data[0].id;
   BOT_USERNAME = myData.data[0].login;
   console.log(`* Bot User ID: ${YOUR_USER_ID} (${BOT_USERNAME})`);
-  console.log(`* Target channel: ${TARGET_CHANNEL} (Broadcaster ID: ${BROADCASTER_USER_ID})`);
 
+  async function botHelixGet(url, retryOnUnauthorized = true) {
+    let response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
+    });
+    if (response.status === 401 && retryOnUnauthorized) {
+      USER_ACCESS_TOKEN = await getValidAccessToken();
+      response = await botHelixGet(url, false);
+    }
+    return response;
+  }
 
-  const getLevelBase = () => parseInt(globalConfig['level_base_cost'] || '200', 10);
+  async function fetchAllChatters(runtime) {
+    const chatters = [];
+    let cursor = null;
+    do {
+      const query = new URLSearchParams({
+        broadcaster_id: runtime.broadcasterId,
+        moderator_id: YOUR_USER_ID,
+        first: '1000'
+      });
+      if (cursor) query.set('after', cursor);
+      const response = await botHelixGet(`https://api.twitch.tv/helix/chat/chatters?${query.toString()}`);
+      const data = await response.json();
+      if (!response.ok) {
+        const message = data?.message || `Twitch returned ${response.status}`;
+        throw new Error(`Could not fetch chatters for ${runtime.login}: ${message}`);
+      }
+      chatters.push(...(data.data || []));
+      cursor = data.pagination?.cursor || null;
+    } while (cursor);
+    return chatters;
+  }
+
+  async function awardPassivePoints(runtime = getChannelRuntime()) {
+    if (getPointEarningMode(runtime) !== POINT_EARNING_MODE_PASSIVE) return 0;
+    if (!await isStreamerLive()) return 0;
+
+    const chatters = await fetchAllChatters(runtime);
+    const observedSubscribers = await db.all(
+      `SELECT twitch_user_id FROM chatter_subscription_status
+       WHERE is_subscriber = 1 AND last_observed_at >= ?`,
+      [channelState.streamStartTime]
+    );
+    const subscriberIds = new Set(observedSubscribers.map(row => row.twitch_user_id));
+    const settings = getPassiveRewardSettings(runtime);
+    const excludedUsers = new Set([...ignoredBots, BOT_USERNAME].map(name => String(name).toLowerCase()));
+    const eligibleChatters = new Map();
+
+    for (const chatter of chatters) {
+      const username = String(chatter.user_login || '').toLowerCase();
+      if (!username || excludedUsers.has(username)) continue;
+      eligibleChatters.set(chatter.user_id, username);
+    }
+    if (eligibleChatters.size === 0) return 0;
+
+    await db.exec('BEGIN TRANSACTION');
+    try {
+      for (const [userId, username] of eligibleChatters) {
+        const amount = subscriberIds.has(userId)
+          ? settings.subscriberPoints
+          : settings.nonSubscriberPoints;
+        if (amount <= 0) continue;
+        await db.run(
+          `INSERT INTO users (username, points) VALUES (?, ?)
+           ON CONFLICT(username) DO UPDATE SET points = points + excluded.points`,
+          [username, amount]
+        );
+      }
+      await db.exec('COMMIT');
+    } catch (error) {
+      await db.exec('ROLLBACK');
+      throw error;
+    }
+
+    console.log(
+      `* [PASSIVE POINTS] ${runtime.login}: rewarded ${eligibleChatters.size} chatters ` +
+      `(${subscriberIds.size} subscriber badges observed this stream; ` +
+      `${settings.subscriberPoints} sub / ${settings.nonSubscriberPoints} non-sub).`
+    );
+    return eligibleChatters.size;
+  }
+
+  const getLevelBase = () => parseInt(mainChannelRuntime.config['level_base_cost'] || '200', 10);
   const getLvl = (xp) => Math.floor(Math.sqrt((xp || 0) / getLevelBase())) + 1;
   const getXpForLvl = (lvl) => getLevelBase() * Math.pow(lvl - 1, 2);
   
@@ -827,12 +1265,12 @@ async function start() {
     if (taxAmount <= 0) return;
     await isStreamerLive(); // Fetch latest start time if live
     const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
-    const row = await db.get(`SELECT COUNT(*) as count FROM users WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [streamStartTime]);
+    const row = await db.get(`SELECT COUNT(*) as count FROM users WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [channelState.streamStartTime]);
     const count = row ? row.count : 0;
     if (count > 0) {
       const splitAmount = Math.floor(taxAmount / count);
       if (splitAmount > 0) {
-        await db.run(`UPDATE users SET points = points + ? WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [splitAmount, streamStartTime]);
+        await addPointsToRecentChannelUsers(splitAmount, channelState.streamStartTime);
       }
     }
   }
@@ -840,7 +1278,12 @@ async function start() {
   async function addPointsWithBonus(username, amount, ignoreBoosts = false, actionType = 'none') {
     if (ignoreBoosts) {
       const finalAmount = amount;
-      await db.run('UPDATE users SET xp = xp + ?, points = points + ? WHERE username = ?', [Math.max(1, Math.floor(finalAmount / 10)), finalAmount, username]);
+      const xpAmount = Math.max(1, Math.floor(finalAmount / 10));
+      await db.run(
+        `INSERT INTO users (username, points, xp) VALUES (?, ?, ?)
+         ON CONFLICT(username) DO UPDATE SET points = points + excluded.points, xp = xp + excluded.xp`,
+        [username, finalAmount, xpAmount]
+      );
       return finalAmount;
     }
 
@@ -931,7 +1374,11 @@ async function start() {
     for (const collector of taxCollectors) {
       const taxAmount = Math.max(1, Math.round(finalAmount * collector.effect_value));
       // Give tax directly to them without bonuses to prevent infinite loops
-      await db.run('UPDATE users SET points = points + ? WHERE username = ?', [taxAmount, collector.target_user]);
+      await db.run(
+        `INSERT INTO users (username, points) VALUES (?, ?)
+         ON CONFLICT(username) DO UPDATE SET points = points + excluded.points`,
+        [collector.target_user, taxAmount]
+      );
     }
     
     return finalAmount;
@@ -981,7 +1428,7 @@ async function start() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          broadcaster_id: BROADCASTER_USER_ID,
+          broadcaster_id: getCurrentBroadcasterId(),
           sender_id: YOUR_USER_ID,
           message: messageText
         })
@@ -992,15 +1439,19 @@ async function start() {
         console.error('! Failed to send chat message via API:', res.status, errData);
         console.log('* Falling back to IRC messaging...');
         if (activeWs && activeWs.readyState === 1) { // 1 === WebSocket.OPEN
-          activeWs.send(`PRIVMSG #${TARGET_CHANNEL} :${messageText}`);
+          activeWs.send(`PRIVMSG #${getCurrentChannelLogin()} :${messageText}`);
         }
       }
     } catch (err) {
       console.error('! Error sending chat message:', err);
       if (activeWs && activeWs.readyState === 1) {
-        activeWs.send(`PRIVMSG #${TARGET_CHANNEL} :${messageText}`);
+        activeWs.send(`PRIVMSG #${getCurrentChannelLogin()} :${messageText}`);
       }
     }
+  }
+
+  for (const runtime of channelList) {
+    runtime.state.sendChatMessage = (...args) => runInChannel(runtime, () => sendChatMessage(...args));
   }
 
   const userIdCache = new Map();
@@ -1054,10 +1505,45 @@ async function start() {
     }
   }
 
-  await loadThirdPartyEmotes(BROADCASTER_USER_ID);
+  for (const runtime of channelList) {
+    await runInChannel(runtime, () => loadThirdPartyEmotes(runtime.broadcasterId));
+  }
 
-  const pendingActivityUpdates = new Map();
-  setInterval(async () => {
+  // Pajbot-style snapshot rewards: at each configured interval, everyone in
+  // Twitch's current chatters list receives the full interval reward.
+  setChannelInterval(async () => {
+    const runtime = getChannelRuntime();
+    if (getPointEarningMode(runtime) !== POINT_EARNING_MODE_PASSIVE) {
+      channelState.passiveRewardLastRun = null;
+      return;
+    }
+    if (channelState.passiveRewardRunning) return;
+
+    const now = Date.now();
+    const intervalMs = getPassiveRewardSettings(runtime).intervalMinutes * 60 * 1000;
+    if (channelState.passiveRewardLastRun === null) {
+      channelState.passiveRewardLastRun = now;
+      return;
+    }
+    if (now - channelState.passiveRewardLastRun < intervalMs) return;
+
+    channelState.passiveRewardLastRun = now;
+    channelState.passiveRewardRunning = true;
+    try {
+      await awardPassivePoints(runtime);
+      channelState.passiveRewardLastError = null;
+    } catch (error) {
+      const errorMessage = error?.message || String(error);
+      if (channelState.passiveRewardLastError !== errorMessage) {
+        console.error(`! Passive points disabled for this interval on ${runtime.login}: ${errorMessage}`);
+        channelState.passiveRewardLastError = errorMessage;
+      }
+    } finally {
+      channelState.passiveRewardRunning = false;
+    }
+  }, 30000);
+
+  setChannelInterval(async () => {
     if (pendingActivityUpdates.size === 0 || !db) return;
     const updates = Array.from(pendingActivityUpdates.entries());
     pendingActivityUpdates.clear();
@@ -1065,15 +1551,34 @@ async function start() {
     try {
       await db.exec('BEGIN TRANSACTION');
       for (const [username, data] of updates) {
-        if (data.isNew) {
-          await db.run('INSERT INTO users (username, points, last_message_time, true_last_chat_time) VALUES (?, ?, ?, ?) ON CONFLICT(username) DO UPDATE SET true_last_chat_time = ?', 
-            [username, data.pointsReward, data.lastMessageTime, data.trueLastChatTime, data.trueLastChatTime]);
-        } else if (data.awardedPoints) {
-          await db.run('UPDATE users SET points = points + ?, last_message_time = ?, true_last_chat_time = ? WHERE username = ?', 
-            [data.pointsReward, data.lastMessageTime, data.trueLastChatTime, username]);
-        } else {
-          await db.run('UPDATE users SET true_last_chat_time = ? WHERE username = ?', 
-            [data.trueLastChatTime, username]);
+        await db.run(
+          `INSERT INTO users (username, points, last_message_time, true_last_chat_time)
+           VALUES (?, 0, ?, ?)
+           ON CONFLICT(username) DO UPDATE SET
+             last_message_time = CASE WHEN ? THEN excluded.last_message_time ELSE users.last_message_time END,
+             true_last_chat_time = excluded.true_last_chat_time`,
+          [username, data.lastMessageTime, data.trueLastChatTime, data.awardedPoints ? 1 : 0]
+        );
+
+        if (data.twitchUserId) {
+          await db.run(
+            `INSERT INTO chatter_subscription_status
+               (twitch_user_id, username, is_subscriber, last_observed_at)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(twitch_user_id) DO UPDATE SET
+               username = excluded.username,
+               is_subscriber = excluded.is_subscriber,
+               last_observed_at = excluded.last_observed_at`,
+            [data.twitchUserId, username, data.isSubscriber ? 1 : 0, data.trueLastChatTime]
+          );
+        }
+
+        if (data.awardedPoints && data.pointsReward > 0) {
+          await db.run(
+            `INSERT INTO users (username, points) VALUES (?, ?)
+             ON CONFLICT(username) DO UPDATE SET points = points + excluded.points`,
+            [username, data.pointsReward]
+          );
         }
       }
       await db.exec('COMMIT');
@@ -1083,7 +1588,7 @@ async function start() {
     }
   }, 10000);
 
-  setInterval(async () => {
+  setChannelInterval(async () => {
     try {
       if (!db) return;
       const aliases = await db.all('SELECT * FROM custom_aliases WHERE auto_interval_minutes > 0');
@@ -1098,7 +1603,7 @@ async function start() {
 
         let state = customAliasTimers.get(alias.command);
         if (!state) {
-          state = { lastFiredTime: now, lastFiredMsgCount: globalValidMessageCount };
+          state = { lastFiredTime: now, lastFiredMsgCount: channelState.globalValidMessageCount };
           customAliasTimers.set(alias.command, state);
           continue; 
         }
@@ -1106,13 +1611,13 @@ async function start() {
         const msPassed = now - state.lastFiredTime;
         const reqIntervalMs = alias.auto_interval_minutes * 60 * 1000;
         
-        const msgsPassed = globalValidMessageCount - state.lastFiredMsgCount;
+        const msgsPassed = channelState.globalValidMessageCount - state.lastFiredMsgCount;
         const reqMinMsgs = alias.auto_min_messages || 0;
 
         if (msPassed >= reqIntervalMs && msgsPassed >= reqMinMsgs) {
           await sendChatMessage(alias.action);
           state.lastFiredTime = now;
-          state.lastFiredMsgCount = globalValidMessageCount;
+          state.lastFiredMsgCount = channelState.globalValidMessageCount;
         }
       }
     } catch (e) {
@@ -1120,7 +1625,7 @@ async function start() {
     }
   }, 60000);
 
-  setInterval(async () => {
+  setChannelInterval(async () => {
     try {
       const now = Date.now();
       const readyFishes = await db.all('SELECT * FROM pending_fish WHERE catch_time <= ?', [now]);
@@ -1187,16 +1692,16 @@ async function start() {
                      if (isPercent) {
                         const modifier = itemConfig.effectValue;
                         if (modifier < 0) {
-                           await db.run(`UPDATE users SET points = MAX(0, points + (points * ?)) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [modifier, streamStartTime]);
+                           await adjustRecentChannelUserPoints(modifier, channelState.streamStartTime, { percentage: true });
                         } else {
-                           await db.run(`UPDATE users SET points = points + (points * ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [modifier, streamStartTime]);
+                           await adjustRecentChannelUserPoints(modifier, channelState.streamStartTime, { percentage: true });
                         }
                      } else {
                         const pts = Math.floor(itemConfig.effectValue);
                         if (pts < 0) {
-                           await db.run(`UPDATE users SET points = MAX(0, points + ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [pts, streamStartTime]);
+                           await adjustRecentChannelUserPoints(pts, channelState.streamStartTime);
                         } else {
-                           await db.run(`UPDATE users SET points = points + ? WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [pts, streamStartTime]);
+                           await adjustRecentChannelUserPoints(pts, channelState.streamStartTime);
                         }
                      }
                      const gMsg = `${prefix}${item.originalName} ${itemConfig.description}`;
@@ -1666,18 +2171,18 @@ async function start() {
               const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
               if (itemConfig.isPercentage) {
                 if (rawPointsToAdd > 0) {
-                   await db.run(`UPDATE users SET points = points + (points * ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [rawPointsToAdd, streamStartTime]);
+                   await adjustRecentChannelUserPoints(rawPointsToAdd, channelState.streamStartTime, { percentage: true });
                    chatMsgs.push(`🎁 ${chatterName} used ${amountToUse}x ${itemName}! Everyone gained ${rawPointsToAdd * 100}% pts!`);
                 } else {
-                   await db.run(`UPDATE users SET points = MAX(0, points + (points * ?)) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [rawPointsToAdd, streamStartTime]);
+                   await adjustRecentChannelUserPoints(rawPointsToAdd, channelState.streamStartTime, { percentage: true });
                    chatMsgs.push(`⚠️ ${chatterName} used ${amountToUse}x ${itemName}! Everyone lost ${Math.abs(rawPointsToAdd * 100)}% pts!`);
                 }
               } else {
                 if (rawPointsToAdd > 0) {
-                   await db.run(`UPDATE users SET points = points + ? WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [rawPointsToAdd, streamStartTime]);
+                   await adjustRecentChannelUserPoints(rawPointsToAdd, channelState.streamStartTime);
                    chatMsgs.push(`🎁 ${chatterName} used ${amountToUse}x ${itemName}! Everyone gained ${rawPointsToAdd} pts!`);
                 } else {
-                   await db.run(`UPDATE users SET points = MAX(0, points + ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [rawPointsToAdd, streamStartTime]);
+                   await adjustRecentChannelUserPoints(rawPointsToAdd, channelState.streamStartTime);
                    chatMsgs.push(`⚠️ ${chatterName} used ${amountToUse}x ${itemName}! Everyone lost ${Math.abs(rawPointsToAdd)} pts!`);
                 }
               }
@@ -2107,8 +2612,8 @@ async function start() {
             return;
           }
 
-          const oggPath = path.join(__dirname, 'data', 'playsounds', filename + '.ogg');
-          const mp3Path = path.join(__dirname, 'data', 'playsounds', filename + '.mp3');
+          const oggPath = path.join(getSoundsDir(), filename + '.ogg');
+          const mp3Path = path.join(getSoundsDir(), filename + '.mp3');
           
           if (fs.existsSync(oggPath) || fs.existsSync(mp3Path)) {
             const customVolumeRaw = globalConfig[`volume_playsound_${filename}`];
@@ -2165,8 +2670,8 @@ async function start() {
           return;
         }
 
-        const oggPath = path.join(__dirname, 'data', 'playsounds', filename + '.ogg');
-        const mp3Path = path.join(__dirname, 'data', 'playsounds', filename + '.mp3');
+        const oggPath = path.join(getSoundsDir(), filename + '.ogg');
+        const mp3Path = path.join(getSoundsDir(), filename + '.mp3');
         
         let deleted = false;
         if (fs.existsSync(oggPath)) { fs.unlinkSync(oggPath); deleted = true; }
@@ -2188,10 +2693,10 @@ async function start() {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (hasPermission) {
-          if (Date.now() - lastRefreshTime > REFRESH_COOLDOWN_MS) {
-            lastRefreshTime = Date.now();
+          if (Date.now() - channelState.lastRefreshTime > REFRESH_COOLDOWN_MS) {
+            channelState.lastRefreshTime = Date.now();
             console.log(`* [COMMAND] ${chatterName} triggered !refreshemotes. Reloading all emotes...`);
-            await loadThirdPartyEmotes(BROADCASTER_USER_ID);
+            await loadThirdPartyEmotes(getCurrentBroadcasterId());
           } else {
             console.log(`\n* [COMMAND] ${chatterName} triggered !refreshemotes, but it is currently on cooldown.`);
           }
@@ -2204,7 +2709,7 @@ async function start() {
         if (hasPermission || chatterName === TARGET_CHANNEL) {
           const newSize = args[0];
           if (newSize && !isNaN(Number(newSize))) {
-            currentEmoteSizePx = Number(newSize);
+            channelState.currentEmoteSizePx = Number(newSize);
             console.log(`\n${chatterName} set emote size to ${newSize}.`);
             await sendChatMessage(`${chatterName} set emote size to ${newSize}.`, chatterName);
           } else {
@@ -2373,7 +2878,7 @@ async function start() {
           const threshold = Date.now() - durationMs;
           const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
   
-          await db.run(`UPDATE users SET points = points + ? WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [amount, threshold]);
+          await adjustRecentChannelUserPoints(amount, threshold);
           await sendChatMessage(`${chatterName} mass added ${amount} points to everyone who chatted in the last ${timeStr}!`, chatterName);
         
         } else {
@@ -2408,7 +2913,7 @@ async function start() {
                   const threshold = Date.now() - durationMs;
                   const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
           
-                  await db.run(`UPDATE users SET points = MAX(0, points - ?) WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [amount, threshold]);
+                  await adjustRecentChannelUserPoints(-amount, threshold);
                   await sendChatMessage(`${chatterName} mass removed ${amount} points from everyone who chatted in the last ${timeStr}!`, chatterName);
         } else {
           
@@ -2424,7 +2929,7 @@ async function start() {
         if (hasPermission || chatterName === TARGET_CHANNEL) {
           const newDuration = args[0];
           if (newDuration && !isNaN(Number(newDuration))) {
-            currentEmoteDurationMs = Number(newDuration) * 1000;
+            channelState.currentEmoteDurationMs = Number(newDuration) * 1000;
             console.log(`\n${chatterName} set emote duration to ${newDuration} seconds.`);
             await sendChatMessage(`${chatterName} set emote duration to ${newDuration} seconds.`, chatterName);
           } else {
@@ -4381,7 +4886,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
   async function timeoutTwitchUser(targetUserId, durationSeconds, reason = '') {
     try {
-      let res = await fetch(`https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${BROADCASTER_USER_ID}&moderator_id=${YOUR_USER_ID}`, {
+      let res = await fetch(`https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${getCurrentBroadcasterId()}&moderator_id=${YOUR_USER_ID}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${USER_ACCESS_TOKEN}`,
@@ -4399,7 +4904,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
       if (res.status === 401) {
         USER_ACCESS_TOKEN = await getValidAccessToken();
-        res = await fetch(`https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${BROADCASTER_USER_ID}&moderator_id=${YOUR_USER_ID}`, {
+        res = await fetch(`https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${getCurrentBroadcasterId()}&moderator_id=${YOUR_USER_ID}`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${USER_ACCESS_TOKEN}`,
@@ -4427,35 +4932,32 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     }
   }
 
-  let isStreamLiveCached = false;
-  let lastStreamCheckTime = 0;
-
   async function isStreamerLive() {
-    if (Date.now() - lastStreamCheckTime < 10000) {
-      return isStreamLiveCached;
+    if (Date.now() - channelState.lastStreamCheckTime < 10000) {
+      return channelState.isStreamLiveCached;
     }
     try {
-      let res = await fetch(`https://api.twitch.tv/helix/streams?user_id=${BROADCASTER_USER_ID}`, {
+      let res = await fetch(`https://api.twitch.tv/helix/streams?user_id=${getCurrentBroadcasterId()}`, {
         headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
       });
       
       if (res.status === 401) {
         console.log('* Twitch token expired during runtime. Attempting to refresh...');
         USER_ACCESS_TOKEN = await getValidAccessToken();
-        res = await fetch(`https://api.twitch.tv/helix/streams?user_id=${BROADCASTER_USER_ID}`, {
+        res = await fetch(`https://api.twitch.tv/helix/streams?user_id=${getCurrentBroadcasterId()}`, {
           headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
         });
       }
 
       const data = await res.json();
       if (data && data.data) {
-        isStreamLiveCached = data.data.length > 0;
-        lastStreamCheckTime = Date.now();
-        if (isStreamLiveCached && data.data[0].started_at) {
+        channelState.isStreamLiveCached = data.data.length > 0;
+        channelState.lastStreamCheckTime = Date.now();
+        if (channelState.isStreamLiveCached && data.data[0].started_at) {
           const newStartTime = new Date(data.data[0].started_at).getTime();
-          if (streamStartTime !== newStartTime) {
+          if (channelState.streamStartTime !== newStartTime) {
             spamWarnings.clear();
-            streamStartTime = newStartTime;
+            channelState.streamStartTime = newStartTime;
           }
         }
       } else {
@@ -4464,40 +4966,49 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     } catch (e) {
       console.error('! Failed to check stream status:', e);
     }
-    return isStreamLiveCached;
+    return channelState.isStreamLiveCached;
   }
-  
-  globalIsStreamerLive = isStreamerLive;
+
+  for (const runtime of channelList) {
+    runtime.state.isStreamerLive = () => runInChannel(runtime, isStreamerLive);
+  }
 
   function connect7TV(broadcasterId) {
-    if (!sevenTvEmoteSetId) return;
+    const runtime = getChannelRuntime();
+    if (!channelState.sevenTvEmoteSetId) return;
     const sTvWs = new WebSocket('wss://events.7tv.io/v3');
 
     sTvWs.on('open', () => {
-      console.log('* Connected to 7TV Real-Time Updates.');
-      sTvWs.send(JSON.stringify({
-        op: 35,
-        d: {
-          type: "emote_set.update",
-          condition: { object_id: sevenTvEmoteSetId }
-        }
-      }));
+      runInChannel(runtime, () => {
+        console.log(`* Connected to 7TV Real-Time Updates for ${runtime.login}.`);
+        sTvWs.send(JSON.stringify({
+          op: 35,
+          d: {
+            type: "emote_set.update",
+            condition: { object_id: channelState.sevenTvEmoteSetId }
+          }
+        }));
+      });
     });
 
     sTvWs.on('message', (data) => {
-      const msg = JSON.parse(data);
-      if (msg.op === 0 && msg.d.type === 'emote_set.update') {
-        console.log(`\n* [7TV UPDATE DETECTED] Auto-reloading all emotes...`);
-        loadThirdPartyEmotes(broadcasterId);
-      }
+      runInChannel(runtime, () => {
+        const msg = JSON.parse(data);
+        if (msg.op === 0 && msg.d.type === 'emote_set.update') {
+          console.log(`\n* [7TV UPDATE DETECTED:${runtime.login}] Auto-reloading all emotes...`);
+          loadThirdPartyEmotes(broadcasterId);
+        }
+      });
     });
 
     sTvWs.on('close', () => {
-      setTimeout(() => connect7TV(broadcasterId), 5000);
+      setTimeout(() => runInChannel(runtime, () => connect7TV(broadcasterId)), 5000);
     });
   }
 
-  connect7TV(BROADCASTER_USER_ID);
+  for (const runtime of channelList) {
+    runInChannel(runtime, () => connect7TV(runtime.broadcasterId));
+  }
 
   
   // --- Helper Function: Simulate EventSub Emote Fragments ---
@@ -4542,15 +5053,6 @@ for (const [user, data] of Object.entries(war.userVotes)) {
   }
 
   let activeWs = null;
-  const userSpamHistory = new Map();
-
-  const activeBets = new Map();
-  let activeChatWar = null;
-  let activeRaffle = null;
-  let activeTrivia = null;
-  let triviaLoopActive = false;
-  let nextTriviaTimeout = null;
-  let consecutiveUnansweredTrivia = 0;
 
   async function startTriviaQuestion() {
     if (!triviaLoopActive) return;
@@ -4649,11 +5151,12 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         console.error("Trivia start error:", e);
     }
   }
-  let lastChatWideCommandTime = 0;
-  
-  const recentMassGifters = new Set();
 
   async function triggerRandomRaffle(triggerName) {
+    if (!areRandomSupportRafflesEnabled()) {
+      console.log(`* [RANDOM RAFFLE] Skipped ${triggerName} raffle in ${getCurrentChannelLogin()} (disabled).`);
+      return;
+    }
     if (activeRaffle) return; 
 
     const isMulti = Math.random() < 0.5;
@@ -4832,6 +5335,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
     let isReconnecting = false;
     let watchdogTimer = null;
+    let hasJoinedChannels = false;
+    let ircProcessingQueue = Promise.resolve();
 
     function resetWatchdog() {
       if (watchdogTimer) clearTimeout(watchdogTimer);
@@ -4844,7 +5349,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     ws.on('open', () => {
       resetWatchdog();
       isReconnecting = false;
-      console.log(`* Connected to Twitch IRC at ${TARGET_CHANNEL}...`);
+      console.log(`* Connected to Twitch IRC for ${channelList.map(runtime => runtime.login).join(', ')}...`);
       
       // Request all capabilities
       ws.send('CAP REQ :twitch.tv/membership twitch.tv/tags twitch.tv/commands');
@@ -4853,7 +5358,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
     });
 
-    ws.on('message', async (data) => {
+    ws.on('message', (data) => {
+      ircProcessingQueue = ircProcessingQueue.then(async () => {
       resetWatchdog();
       const rawMessage = data.toString().trim();
       const lines = rawMessage.split('\r\n');
@@ -4886,19 +5392,26 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         const channel = parts[2];
 
         // Join channel only after successfully authenticating
-        if (command === '001' || command === '376') {
-          ws.send(`JOIN #${TARGET_CHANNEL.toLowerCase()}`);
-          console.log(`* Authentication successful! Joining #${TARGET_CHANNEL}...`);
+        if ((command === '001' || command === '376') && !hasJoinedChannels) {
+          hasJoinedChannels = true;
+          for (const runtime of channelList) {
+            ws.send(`JOIN #${runtime.login}`);
+            console.log(`* Authentication successful! Joining #${runtime.login}...`);
+          }
         }
 
+        const messageRuntime = resolveChannelRuntime((channel || '').replace(/^#/, '')) || mainChannelRuntime;
+        await runInChannel(messageRuntime, async () => {
         if (command === 'PRIVMSG') {
           const messageText = parts.slice(3).join(' ').substring(1);
           const chatterName = tags['display-name'] ? tags['display-name'].toLowerCase() : source.split('!')[0].substring(1).toLowerCase();
-          const isSub = tags['subscriber'] === '1' || (tags['badges'] && tags['badges'].includes('founder'));
+          const isSub = hasSubscriberChatBadge(tags);
+          const twitchUserId = tags['user-id'] || null;
           
           const subRewardAmt = parseInt(globalConfig['reward_chat_sub'] || '750', 10);
           const nonsubRewardAmt = parseInt(globalConfig['reward_chat_nonsub'] || '500', 10);
           const pointReward = isSub ? subRewardAmt : nonsubRewardAmt;
+          const useLegacyChatRewards = getPointEarningMode() === POINT_EARNING_MODE_LEGACY;
           const bits = parseInt(tags['bits']) || 0;
           if (bits > 0) {
             console.log(`[BITS EVENT DETECTED] Raw tags:`, JSON.stringify(tags));
@@ -4918,7 +5431,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           }
 
           if (db && chatterName && !ignoredBots.includes(chatterName)) {
-            globalValidMessageCount++;
+            channelState.globalValidMessageCount++;
             const now = Date.now();
             let user = await db.get('SELECT last_message_time FROM users WHERE username = ?', chatterName);
             const isLive = await isStreamerLive();
@@ -4929,19 +5442,23 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             if (!user && !pending) {
               pendingActivityUpdates.set(chatterName, {
                 isNew: true,
-                pointsReward: isLive ? pointReward : 0,
+                pointsReward: isLive && useLegacyChatRewards ? pointReward : 0,
                 lastMessageTime: now,
                 trueLastChatTime: now,
-                awardedPoints: true
+                awardedPoints: true,
+                twitchUserId,
+                isSubscriber: isSub
               });
             } else {
               let record = pending || { isNew: false, pointsReward: 0, awardedPoints: false, lastMessageTime: lastMsgTime };
               record.trueLastChatTime = now;
+              record.twitchUserId = twitchUserId;
+              record.isSubscriber = isSub;
               
               const chatCdMins = parseInt(globalConfig['reward_chat_cooldown'] || '25', 10);
               if (now - lastMsgTime >= chatCdMins * 60 * 1000) {
                 record.lastMessageTime = now;
-                if (isLive) {
+                if (isLive && useLegacyChatRewards) {
                   record.pointsReward += pointReward;
                   record.awardedPoints = true;
                 }
@@ -5646,7 +6163,11 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           } else if (command !== 'PONG' && command !== '353' && command !== '366' && command !== '001' && command !== '002' && command !== '003' && command !== '004' && command !== '375' && command !== '372' && command !== '376' && command !== 'JOIN' && command !== 'PART' && command !== 'ROOMSTATE' && command !== 'USERSTATE' && command !== 'GLOBALUSERSTATE') {
             console.log(`[UNHANDLED IRC COMMAND] Command: ${command}, Line: ${line}`);
           }
+        });
       }
+      }).catch(error => {
+        console.error('! IRC message processing error:', error);
+      });
     });
 
     ws.on('close', () => {
@@ -5665,4 +6186,25 @@ for (const [user, data] of Object.entries(war.userVotes)) {
   connectEventSub();
 }
 
-start();
+if (process.env.NODE_ENV !== 'test') {
+  start().catch(error => {
+    console.error('! Fatal startup error:', error);
+  });
+}
+
+export const testInternals = {
+  app,
+  channelList,
+  mainChannelRuntime,
+  resolveChannelRuntime,
+  runInChannel,
+  getCurrentChannelId,
+  rewriteChannelSql,
+  globalConfig,
+  channelState,
+  customAliasesMap,
+  getPointEarningMode,
+  getPassiveRewardSettings,
+  hasSubscriberChatBadge,
+  areRandomSupportRafflesEnabled
+};

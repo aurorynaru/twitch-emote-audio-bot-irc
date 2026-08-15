@@ -328,6 +328,12 @@
 <header style="display: flex; flex-direction: row; align-items: center; justify-content: space-between; padding: 15px 20px; gap: 10px;">
   <div style="display: flex; align-items: center; gap: 20px; flex-shrink: 0;">
     <h1 style="margin: 0;">Admin Dashboard</h1>
+    <label for="channelSwitcher" style="display:flex; align-items:center; gap:8px; margin:0; color:#adadb8;">
+      Managing
+      <select id="channelSwitcher" style="min-width:170px; padding:7px 10px; border-color:#bf94ff;">
+        <option>Loading streams...</option>
+      </select>
+    </label>
     <div style="display: flex; gap: 10px;">
         <button onclick="loadConfig(); const i = this.querySelector('span'); i.style.transform = 'rotate(360deg)'; setTimeout(() => i.style.transform = 'none', 300);" style="background: #3a3a44; color: #00ff7f; border: none; padding: 6px; border-radius: 4px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;" onmouseover="this.style.background='#bf94ff'; this.style.color='#000';" onmouseout="this.style.background='#3a3a44'; this.style.color='#00ff7f';" title="Refresh Dashboard"><span style="display:inline-block; transition: transform 0.4s ease; font-size: 1.4em; line-height: 1;">&#8635;</span></button>
         <button onclick="logoutAdmin()" style="background: #3a3a44; color: #ff4a4a; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#ff4a4a'; this.style.color='#000';" onmouseout="this.style.background='#3a3a44'; this.style.color='#ff4a4a';">Logout</button>
@@ -335,7 +341,7 @@
     <div id="status"></div>
   </div>
   <div class="tabs" style="padding-bottom: 0; margin: 0; flex-wrap: wrap;">
-    <button class="tab-btn active" data-target="tab-global">Global Settings</button>
+    <button class="tab-btn active" data-target="tab-global">Stream Settings</button>
     <button class="tab-btn" data-target="tab-commands">Command Config</button>
     <button class="tab-btn" data-target="tab-custom">Custom Commands</button>
     <button class="tab-btn" data-target="tab-users">User Management</button>
@@ -858,12 +864,12 @@
           </tr>
           <tr style="background: rgba(255,255,255,0.02);">
             <td style="padding: 15px 10px; font-weight: bold;">OBS Overlay URL</td>
-            <td style="padding: 15px 10px;"><a href="/overlay" target="_blank" class="route-link">Open /overlay</a></td>
+            <td style="padding: 15px 10px;"><a id="selectedOverlayLink" href="/overlay" target="_blank" class="route-link">Open /overlay</a></td>
             <td style="padding: 15px 10px;">The main URL to put into your OBS Browser Source for !showemote and !playsound to work.</td>
           </tr>
           <tr style="background: rgba(255,255,255,0.02);">
             <td style="padding: 15px 10px; font-weight: bold;">Upload Audio Files UI</td>
-            <td style="padding: 15px 10px;"><a href="/addsound" target="_blank" class="route-link">Open /addsound</a></td>
+            <td style="padding: 15px 10px;"><a id="selectedAddSoundLink" href="/addsound" target="_blank" class="route-link">Open /addsound</a></td>
             <td style="padding: 15px 10px;">The page used to upload new playsound audio files (.mp3 or .ogg).</td>
           </tr>
           <tr>
@@ -873,12 +879,12 @@
           </tr>
           <tr>
             <td style="padding: 15px 10px; font-weight: bold;">Export Database</td>
-            <td style="padding: 15px 10px;"><a href="/export-database" target="_blank" class="route-link">Download Database</a></td>
+            <td style="padding: 15px 10px;"><a id="selectedExportDatabaseLink" href="/export-database" target="_blank" class="route-link">Download Database</a></td>
             <td style="padding: 15px 10px;">Download a backup copy of the current SQLite database.</td>
           </tr>
           <tr style="background: rgba(255,255,255,0.02);">
             <td style="padding: 15px 10px; font-weight: bold;">Export Playsounds</td>
-            <td style="padding: 15px 10px;"><a href="/export-playsounds" target="_blank" class="route-link">Download Playsounds</a></td>
+            <td style="padding: 15px 10px;"><a id="selectedExportPlaysoundsLink" href="/export-playsounds" target="_blank" class="route-link">Download Playsounds</a></td>
             <td style="padding: 15px 10px;">Download a ZIP file containing all the uploaded audio files.</td>
           </tr>
         </tbody>
@@ -1036,6 +1042,68 @@
 </div>
 
 <script>
+  let selectedAdminChannel = localStorage.getItem('ircOverlayAdminChannel') || '';
+  const originalDashboardFetch = window.fetch.bind(window);
+
+  window.fetch = (resource, options) => {
+    if (typeof resource === 'string' && selectedAdminChannel && (
+      resource.startsWith('/api/admin/') ||
+      resource.startsWith('/api/dashboard/') ||
+      resource.startsWith('/api/economy-rates') ||
+      resource.startsWith('/api/config')
+    )) {
+      const separator = resource.includes('?') ? '&' : '?';
+      resource = `${resource}${separator}channel=${encodeURIComponent(selectedAdminChannel)}`;
+    }
+    return originalDashboardFetch(resource, options);
+  };
+
+  async function initializeChannelSelector() {
+    const selector = document.getElementById('channelSwitcher');
+    try {
+      const response = await originalDashboardFetch('/api/admin/channels');
+      const data = await response.json();
+      if (!data.success || !data.channels?.length) throw new Error('No configured channels');
+
+      if (!data.channels.some(channel => channel.id === selectedAdminChannel)) {
+        selectedAdminChannel = data.channels.find(channel => channel.isMain)?.id || data.channels[0].id;
+      }
+      localStorage.setItem('ircOverlayAdminChannel', selectedAdminChannel);
+
+      selector.innerHTML = data.channels.map(channel =>
+        `<option value="${channel.id}">${channel.login}${channel.isMain ? ' (Main)' : ''}</option>`
+      ).join('');
+      selector.value = selectedAdminChannel;
+      const selectedChannel = data.channels.find(channel => channel.id === selectedAdminChannel);
+      const overlayPath = selectedChannel?.isMain ? '/overlay' : `/overlay/${encodeURIComponent(selectedAdminChannel)}`;
+      const addSoundPath = `/addsound?channel=${encodeURIComponent(selectedAdminChannel)}`;
+      const overlayLink = document.getElementById('selectedOverlayLink');
+      const addSoundLink = document.getElementById('selectedAddSoundLink');
+      const exportDatabaseLink = document.getElementById('selectedExportDatabaseLink');
+      const exportPlaysoundsLink = document.getElementById('selectedExportPlaysoundsLink');
+      if (overlayLink) {
+        overlayLink.href = overlayPath;
+        overlayLink.textContent = `Open ${overlayPath}`;
+      }
+      if (addSoundLink) {
+        addSoundLink.href = addSoundPath;
+        addSoundLink.textContent = `Open ${addSoundPath}`;
+      }
+      if (exportDatabaseLink) exportDatabaseLink.href = `/export-database?channel=${encodeURIComponent(selectedAdminChannel)}`;
+      if (exportPlaysoundsLink) exportPlaysoundsLink.href = `/export-playsounds?channel=${encodeURIComponent(selectedAdminChannel)}`;
+      selector.addEventListener('change', () => {
+        selectedAdminChannel = selector.value;
+        localStorage.setItem('ircOverlayAdminChannel', selectedAdminChannel);
+        window.location.reload();
+      });
+      await loadConfig();
+    } catch (error) {
+      selector.innerHTML = '<option>Unavailable</option>';
+      console.error('Failed to load stream selector:', error);
+      await loadConfig();
+    }
+  }
+
   // Static Reference Data
   const commandInstructions = {
     '!playsound': 'Play an audio file. Usage: !playsound <sound_name>',
@@ -1125,9 +1193,13 @@
     { key: 'reward_watchstreak', label: 'Reward: Watch Streak', type: 'number', def: 1000, category: 'Rewards Config', tooltip: 'Points rewarded for consecutive streams watched' },
     { key: 'reward_watchstreak_scaling', label: 'Watch Streak Scaling', type: 'number', def: 20, category: 'Rewards Config', tooltip: 'Scaling bonus multiplied by streak squared' },
     { key: 'reward_watchstreak_cap', label: 'Watch Streak Cap', type: 'number', def: 100000, category: 'Rewards Config', tooltip: 'Maximum points awarded for watch streak' },
+    { key: 'points_earning_mode', label: 'Chat Activity Earning Mode', type: 'select', options: [{ value: 'legacy', label: 'Legacy: reward messages' }, { value: 'passive', label: 'Passive: reward chat presence' }], def: 'legacy', category: 'Rewards Config', tooltip: 'Choose how this stream awards automatic activity points. Other rewards such as bits, subs, games, and items are unaffected.' },
     { key: 'reward_chat_sub', label: 'Reward: Chat (Sub)', type: 'number', def: 750, category: 'Rewards Config', tooltip: 'Points rewarded to subscribers for chatting (respects cooldown)' },
     { key: 'reward_chat_nonsub', label: 'Reward: Chat (Non-Sub)', type: 'number', def: 500, category: 'Rewards Config', tooltip: 'Points rewarded to non-subscribers for chatting (respects cooldown)' },
     { key: 'reward_chat_cooldown', label: 'Reward: Chat Cooldown (mins)', type: 'number', def: 25, category: 'Rewards Config', tooltip: 'Minutes between chat rewards' },
+    { key: 'reward_passive_sub', label: 'Passive Reward: Verified Subscriber', type: 'number', def: 300, category: 'Rewards Config', tooltip: 'Points awarded when Twitch has shown this user\'s subscriber or founder badge in chat during the current stream' },
+    { key: 'reward_passive_nonsub', label: 'Passive Reward: Non-Sub / Unknown', type: 'number', def: 60, category: 'Rewards Config', tooltip: 'Points awarded when the user is a non-subscriber or has not chatted this stream, so subscriber status is unknown' },
+    { key: 'reward_passive_interval_minutes', label: 'Passive Reward Interval (mins)', type: 'number', def: 10, category: 'Rewards Config', tooltip: 'How often to snapshot the live stream chatters list and award passive points' },
     { key: 'reward_trivia', label: 'Reward: Trivia Winner', type: 'number', def: 1000, category: 'Trivia Config', tooltip: 'Points rewarded to the first person to guess the correct trivia answer' },
     { key: 'reward_trivia_submitter', label: 'Reward: Trivia Submitter', type: 'number', def: 50, category: 'Trivia Config', tooltip: 'Points rewarded to the submitter when their trivia is answered' },
     { key: 'reward_playsound_submitter', label: 'Reward: Playsound Submitter', type: 'number', def: 50, category: 'Rewards Config', tooltip: 'Points rewarded to the submitter when their playsound is played' },
@@ -1137,6 +1209,7 @@
     { key: 'reward_raffle_max', label: 'Reward: Random Raffle Max', type: 'number', def: 25000, category: 'Rewards Config', tooltip: 'Maximum points won in a random raffle trigged by subbing/resubbing/gifting subs and gifting bits' },
     { key: 'reward_multiraffle_min', label: 'Reward: Random Multi-Raffle Min', type: 'number', def: 3, category: 'Rewards Config', tooltip: 'Minimum winners in a random multi-raffle trigged by subbing/resubbing/gifting subs' },
     { key: 'reward_multiraffle_max', label: 'Reward: Random Multi-Raffle Max', type: 'number', def: 12, category: 'Rewards Config', tooltip: 'Maximum winners in a random multi-raffle trigged by subbing/resubbing/gifting subs' },
+    { key: 'random_support_raffles_enabled', label: 'Automatic Support-Event Raffles', type: 'checkbox', def: true, category: 'Rewards Config', tooltip: 'Automatically start a random raffle after bits, subscriptions, resubscriptions, gift subs, or continuing a gifted subscription. Manual raffle commands are unaffected.' },
     { key: 'duel_tax', label: 'Duel Tax Rate (0 to 1)', type: 'text', def: 0.05, category: 'General Config', tooltip: 'Percentage of points taken from winning duels (e.g. 0.05 for 5%)' },
     { key: 'mod_wide_cost', label: 'Modifier: Wide Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the wide modifier for emotes' },
     { key: 'mod_cursed_cost', label: 'Modifier: Cursed Cost', type: 'number', def: 0, category: 'Emote Modifiers Config', tooltip: 'Cost added when using the cursed modifier for emotes' },
@@ -1421,6 +1494,10 @@
         if (g.type === 'checkbox') {
           const isChecked = (value === '1' || value === 1 || value === 'true' || value === true);
           inputHtml = `<input type="checkbox" data-key="${g.key}" ${isChecked ? 'checked' : ''}>`;
+        } else if (g.type === 'select') {
+          inputHtml = `<select data-key="${g.key}">${g.options.map(option =>
+            `<option value="${option.value}" ${String(value) === option.value ? 'selected' : ''}>${option.label}</option>`
+          ).join('')}</select>`;
         } else {
           inputHtml = `<input type="${g.type}" data-key="${g.key}" value="${value}">`;
         }
@@ -1641,7 +1718,7 @@
   // Handle saving Global and Command config
   document.querySelectorAll('.save-global-btn, .save-commands-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const inputs = document.querySelectorAll('input[data-key]');
+      const inputs = document.querySelectorAll('input[data-key], select[data-key]');
       const updatesArray = [];
       inputs.forEach(input => {
         let val = input.value;
@@ -2018,7 +2095,8 @@
       });
     }
 
-    playTestAudio(`/playsounds/${encodeURIComponent(sound)}.ogg`, `/playsounds/${encodeURIComponent(sound)}.mp3`);
+    const soundBase = `/playsounds/${encodeURIComponent(selectedAdminChannel)}/${encodeURIComponent(sound)}`;
+    playTestAudio(`${soundBase}.ogg`, `${soundBase}.mp3`);
   });
 
   document.getElementById('stopTestSoundBtn').addEventListener('click', () => {
@@ -2972,7 +3050,7 @@
   }
 
   // Initialize
-  loadConfig();
+  initializeChannelSelector();
 </script>
 
 <script>
@@ -3091,7 +3169,7 @@
       
       // Start new file
       const vol = document.getElementById('managePsVolume') ? document.getElementById('managePsVolume').value : 0.5;
-      currentPreviewAudio = new Audio('/playsounds/' + encodeURIComponent(filename));
+      currentPreviewAudio = new Audio(`/playsounds/${encodeURIComponent(selectedAdminChannel)}/${encodeURIComponent(filename)}`);
       currentPreviewAudio.volume = vol;
       currentPreviewFilename = filename;
       
