@@ -5918,7 +5918,11 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
 
 
-          if (chatText.toLowerCase().startsWith('!showemote ')) {
+          if (chatText.toLowerCase() === '!showemote') {
+            const dynamicShowEmoteCost = parseInt(globalConfig['cmd_!showemote_cost'], 10) || 0;
+            await sendChatMessage(`Usage: !showemote <emote> (Base Cost: ${dynamicShowEmoteCost} point(s)). Modifiers cost extra.`);
+            return;
+          } else if (chatText.toLowerCase().startsWith('!showemote ')) {
             // if (!await isStreamerLive()) return;
 
             const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator'].includes(b.set_id));
