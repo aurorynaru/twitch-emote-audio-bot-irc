@@ -2670,7 +2670,7 @@ async function start() {
         } else {
           const dynamicCostRaw = globalConfig['cmd_!playsound_cost'];
           const activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
-          await sendChatMessage(`Usage: !playsound <soundname> (Cost: ${activeCost} point(s))`);
+          await sendChatMessage(`Usage: !playsound <soundname>  cost: ${activeCost} points`);
           return false;
         }
       }
@@ -5930,7 +5930,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
           if (chatText.toLowerCase() === '!showemote') {
             const dynamicShowEmoteCost = parseInt(globalConfig['cmd_!showemote_cost'], 10) || 0;
-            await sendChatMessage(`Usage: !showemote <emote> (Base Cost: ${dynamicShowEmoteCost} point(s)). Modifiers cost extra.`);
+            await sendChatMessage(`Usage: !showemote <emote>  cost: ${dynamicShowEmoteCost} points (Modifiers cost extra)`);
             return;
           } else if (chatText.toLowerCase().startsWith('!showemote ')) {
             // if (!await isStreamerLive()) return;
