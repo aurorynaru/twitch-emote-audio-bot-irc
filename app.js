@@ -1911,7 +1911,7 @@ async function start() {
 
         if (args.length === 0) {
           await sendWhisper(chatterName, `you are Level ${currentLvl}! You need ${xpNeeded} more XP (points) for Level ${currentLvl + 1}.`, true);
-          return;
+          return false;
         }
 
         let spendAmount = 0;
@@ -1933,12 +1933,12 @@ async function start() {
 
         if (spendAmount <= 0) {
           await sendWhisper(chatterName, `invalid amount! Use !lvlup <amount> or !lvlup 30% or !lvlup all`, true);
-          return;
+          return false;
         }
 
         if (user.points < spendAmount) {
           await sendWhisper(chatterName, `you don't have enough points!`, true);
-          return;
+          return false;
         }
 
         let gainedXp = Math.floor(spendAmount * getPointsToXpRate());
@@ -2002,7 +2002,7 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         if (args.length === 0) {
         //  await sendChatMessage(`${chatterName}, please specify an item to use! Example: !use energy drink 1 london passport all`, chatterName);
-          return;
+          return false;
         }
 
         let useTarget = null;
@@ -2063,11 +2063,11 @@ async function start() {
 
         if (requestedItems.length === 0) {
           await sendChatMessage(`${chatterName}, I couldn't recognize any items!`, chatterName);
-          return;
+          return false;
         }
 
         if (useTarget && ignoredBots.includes(useTarget)) {
-          return;
+          return false;
         }
 
         let chatMsgs = [];
@@ -2458,6 +2458,7 @@ async function start() {
           }
         } else if (!itemsConsumed) {
           await sendWhisper(chatterName, "You don't have those items or they cannot be used!", true);
+          return false;
         }
       }
     },
@@ -2584,7 +2585,7 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         if (!await isStreamerLive()) {
           console.log(`[PLAYSOUND] Streamer is offline. Ignoring !playsound ${args[0]} from ${chatterName}.`);
-          return;
+          return false;
         }
         args = [args[0]]
 
@@ -2598,7 +2599,7 @@ async function start() {
               const now = Date.now();
               if (now - lastPlayed < cooldownMs) {
                 console.log(`[PLAYSOUND] Sound '${filename}' is on custom cooldown. Ignoring.`);
-                return;
+                return false;
               }
             }
           }
@@ -2616,7 +2617,7 @@ async function start() {
             const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
             if (!user || user.points < activeCost) {
               console.log(`[PLAYSOUND] ${chatterName} lacks points for ${filename}`);
-              return;
+              return false;
             }
             await db.run('UPDATE users SET points = points - ? WHERE username = ?', [activeCost, chatterName]);
           }
@@ -2627,7 +2628,7 @@ async function start() {
             if (activeCost > 0) {
               await db.run('UPDATE users SET points = points + ? WHERE username = ?', [activeCost, chatterName]);
             }
-            return;
+            return false;
           }
 
           const oggPath = path.join(getSoundsDir(), filename + '.ogg');
@@ -2664,7 +2665,13 @@ async function start() {
             if (activeCost > 0) {
               await db.run('UPDATE users SET points = points + ? WHERE username = ?', [activeCost, chatterName]);
             }
+            return false;
           }
+        } else {
+          const dynamicCostRaw = globalConfig['cmd_!playsound_cost'];
+          const activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
+          await sendChatMessage(`Usage: !playsound <soundname> (Cost: ${activeCost} point(s))`);
+          return false;
         }
       }
     },
@@ -3000,18 +3007,18 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         if (args.length < 2) {
           await sendChatMessage(`${chatterName} invalid format! Use: !duel <@user> <amount>`, chatterName);
-          return;
+          return false;
         }
 
         const target = args[0].replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
         if (!target) {
           await sendChatMessage(`${chatterName} invalid user provided!`, chatterName);
-          return;
+          return false;
         }
 
         if (target === chatterName) {
           await sendChatMessage(`${chatterName} you cannot duel yourself! Pepeg `, chatterName);
-          return;
+          return false;
         }
 
         const amountInput = args[1].toLowerCase();
@@ -3020,7 +3027,7 @@ async function start() {
         const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
         if (!user || user.points <= 0) {
           await sendChatMessage(`${chatterName} you don't have enough points to duel! BrokeBoy `, chatterName);
-          return;
+          return false;
         }
 
         if (amountInput === 'all') {
@@ -3036,7 +3043,7 @@ async function start() {
 
         if (isNaN(betAmount) || betAmount <= 0 || betAmount > user.points) {
           await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
-          return;
+          return false;
         }
 
         const knifeMod = await db.get('SELECT * FROM user_modifiers WHERE username = ? AND modifier = ?', [chatterName, 'auto_duel']);
@@ -3044,7 +3051,7 @@ async function start() {
           const targetUserObj = await db.get('SELECT points FROM users WHERE username = ?', target);
           if (!targetUserObj || targetUserObj.points <= 0) {
             await sendChatMessage(`${chatterName} you tried to assassinate ${target}, but they have no points! BrokeBoy  `, chatterName);
-            return;
+            return false;
           }
           
           let actualBet = betAmount;
@@ -3088,7 +3095,7 @@ async function start() {
 
         if (activeDuels.has(target)) {
           await sendChatMessage(`${chatterName} ${target} already has a pending duel!`, chatterName);
-          return;
+          return false;
         }
 
         const mirrorShields = await getActiveEffects(target, 'mirror_shield');
@@ -3140,7 +3147,7 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         if (!activeDuels.has(chatterName)) {
         //  await sendChatMessage(`${chatterName} you have no pending duel requests!`, chatterName);
-          return;
+          return false;
         }
 
         const duel = activeDuels.get(chatterName);
@@ -3156,7 +3163,7 @@ async function start() {
             .replace(/{challenger}/g, `${duel.challenger}`)
             .replace(/{amount}/g, duel.amount);
           await sendChatMessage(msg);
-          return;
+          return false;
         }
 
   
@@ -3222,7 +3229,7 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         if (!activeDuels.has(chatterName)) {
           //await sendChatMessage(`${chatterName} you have no pending duel requests to decline!`, chatterName);
-          return;
+          return false;
         }
 
         const duel = activeDuels.get(chatterName);
@@ -3297,7 +3304,7 @@ async function start() {
         const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
         if (!user || user.points <= 0) {
           await sendWhisper(chatterName, "You don't have any points to gamble! BrokeBoy", true);
-          return;
+          return false;
         }
 
         let amountInput = args[0] ? args[0].toLowerCase() : '';
@@ -3316,7 +3323,7 @@ async function start() {
 
         if (isNaN(betAmount) || betAmount <= 0 || betAmount > user.points) {
           //await sendWhisper(chatterName, "Invalid amount! Try !gamble 50, !gamble 50%, or !gamble all", true);
-          return;
+          return false;
         }
 
         let isWin = Math.random() < 0.5;
@@ -3581,19 +3588,19 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       execute: async (args, chatterName, event, hasPermission) => {
         if (args.length < 1) {
           await sendChatMessage(`${chatterName} usage: !shoot @username`);
-          return;
+          return false;
         }
 
         const target = args[0].replace('@', '').toLowerCase();
 
         if (target === chatterName.toLowerCase()) {
           // await sendChatMessage(`${chatterName} you cannot shoot yourself!`);
-           return;
+           return false;
         }
 
         if (target === TARGET_CHANNEL.toLowerCase() || target === BOT_USERNAME.toLowerCase() || ignoredBots.includes(target)) {
           // await sendChatMessage(`${chatterName} you cannot shoot the broadcaster, bots, or staff!`);
-           return;
+           return false;
         }
 
         const cost = parseInt(globalConfig['cmd_!shoot_cost'] !== undefined ? globalConfig['cmd_!shoot_cost'] : '1000', 10);
@@ -3604,7 +3611,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
           if (!user || user.points < cost) {
             await sendChatMessage(`${chatterName} you need ${cost} points to use !shoot! BrokeBoy `);
-            return;
+            return false;
           }
         }
 
@@ -3612,7 +3619,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           const targetId = await getTwitchUserId(target);
           if (!targetId) {
             await sendChatMessage(`${chatterName} could not find Twitch user ${target}!`);
-            return;
+            return false;
           }
 
           // Fetch current timeout_until
@@ -3685,7 +3692,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           const timeLeft = Math.max(0, Math.ceil((pending.catch_time - Date.now()) / 1000));
           if (timeLeft > 0) {
            // await sendWhisper(chatterName, `You are already fishing! Wait ${timeLeft} more seconds.`, true);
-            return;
+            return false;
           }
         }
 
@@ -3700,7 +3707,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
             if (!user || user.points < fishCost) {
               await sendWhisper(chatterName, `You need ${fishCost} points to fish! (Or use a fishing ticket)`, true);
-              return;
+              return false;
             }
             await db.run('UPDATE users SET points = points - ? WHERE username = ?', [fishCost, chatterName]);
           }
@@ -3764,7 +3771,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         const items = await db.all('SELECT * FROM user_inventory WHERE username = ? AND quantity > 0', chatterName);
         if (items.length === 0) {
           await sendWhisper(chatterName, `your inventory is empty!`, true);
-          return;
+          return false;
         }
         
         const rarityOrder = { 'Legendary': 1, 'Rare': 2, 'Uncommon': 3, 'Common': 4 };
@@ -4123,33 +4130,33 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         const bet = activeBets.get('default');
         if (!bet) {
        //   await sendChatMessage(`${chatterName} there is no active bet right now!`, chatterName);
-          return;
+          return false;
         }
         if (!bet.isOpen) {
           await sendChatMessage(`${chatterName} betting is closed for the current bet!`, chatterName);
-          return;
+          return false;
         }
 
         if (bet.userBets[chatterName]) {
           await sendChatMessage(`${chatterName} you have already bet ${bet.userBets[chatterName].amount} on [${bet.userBets[chatterName].choice}]!`, chatterName);
-          return;
+          return false;
         }
 
         if (args.length < 2) {
           await sendChatMessage(`${chatterName} invalid format! Use: !bet <choice> <amount>`, chatterName);
-          return;
+          return false;
         }
 
         const choice = args[0].toLowerCase();
         if (!bet.choices.includes(choice)) {
           await sendChatMessage(`${chatterName} invalid choice! Valid choices are: ${bet.choices.join(', ')}`, chatterName);
-          return;
+          return false;
         }
 
         const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
         if (!user || user.points <= 0) {
           await sendChatMessage(`${chatterName} you don't have enough points!`, chatterName);
-          return;
+          return false;
         }
 
         const amountInput = args[1].toLowerCase();
@@ -4168,7 +4175,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
         if (isNaN(betAmount) || betAmount <= 0 || betAmount > user.points) {
           await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
-          return;
+          return false;
         }
 
         await db.run('UPDATE users SET points = points - ? WHERE username = ?', [betAmount, chatterName]);
@@ -4187,7 +4194,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         const bet = activeBets.get('default');
         if (!bet) {
        //   await sendChatMessage(`There is no active bet right now!`);
-          return;
+          return false;
         }
 
         const ratioTexts = bet.choices.map(choice => {
@@ -5892,7 +5899,6 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 console.log(`[COOLDOWN] ${chatterName} is on command cooldown for ${commandName}.`);
                 return;
               }
-              commandCooldowns.set(`${chatterName}_${commandName}`, now);
             }
 
             const globalCmdCdOnlineRaw = globalConfig[`cmd_${commandName}_global_chat_cooldown`];
@@ -5906,13 +5912,17 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                 console.log(`[RATE LIMIT] ${commandName} is on global chat cooldown.`);
                 return;
               }
-              commandCooldowns.set(`GLOBAL_${commandName}`, now);
             }
 
-            userCooldowns.set(chatterName, now);
-            lastChatWideCommandTime = now;
+            const success = await command.execute(args, chatterName, event, hasPermission);
             
-            await command.execute(args, chatterName, event, hasPermission);
+            if (success !== false) {
+              if (cmdCd > 0) commandCooldowns.set(`${chatterName}_${commandName}`, now);
+              if (globalCmdCd > 0) commandCooldowns.set(`GLOBAL_${commandName}`, now);
+              userCooldowns.set(chatterName, now);
+              lastChatWideCommandTime = now;
+            }
+
             return;
           }
 
@@ -5959,7 +5969,6 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                   console.log(`[COOLDOWN] ${chatterName} is on command cooldown for !showemote.`);
                   return;
                 }
-                commandCooldowns.set(`${chatterName}_!showemote`, now);
               }
 
               const globalCmdCdOnlineRaw = globalConfig[`cmd_!showemote_global_chat_cooldown`];
@@ -5973,11 +5982,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                   console.log(`[RATE LIMIT] !showemote is on global chat cooldown.`);
                   return;
                 }
-                commandCooldowns.set(`GLOBAL_!showemote`, now);
               }
-
-              userCooldowns.set(chatterName, now);
-              lastChatWideCommandTime = now;
             }
         
             const tokens = [];
@@ -6096,6 +6101,24 @@ for (const [user, data] of Object.entries(war.userVotes)) {
               if (finalCost > 0) {
                 await db.run('UPDATE users SET points = points - ? WHERE username = ?', [finalCost, chatterName]);
               }
+            }
+            
+            if (!isMod) {
+              const now = Date.now();
+              const cmdCdOnlineRaw = globalConfig[`cmd_!showemote_cooldown`];
+              const cmdCdOfflineRaw = globalConfig[`cmd_!showemote_offline_cooldown`];
+              const cmdCdRaw = (isOffline && cmdCdOfflineRaw !== undefined && cmdCdOfflineRaw !== '') ? cmdCdOfflineRaw : cmdCdOnlineRaw;
+              const cmdCd = cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
+              if (cmdCd > 0) commandCooldowns.set(`${chatterName}_!showemote`, now);
+
+              const globalCmdCdOnlineRaw = globalConfig[`cmd_!showemote_global_chat_cooldown`];
+              const globalCmdCdOfflineRaw = globalConfig[`cmd_!showemote_offline_global_chat_cooldown`];
+              const globalCmdCdRaw = (isOffline && globalCmdCdOfflineRaw !== undefined && globalCmdCdOfflineRaw !== '') ? globalCmdCdOfflineRaw : globalCmdCdOnlineRaw;
+              const globalCmdCd = globalCmdCdRaw !== undefined ? parseInt(globalCmdCdRaw, 10) : 0;
+              if (globalCmdCd > 0) commandCooldowns.set(`GLOBAL_!showemote`, now);
+
+              userCooldowns.set(chatterName, now);
+              lastChatWideCommandTime = now;
             }
   
             for (let b of broadcastTokens) {
