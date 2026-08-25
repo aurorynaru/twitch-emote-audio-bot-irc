@@ -2584,26 +2584,69 @@ async function start() {
       manualCost: true,
       execute: async (args, chatterName, event, hasPermission) => {
         if (!await isStreamerLive()) {
-          console.log(`[PLAYSOUND] Streamer is offline. Ignoring !playsound ${args[0]} from ${chatterName}.`);
+          console.log(`[PLAYSOUND] Streamer is offline. Ignoring !playsound from ${chatterName}.`);
           return false;
         }
-        args = [args[0]]
 
-        const filename = args.join('').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
-        if (filename) {
+        if (args.length === 0) {
+          const dynamicCostRaw = globalConfig['cmd_!playsound_cost'];
+          const activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
+          await sendChatMessage(`Usage: !playsound <soundname> [speed] ... cost: ${activeCost} points per sound`);
+          return false;
+        }
+        
+        const soundsToPlay = [];
+        for (let i = 0; i < args.length; i++) {
+          const arg = args[i];
+          const parsedFloat = parseFloat(arg);
+          // Check if it's a number to be used as speed (must not be empty, must parse cleanly)
+          if (!isNaN(parsedFloat) && !isNaN(arg) && arg.trim() !== '' && soundsToPlay.length > 0) {
+            soundsToPlay[soundsToPlay.length - 1].speed = parsedFloat;
+          } else {
+            const filename = arg.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+            if (filename) {
+              soundsToPlay.push({ filename, speed: 1.0 });
+            }
+          }
+        }
+        
+        if (soundsToPlay.length === 0) {
+          return false;
+        }
+
+        const validSounds = [];
+        let totalCost = 0;
+        const now = Date.now();
+        
+        for (const item of soundsToPlay) {
+          const filename = item.filename;
+          
           const customCooldownRaw = globalConfig[`cooldown_playsound_${filename}`];
           if (customCooldownRaw !== undefined && customCooldownRaw !== '') {
             const cooldownMs = parseInt(customCooldownRaw, 10);
             if (cooldownMs > 0) {
               const lastPlayed = playsoundCooldowns.get(filename) || 0;
-              const now = Date.now();
               if (now - lastPlayed < cooldownMs) {
                 console.log(`[PLAYSOUND] Sound '${filename}' is on custom cooldown. Ignoring.`);
-                return false;
+                continue;
               }
             }
           }
+          
+          const disabledRaw = globalConfig[`disabled_playsound_${filename}`];
+          if (disabledRaw === 'true' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw))) {
+             console.log(`[PLAYSOUND] Sound '${filename}' is disabled.`);
+             continue;
+          }
 
+          const oggPath = path.join(getSoundsDir(), filename + '.ogg');
+          const mp3Path = path.join(getSoundsDir(), filename + '.mp3');
+          
+          if (!fs.existsSync(oggPath) && !fs.existsSync(mp3Path)) {
+            console.log(`[PLAYSOUND] Audio not found for: ${filename}`);
+            continue;
+          }
+          
           const customCostRaw = globalConfig[`cost_playsound_${filename}`];
           const dynamicCostRaw = globalConfig['cmd_!playsound_cost'];
           let activeCost = 0;
@@ -2612,66 +2655,51 @@ async function start() {
           } else {
             activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
           }
-
-          if (activeCost > 0) {
-            const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
-            if (!user || user.points < activeCost) {
-              console.log(`[PLAYSOUND] ${chatterName} lacks points for ${filename}`);
-              return false;
-            }
-            await db.run('UPDATE users SET points = points - ? WHERE username = ?', [activeCost, chatterName]);
-          }
-
-          const disabledRaw = globalConfig[`disabled_playsound_${filename}`];
-          if (disabledRaw === 'true' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw))) {
-            console.log(`[PLAYSOUND] Sound '${filename}' is disabled.`);
-            if (activeCost > 0) {
-              await db.run('UPDATE users SET points = points + ? WHERE username = ?', [activeCost, chatterName]);
-            }
-            return false;
-          }
-
-          const oggPath = path.join(getSoundsDir(), filename + '.ogg');
-          const mp3Path = path.join(getSoundsDir(), filename + '.mp3');
           
-          if (fs.existsSync(oggPath) || fs.existsSync(mp3Path)) {
-            const customVolumeRaw = globalConfig[`volume_playsound_${filename}`];
-            const volume = customVolumeRaw !== undefined && customVolumeRaw !== '' ? parseFloat(customVolumeRaw) : 1.0;
-            
-            if (fs.existsSync(oggPath)) {
-              broadcastAudio(filename + '.ogg', volume);
-              playsoundCooldowns.set(filename, Date.now());
-              console.log(`[PLAYSOUND] ${chatterName} played audio: ${filename}.ogg (-${activeCost} point(s)) at ${volume}x volume`);
-            } else {
-              broadcastAudio(filename + '.mp3', volume);
-              playsoundCooldowns.set(filename, Date.now());
-              console.log(`[PLAYSOUND] ${chatterName} played audio: ${filename}.mp3 (-${activeCost} point(s)) at ${volume}x volume`);
-            }
-            
-            try {
-              const meta = await db.get('SELECT submitter, submission_id FROM playsounds_metadata WHERE name = ?', [filename]);
-              if (meta && meta.submitter && meta.submission_id) {
-                const authorRewardRaw = globalConfig['reward_playsound_submitter'];
-                const authorReward = authorRewardRaw !== undefined ? parseInt(authorRewardRaw, 10) : 50; 
-                if (authorReward > 0) {
-                  await db.run('UPDATE users SET points = points + ? WHERE username = ?', [authorReward, meta.submitter]);
-                  await db.run('UPDATE user_submissions SET points_earned = points_earned + ? WHERE id = ?', [authorReward, meta.submission_id]);
-                  console.log(`[PLAYSOUND] Awarded ${authorReward} points to submitter ${meta.submitter}`);
-                }
-              }
-            } catch (err) {}
-          } else {
-            console.log(`[PLAYSOUND] Audio not found for: ${filename}`);
-            if (activeCost > 0) {
-              await db.run('UPDATE users SET points = points + ? WHERE username = ?', [activeCost, chatterName]);
-            }
-            return false;
-          }
-        } else {
+          item.cost = activeCost;
+          item.extension = fs.existsSync(oggPath) ? '.ogg' : '.mp3';
+          validSounds.push(item);
+          totalCost += activeCost;
+        }
+
+        if (validSounds.length === 0) {
           const dynamicCostRaw = globalConfig['cmd_!playsound_cost'];
           const activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
-          await sendChatMessage(`Usage: !playsound <soundname>  cost: ${activeCost} points`);
+          await sendChatMessage(`No valid sounds found or all on cooldown. Usage: !playsound <soundname> [speed] ... cost: ${activeCost} points per sound`);
           return false;
+        }
+
+        if (totalCost > 0) {
+          const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+          if (!user || user.points < totalCost) {
+            console.log(`[PLAYSOUND] ${chatterName} lacks points for combo (needs ${totalCost})`);
+            await sendChatMessage(`${chatterName} you don't have enough points (${totalCost} needed)!`);
+            return false;
+          }
+          await db.run('UPDATE users SET points = points - ? WHERE username = ?', [totalCost, chatterName]);
+        }
+
+        for (const item of validSounds) {
+          const filename = item.filename;
+          const customVolumeRaw = globalConfig[`volume_playsound_${filename}`];
+          const volume = customVolumeRaw !== undefined && customVolumeRaw !== '' ? parseFloat(customVolumeRaw) : 1.0;
+          
+          broadcastAudio(filename + item.extension, volume, item.speed);
+          playsoundCooldowns.set(filename, Date.now());
+          console.log(`[PLAYSOUND] ${chatterName} played audio: ${filename}${item.extension} (-${item.cost} point(s)) at ${volume}x vol, ${item.speed}x speed`);
+          
+          try {
+            const meta = await db.get('SELECT submitter, submission_id FROM playsounds_metadata WHERE name = ?', [filename]);
+            if (meta && meta.submitter && meta.submission_id) {
+              const authorRewardRaw = globalConfig['reward_playsound_submitter'];
+              const authorReward = authorRewardRaw !== undefined ? parseInt(authorRewardRaw, 10) : 50; 
+              if (authorReward > 0) {
+                await db.run('UPDATE users SET points = points + ? WHERE username = ?', [authorReward, meta.submitter]);
+                await db.run('UPDATE user_submissions SET points_earned = points_earned + ? WHERE id = ?', [authorReward, meta.submission_id]);
+                console.log(`[PLAYSOUND] Awarded ${authorReward} points to submitter ${meta.submitter}`);
+              }
+            }
+          } catch (err) {}
         }
       }
     },

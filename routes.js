@@ -1460,8 +1460,8 @@ export function broadcastEmote(url, isZeroWidth = false, messageId = null, custo
   broadcastToCurrentChannel(`data: ${data}\n\n`);
 }
 
-export function broadcastAudio(filename, volume = 1.0) {
-  const payload = `data: ${JSON.stringify({ type: 'audio', file: filename, volume: volume })}\n\n`;
+export function broadcastAudio(filename, volume = 1.0, speed = 1.0) {
+  const payload = `data: ${JSON.stringify({ type: 'audio', file: filename, volume: volume, speed: speed })}\n\n`;
   broadcastToCurrentChannel(payload);
 }
 

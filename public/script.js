@@ -4,6 +4,71 @@ let sizePx = 150;
 
 let audioCtx = null;
 let globalCompressor = null;
+let audioQueue = [];
+let isPlayingAudio = false;
+
+function playNextAudio() {
+  if (audioQueue.length === 0) {
+    isPlayingAudio = false;
+    return;
+  }
+  
+  isPlayingAudio = true;
+  const next = audioQueue.shift();
+  const audio = next.audio;
+  const parsedData = next.parsedData;
+  
+  audio.onended = () => {
+    setTimeout(playNextAudio, 300);
+  };
+  
+  audio.onerror = () => {
+    console.error("Error with audio file, skipping.");
+    setTimeout(playNextAudio, 300);
+  };
+
+  let shouldPlayDirectly = true;
+  const actx = getAudioContext();
+  
+  if (actx) {
+    shouldPlayDirectly = false;
+    try {
+      const source = actx.createMediaElementSource(audio);
+      
+      if (parsedData.volume !== undefined) {
+        const vol = parseFloat(parsedData.volume);
+        const gainNode = actx.createGain();
+        gainNode.gain.value = Math.max(0, vol);
+        source.connect(gainNode);
+        gainNode.connect(globalCompressor);
+      } else {
+        source.connect(globalCompressor);
+      }
+      
+      audio.play().catch(err => {
+        console.error("Error playing compressed audio:", err);
+        setTimeout(playNextAudio, 300);
+      });
+    } catch(err) {
+       console.error("Error routing audio, falling back:", err);
+       shouldPlayDirectly = true;
+    }
+  } else {
+    // Fallback if AudioContext isn't supported
+    if (parsedData.volume !== undefined) {
+      const vol = parseFloat(parsedData.volume);
+      audio.volume = Math.min(1.0, Math.max(0, vol));
+    }
+  }
+  
+  if (shouldPlayDirectly) {
+    audio.play().catch(err => {
+      console.error("Error playing audio:", err);
+      setTimeout(playNextAudio, 300);
+    });
+  }
+}
+
 const overlayPathParts = window.location.pathname.split('/').filter(Boolean);
 const overlayChannelId = overlayPathParts[0] === 'overlay' && overlayPathParts[1]
   ? overlayPathParts[1]
@@ -62,35 +127,13 @@ fetch(`/api/config${overlayChannelQuery}`)
             : '/playsounds/';
           const audio = new Audio(audioBasePath + encodeURIComponent(parsedData.file));
           audio.crossOrigin = "anonymous";
-          
-          let shouldPlayDirectly = true;
-          const actx = getAudioContext();
-          
-          if (actx) {
-            shouldPlayDirectly = false;
-            const source = actx.createMediaElementSource(audio);
-            
-            if (parsedData.volume !== undefined) {
-              const vol = parseFloat(parsedData.volume);
-              const gainNode = actx.createGain();
-              gainNode.gain.value = Math.max(0, vol);
-              source.connect(gainNode);
-              gainNode.connect(globalCompressor);
-            } else {
-              source.connect(globalCompressor);
-            }
-            
-            audio.play().catch(err => console.error("Error playing compressed audio:", err));
-          } else {
-            // Fallback if AudioContext isn't supported
-            if (parsedData.volume !== undefined) {
-              const vol = parseFloat(parsedData.volume);
-              audio.volume = Math.min(1.0, Math.max(0, vol));
-            }
+          if (parsedData.speed !== undefined) {
+            audio.playbackRate = parseFloat(parsedData.speed) || 1.0;
           }
           
-          if (shouldPlayDirectly) {
-            audio.play().catch(err => console.error("Error playing audio:", err));
+          audioQueue.push({ audio, parsedData });
+          if (!isPlayingAudio) {
+            playNextAudio();
           }
         } else if (parsedData.type === 'bet_update') {
           updateBetUI(parsedData.bet);
