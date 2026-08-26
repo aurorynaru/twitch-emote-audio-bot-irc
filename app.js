@@ -1099,7 +1099,7 @@ async function loadThirdPartyEmotes(broadcasterId) {
           const host = emote.data ? emote.data.host : emote.host;
           if (host && host.files && host.files.length > 0) {
             const file = host.files[0];
-            if (file.width && file.height && (file.width / file.height >= 1.8)) {
+            if (file.width && file.height && (file.width / file.height >= 1.6)) {
               isNativelyWide = true;
             }
           }
@@ -1120,7 +1120,7 @@ async function loadThirdPartyEmotes(broadcasterId) {
         const host = emote.data ? emote.data.host : emote.host;
         if (host && host.files && host.files.length > 0) {
           const file = host.files[0];
-          if (file.width && file.height && (file.width / file.height >= 1.8)) {
+          if (file.width && file.height && (file.width / file.height >= 1.6)) {
             isNativelyWide = true;
           }
         }
