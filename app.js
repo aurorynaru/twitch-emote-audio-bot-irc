@@ -1094,7 +1094,17 @@ async function loadThirdPartyEmotes(broadcasterId) {
         data.emote_set.emotes.forEach(emote => {
           const flags = emote.data ? emote.data.flags : emote.flags;
           const isZeroWidth = (flags & 256) === 256;
-          thirdPartyEmotes.set(emote.name, { url: `https://cdn.7tv.app/emote/${emote.id}/4x.webp`, isZeroWidth });
+          
+          let isNativelyWide = false;
+          const host = emote.data ? emote.data.host : emote.host;
+          if (host && host.files && host.files.length > 0) {
+            const file = host.files[0];
+            if (file.width && file.height && (file.width / file.height >= 1.8)) {
+              isNativelyWide = true;
+            }
+          }
+          
+          thirdPartyEmotes.set(emote.name, { url: `https://cdn.7tv.app/emote/${emote.id}/4x.webp`, isZeroWidth, isNativelyWide });
         });
       }
     }
@@ -1105,33 +1115,43 @@ async function loadThirdPartyEmotes(broadcasterId) {
       if (data.emotes) data.emotes.forEach(emote => {
         const flags = emote.data ? emote.data.flags : emote.flags;
         const isZeroWidth = (flags & 256) === 256;
-        thirdPartyEmotes.set(emote.name, { url: `https://cdn.7tv.app/emote/${emote.id}/4x.webp`, isZeroWidth });
+        
+        let isNativelyWide = false;
+        const host = emote.data ? emote.data.host : emote.host;
+        if (host && host.files && host.files.length > 0) {
+          const file = host.files[0];
+          if (file.width && file.height && (file.width / file.height >= 1.8)) {
+            isNativelyWide = true;
+          }
+        }
+        
+        thirdPartyEmotes.set(emote.name, { url: `https://cdn.7tv.app/emote/${emote.id}/4x.webp`, isZeroWidth, isNativelyWide });
       });
     }
 
     const resBttvGlobal = await fetch('https://api.betterttv.net/3/cached/emotes/global');
     if (resBttvGlobal.ok) {
       const bttvGlobal = await resBttvGlobal.json();
-      bttvGlobal.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/emote/${emote.id}/3x`, isZeroWidth: false }));
+      bttvGlobal.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/emote/${emote.id}/3x`, isZeroWidth: false, isNativelyWide: false }));
     }
 
     const resBttvChannel = await fetch(`https://api.betterttv.net/3/cached/users/twitch/${broadcasterId}`);
     if (resBttvChannel.ok) {
       const bttvChannel = await resBttvChannel.json();
-      if (bttvChannel.channelEmotes) bttvChannel.channelEmotes.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/emote/${emote.id}/3x`, isZeroWidth: false }));
-      if (bttvChannel.sharedEmotes) bttvChannel.sharedEmotes.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/emote/${emote.id}/3x`, isZeroWidth: false }));
+      if (bttvChannel.channelEmotes) bttvChannel.channelEmotes.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/emote/${emote.id}/3x`, isZeroWidth: false, isNativelyWide: false }));
+      if (bttvChannel.sharedEmotes) bttvChannel.sharedEmotes.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/emote/${emote.id}/3x`, isZeroWidth: false, isNativelyWide: false }));
     }
 
     const resFfzGlobal = await fetch('https://api.betterttv.net/3/cached/frankerfacez/emotes/global');
     if (resFfzGlobal.ok) {
       const ffzGlobal = await resFfzGlobal.json();
-      ffzGlobal.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/frankerfacez_emote/${emote.id}/4`, isZeroWidth: false }));
+      ffzGlobal.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/frankerfacez_emote/${emote.id}/4`, isZeroWidth: false, isNativelyWide: false }));
     }
 
     const resFfzChannel = await fetch(`https://api.betterttv.net/3/cached/frankerfacez/users/twitch/${broadcasterId}`);
     if (resFfzChannel.ok) {
       const ffzChannel = await resFfzChannel.json();
-      ffzChannel.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/frankerfacez_emote/${emote.id}/4`, isZeroWidth: false }));
+      ffzChannel.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/frankerfacez_emote/${emote.id}/4`, isZeroWidth: false, isNativelyWide: false }));
     }
 
     console.log(`* Successfully loaded ${thirdPartyEmotes.size} total 3rd-party emotes into memory!`);
@@ -6011,7 +6031,7 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                       return;
                     }
                     const emoteData = thirdPartyEmotes.get(word);
-                    const token = { type: 'emote', url: emoteData.url, isZeroWidth: emoteData.isZeroWidth, modifiers: [], original: `3rd-Party Emote: ${emoteData.url}` };
+                    const token = { type: 'emote', url: emoteData.url, isZeroWidth: emoteData.isZeroWidth, isNativelyWide: emoteData.isNativelyWide || false, modifiers: [], original: `3rd-Party Emote: ${emoteData.url}` };
                     tokens.push(token);
                     if (emoteData.isZeroWidth) {
                       currentEmoteGroup.push(token);
@@ -6024,7 +6044,11 @@ for (const [user, data] of Object.entries(war.userVotes)) {
                       console.log(`[SHOWEMOTE] Modifier ${lowerWord} is disabled.`);
                     } else {
                       currentEmoteGroup.forEach(t => {
-                        if (!t.modifiers.includes(lowerWord)) t.modifiers.push(lowerWord);
+                        if (lowerWord === 'wide' && t.isNativelyWide) {
+                          // Prevent applying 'wide' to emotes that are already naturally wide
+                        } else if (!t.modifiers.includes(lowerWord)) {
+                          t.modifiers.push(lowerWord);
+                        }
                       });
                     }
                   } else if (word.trim() !== '') {
