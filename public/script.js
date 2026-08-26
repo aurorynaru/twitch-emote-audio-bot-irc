@@ -155,9 +155,9 @@ function displayEmote(url, isZeroWidth = false, messageId = null, customX = null
     if (modifiers.includes('rainbow')) img.classList.add('mod-rainbow');
     
     let transforms = [];
-    if (modifiers.includes('wide')) transforms.push('scaleX(1.25)');
+    if (modifiers.includes('wide')) transforms.push('scaleX(1.5)');
     if (modifiers.includes('flipx') && !modifiers.includes('wide')) transforms.push('scaleX(-1)');
-    if (modifiers.includes('flipx') && modifiers.includes('wide')) transforms.push('scaleX(-2)');
+    if (modifiers.includes('flipx') && modifiers.includes('wide')) transforms.push('scaleX(-1.5)');
     if (modifiers.includes('flipy')) transforms.push('scaleY(-1)');
     
     if (transforms.length > 0) {
