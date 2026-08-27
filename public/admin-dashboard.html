@@ -789,6 +789,17 @@
     <h2>Playsounds</h2>
 
     <div class="card" style="margin-bottom: 20px;">
+      <h3>Master Playsound Volume <span class="tooltip-icon" data-tooltip="Scales the volume of all playsounds globally. (100% is normal)">?</span></h3>
+      <div style="display: flex; gap: 10px; align-items: flex-end;">
+        <div class="form-group" style="flex: 1; margin: 0;">
+          <label>Global Volume (<span id="masterVolumeDisplay">100</span>%)</label>
+          <input type="range" id="masterVolumeSlider" min="0" max="200" value="100" style="width: 100%; margin-top: 10px; padding: 0; box-sizing: border-box;">
+        </div>
+        <button class="save-btn" style="background-color: #8b5cf6;" id="saveMasterVolumeBtn">Save Settings</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 20px;">
       <h3>Test Playsound <span class="tooltip-icon" data-tooltip="Listen to a playsound.">ⓘ</span></h3>
       <div style="display: flex; gap: 10px; align-items: flex-end;">
         <div class="form-group" style="flex: 1; margin: 0;">
@@ -1428,6 +1439,16 @@
   function renderDashboard() {
     const globalGrid = document.getElementById('globalSettingsGrid');
     globalGrid.innerHTML = '';
+    
+    const masterVol = configData.globalConfig['master_volume_playsound'];
+    if (masterVol !== undefined && masterVol !== '') {
+      const pct = Math.round(parseFloat(masterVol) * 100);
+      const slider = document.getElementById('masterVolumeSlider');
+      if (slider) {
+        slider.value = pct;
+        document.getElementById('masterVolumeDisplay').innerText = pct;
+      }
+    }
     
     // Render Active Custom Playsound Costs
     const activeCostsList = document.getElementById('activeCustomCostsList');
@@ -2154,6 +2175,31 @@
         loadConfig();
       } else alert('Error: ' + data.error);
     } catch (e) { alert(e.message); }
+  });
+
+  document.getElementById('masterVolumeSlider').addEventListener('input', (e) => {
+    document.getElementById('masterVolumeDisplay').innerText = e.target.value;
+  });
+
+  document.getElementById('saveMasterVolumeBtn').addEventListener('click', async () => {
+    const vol = document.getElementById('masterVolumeSlider').value;
+    try {
+      const res = await fetch('/api/admin/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: [{ key: 'master_volume_playsound', value: (parseFloat(vol) / 100).toString() }] })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Master volume updated!', 'success');
+        loadConfig();
+      } else {
+        showToast('Failed to update master volume: ' + data.error, 'error');
+      }
+    } catch (e) {
+      showToast('Error updating master volume.', 'error');
+      console.error(e);
+    }
   });
 
   document.getElementById('saveCustomCostBtn').addEventListener('click', async () => {

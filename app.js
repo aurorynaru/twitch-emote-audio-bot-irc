@@ -2656,7 +2656,10 @@ async function start() {
           
           if (fs.existsSync(oggPath) || fs.existsSync(mp3Path)) {
             const customVolumeRaw = globalConfig[`volume_playsound_${filename}`];
-            const volume = customVolumeRaw !== undefined && customVolumeRaw !== '' ? parseFloat(customVolumeRaw) : 1.0;
+            const individualVolume = customVolumeRaw !== undefined && customVolumeRaw !== '' ? parseFloat(customVolumeRaw) : 1.0;
+            const masterVolumeRaw = globalConfig[`master_volume_playsound`];
+            const masterVolume = masterVolumeRaw !== undefined && masterVolumeRaw !== '' ? parseFloat(masterVolumeRaw) : 1.0;
+            const volume = individualVolume * masterVolume;
             
             if (fs.existsSync(oggPath)) {
               broadcastAudio(filename + '.ogg', volume);

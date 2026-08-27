@@ -5,7 +5,7 @@ app_sqlite.js
 .env
 data/playsounds
 test_chat.js
-data/backup
+data
 
 
 
@@ -13,3 +13,5 @@ import-trivia.js
 trivia_questions.json
 dedupe-and-hint.js
 multi-channel.test.js
+
+
