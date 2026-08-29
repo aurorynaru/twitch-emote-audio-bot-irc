@@ -2633,7 +2633,8 @@ async function start() {
             activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
           }
 
-          if (activeCost > 0) {
+          const isBroadcaster = (event.badges && event.badges.some(b => b.set_id === 'broadcaster')) || chatterName === TARGET_CHANNEL;
+          if (activeCost > 0 && !isBroadcaster) {
             const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
             if (!user || user.points < activeCost) {
               console.log(`[PLAYSOUND] ${chatterName} lacks points for ${filename}`);
@@ -2645,7 +2646,7 @@ async function start() {
           const disabledRaw = globalConfig[`disabled_playsound_${filename}`];
           if (disabledRaw === 'true' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw))) {
             console.log(`[PLAYSOUND] Sound '${filename}' is disabled.`);
-            if (activeCost > 0) {
+            if (activeCost > 0 && !isBroadcaster) {
               await db.run('UPDATE users SET points = points + ? WHERE username = ?', [activeCost, chatterName]);
             }
             return false;
@@ -2685,7 +2686,7 @@ async function start() {
             } catch (err) {}
           } else {
             console.log(`[PLAYSOUND] Audio not found for: ${filename}`);
-            if (activeCost > 0) {
+            if (activeCost > 0 && !isBroadcaster) {
               await db.run('UPDATE users SET points = points + ? WHERE username = ?', [activeCost, chatterName]);
             }
             return false;
@@ -2809,8 +2810,12 @@ async function start() {
             totalAmountToDeduct = parseAmount(amountInput);
           }
 
-          if (isNaN(totalAmountToDeduct) || totalAmountToDeduct <= 0 || totalAmountToDeduct > user.points) {
+          if (isNaN(totalAmountToDeduct) || totalAmountToDeduct <= 0) {
             await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
+            return;
+          }
+          if (totalAmountToDeduct > user.points) {
+            await sendChatMessage(`${chatterName} you don't have enough points for that!`, chatterName);
             return;
           }
 
@@ -3064,8 +3069,12 @@ async function start() {
           betAmount = parseAmount(amountInput);
         }
 
-        if (isNaN(betAmount) || betAmount <= 0 || betAmount > user.points) {
+        if (isNaN(betAmount) || betAmount <= 0) {
           await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
+          return false;
+        }
+        if (betAmount > user.points) {
+          await sendChatMessage(`${chatterName} you don't have enough points for that!`, chatterName);
           return false;
         }
 
@@ -3344,8 +3353,12 @@ async function start() {
           betAmount = parseAmount(amountInput);
         }
 
-        if (isNaN(betAmount) || betAmount <= 0 || betAmount > user.points) {
+        if (isNaN(betAmount) || betAmount <= 0) {
           //await sendWhisper(chatterName, "Invalid amount! Try !gamble 50, !gamble 50%, or !gamble all", true);
+          return false;
+        }
+        if (betAmount > user.points) {
+          await sendWhisper(chatterName, "You don't have enough points for that amount!", true);
           return false;
         }
 
@@ -4196,8 +4209,12 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           betAmount = parseAmount(amountInput);
         }
 
-        if (isNaN(betAmount) || betAmount <= 0 || betAmount > user.points) {
+        if (isNaN(betAmount) || betAmount <= 0) {
           await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
+          return false;
+        }
+        if (betAmount > user.points) {
+          await sendChatMessage(`${chatterName} you don't have enough points for that!`, chatterName);
           return false;
         }
 
@@ -5880,7 +5897,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             const dynamicCostRaw = globalConfig[`cmd_${commandName}_cost`];
             const activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : command.cost;
 
-            if (activeCost > 0 && !command.manualCost) {
+            const isBroadcaster = (event.badges && event.badges.some(b => b.set_id === 'broadcaster')) || chatterName === TARGET_CHANNEL;
+
+            if (activeCost > 0 && !command.manualCost && !isBroadcaster) {
               const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
               if (!user || user.points < activeCost) {
                 console.log(`[COMMAND] ${chatterName} tried to use ${commandName} but lacks points.`);
@@ -6106,7 +6125,8 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
             const totalCost = dynamicShowEmoteCost + modifierCost;
 
-            if (dynamicShowEmoteCost > 0 || modifierCost > 0) {
+            const isBroadcaster = (event.badges && event.badges.some(b => b.set_id === 'broadcaster')) || chatterName === TARGET_CHANNEL;
+            if (!isBroadcaster && (dynamicShowEmoteCost > 0 || modifierCost > 0)) {
               const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
               const userPoints = user ? user.points : 0;
 
