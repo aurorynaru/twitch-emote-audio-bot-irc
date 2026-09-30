@@ -4697,7 +4697,7 @@ async function start() {
           } else {
             await sendWhisper(
               chatterName,
-              `You won ${addedAmount} points! You now have ${newPoints} points. EZ`,
+              `You won ${addedAmount} points! You now have ${newPoints} points. GGEZ`,
               true,
             );
           }
@@ -5416,7 +5416,10 @@ async function start() {
     "!betstart": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || lidl_mods.includes(chatterName.toLowerCase());
+        const isMod =
+          hasPermission ||
+          chatterName === TARGET_CHANNEL ||
+          lidl_mods.includes(chatterName.toLowerCase());
         if (!isMod) {
           // await sendChatMessage(`${chatterName} you do not have permission to start bets!`, chatterName);
           return;
@@ -5559,7 +5562,10 @@ async function start() {
     "!betstop": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || lidl_mods.includes(chatterName.toLowerCase());
+        const isMod =
+          hasPermission ||
+          chatterName === TARGET_CHANNEL ||
+          lidl_mods.includes(chatterName.toLowerCase());
         if (!isMod) {
           //  await sendChatMessage(`${chatterName} you do not have permission to stop bets!`, chatterName);
           return;
@@ -5686,7 +5692,10 @@ async function start() {
     "!betcancel": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL || lidl_mods.includes(chatterName.toLowerCase());
+        const isMod =
+          hasPermission ||
+          chatterName === TARGET_CHANNEL ||
+          lidl_mods.includes(chatterName.toLowerCase());
         if (!isMod) {
           //  await sendChatMessage(`${chatterName} you do not have permission to cancel bets!`, chatterName);
           return;
@@ -5825,11 +5834,11 @@ async function start() {
         const ratioTexts = bet.choices.map((choice) => {
           const pool = bet.pools[choice];
           const odds = pool > 0 ? (bet.totalPool / pool).toFixed(2) : 0;
-          return `${choice}: ${odds}x`;
+          return `${choice}: ${pool.toLocaleString()} pts (${odds}x)`;
         });
 
         await sendChatMessage(
-          `ACTIVE BET: "${bet.description}" | ${ratioTexts.join(" | ")}`,
+          `ACTIVE BET: "${bet.description}" | ${ratioTexts.join(" | ")} | Total: ${bet.totalPool.toLocaleString()} pts`,
         );
       },
     },

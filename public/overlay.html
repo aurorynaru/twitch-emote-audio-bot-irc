@@ -141,6 +141,9 @@
     
     /* Betting UI styles */
     #bet-container {
+      /* Overall size of the bet overlay: 1 = full size, 0.4 = 40% */
+      --bet-scale: 0.4;
+      zoom: var(--bet-scale);
       position: absolute;
       top: 20px;
       left: 20px;
@@ -148,7 +151,7 @@
       border-radius: 12px;
       color: white;
       font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      padding: 16px;
+      padding: 10px;
       box-sizing: border-box;
       opacity: 0;
       transform: translateY(-20px);
@@ -270,6 +273,13 @@
       margin-right: 6px;
       font-size: 14px;
     }
+
+    /* Compact spacing for the bet overlay only (chat war keeps the originals) */
+    #bet-container .bet-title { font-size: 18px; margin-bottom: 4px; }
+    #bet-container .timer-bar-bg { margin-bottom: 6px; }
+    #bet-container .bet-bar-bg { height: 10px; margin-bottom: 8px; }
+    #bet-container .bet-choice-name { font-size: 16px; }
+    #bet-container .bet-percentage { font-size: 28px; margin: 0 0 2px 0; }
     .bet-choice.right .bet-stat-icon {
       margin-right: 0;
       margin-left: 6px;

@@ -127,6 +127,7 @@ fetch(`/api/config${overlayChannelQuery}`)
 let lastMessageId = null;
 let lastEmoteX = null;
 let lastEmoteY = null;
+let lastBaseImg = null;
 
 function displayEmote(url, isZeroWidth = false, messageId = null, customX = null, customY = null, modifiers = []) {
 
@@ -192,7 +193,11 @@ function displayEmote(url, isZeroWidth = false, messageId = null, customX = null
   hyperWrapper.appendChild(img);
   jamWrapper.appendChild(hyperWrapper);
   bounceWrapper.appendChild(jamWrapper);
-  outerWrapper.appendChild(bounceWrapper);
+
+  // Zero-width emotes are shifted back by half their own width so they center on the base emote
+  const centerWrapper = document.createElement('div');
+  centerWrapper.appendChild(bounceWrapper);
+  outerWrapper.appendChild(centerWrapper);
 
   let x, y;
   const margin = sizePx; 
@@ -200,22 +205,43 @@ function displayEmote(url, isZeroWidth = false, messageId = null, customX = null
   if (customX !== null && customY !== null) {
     x = (customX / 100) * (window.innerWidth - margin);
     y = (customY / 100) * (window.innerHeight - margin);
-    outerWrapper.style.zIndex = '5'; 
-    
+    outerWrapper.style.zIndex = '5';
+
     lastMessageId = messageId;
     lastEmoteX = x;
     lastEmoteY = y;
+    lastBaseImg = img;
   } else if (isZeroWidth && lastMessageId === messageId && lastEmoteX !== null && lastEmoteY !== null) {
     x = lastEmoteX;
     y = lastEmoteY;
-    outerWrapper.style.zIndex = '10'; 
+    outerWrapper.style.zIndex = '10';
+
+    // Place on the base emote's horizontal center once its width is known
+    const baseImg = lastBaseImg;
+    const baseX = lastEmoteX;
+    if (baseImg) {
+      centerWrapper.style.transform = 'translateX(-50%)';
+      const alignToBase = () => {
+        outerWrapper.style.left = `${baseX + baseImg.offsetWidth / 2}px`;
+        outerWrapper.style.visibility = '';
+      };
+      if (baseImg.complete && baseImg.naturalWidth > 0) {
+        x = baseX + baseImg.offsetWidth / 2;
+      } else {
+        // Keep hidden until the base loads so it doesn't flash off-center
+        outerWrapper.style.visibility = 'hidden';
+        baseImg.addEventListener('load', alignToBase, { once: true });
+        baseImg.addEventListener('error', alignToBase, { once: true });
+      }
+    }
   } else {
     x = Math.random() * (window.innerWidth - margin);
     y = Math.random() * (window.innerHeight - margin);
-    
+
     lastMessageId = messageId;
     lastEmoteX = x;
     lastEmoteY = y;
+    lastBaseImg = img;
     outerWrapper.style.zIndex = '5';
   }
 
