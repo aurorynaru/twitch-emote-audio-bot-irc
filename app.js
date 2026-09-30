@@ -5479,6 +5479,8 @@ async function start() {
           }
         }
 
+        if (!durationStr) durationStr = "1m";
+
         if (choicesRaw.length < 2) {
           await sendChatMessage(
             `${chatterName} you need at least 2 choices separated by commas!`,
