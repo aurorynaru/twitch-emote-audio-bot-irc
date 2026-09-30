@@ -12,6 +12,7 @@ const overlayChannelQuery = overlayChannelId ? `?channel=${encodeURIComponent(ov
 const overlayEventPath = overlayChannelId
   ? `/api/stream-emotes/${encodeURIComponent(overlayChannelId)}`
   : '/api/stream-emotes';
+let loadedOverlayVersion = null;
 
 function getAudioContext() {
   if (!audioCtx) {
@@ -114,6 +115,14 @@ fetch(`/api/config${overlayChannelQuery}`)
           displayEmote(emoteUrl, isZeroWidth, messageId, customX, customY, modifiers);
         } else if (parsedData.type === 'clear_emotes') {
           document.querySelectorAll('.emote-img').forEach(img => img.remove());
+        } else if (parsedData.type === 'overlay_version') {
+          // The first version seen is the one this page loaded with; a different one means the files were updated
+          if (loadedOverlayVersion === null) {
+            loadedOverlayVersion = parsedData.version;
+          } else if (parsedData.version !== loadedOverlayVersion) {
+            console.log('Overlay updated, reloading...');
+            window.location.reload();
+          }
         }
       };
     }

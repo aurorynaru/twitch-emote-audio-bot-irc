@@ -20,6 +20,37 @@ const __dirname = path.dirname(__filename);
 export let sseClients = [];
 let resolveCurrentChannelId = () => 'main';
 
+// Fingerprint of the overlay files. Overlays reload themselves when it changes,
+// so the streamer doesn't have to refresh the OBS browser source after updates.
+const OVERLAY_FILES = ['overlay.html', 'script.js'].map(file => path.join(__dirname, 'public', file));
+
+function computeOverlayVersion() {
+  const hash = crypto.createHash('md5');
+  for (const file of OVERLAY_FILES) {
+    try {
+      hash.update(fs.readFileSync(file));
+    } catch (e) {
+      // Missing file: leave it out of the fingerprint
+    }
+  }
+  return hash.digest('hex').slice(0, 12);
+}
+
+let overlayVersion = computeOverlayVersion();
+
+function overlayVersionPayload() {
+  return `data: ${JSON.stringify({ type: 'overlay_version', version: overlayVersion })}\n\n`;
+}
+
+setInterval(() => {
+  const newVersion = computeOverlayVersion();
+  if (newVersion === overlayVersion) return;
+  overlayVersion = newVersion;
+  console.log(`Overlay files changed (version ${overlayVersion}), telling overlays to reload`);
+  const payload = overlayVersionPayload();
+  sseClients.forEach(client => client.res.write(payload));
+}, 10000).unref();
+
 let currentBannedWords = '';
 let obscenityMatcher = null;
 
@@ -1111,6 +1142,7 @@ export function setupRoutes(app, {
 
     const client = { res, channelId };
     sseClients.push(client);
+    res.write(overlayVersionPayload());
     req.on('close', () => {
       sseClients = sseClients.filter(entry => entry !== client);
     });
