@@ -1,78 +1,104 @@
-import WebSocket from 'ws';
-import express from 'express';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
-import cors from 'cors';
-import { AsyncLocalStorage } from 'async_hooks';
+import WebSocket from "ws";
+import express from "express";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+import dotenv from "dotenv";
+import sqlite3 from "sqlite3";
+import { open } from "sqlite";
+import cors from "cors";
+import { AsyncLocalStorage } from "async_hooks";
 dotenv.config();
 
-import { parseFlexibleTime, parseAmount, parseTime } from './utils.js';
-import { setupRoutes, broadcastEmote, broadcastAudio, broadcastConfig, broadcastBetState, clearBetState, broadcastChatWarState, clearChatWarState, clearEmotes } from './routes.js';
-
+import { parseFlexibleTime, parseAmount, parseTime } from "./utils.js";
+import {
+  setupRoutes,
+  broadcastEmote,
+  broadcastAudio,
+  broadcastConfig,
+  broadcastBetState,
+  clearBetState,
+  broadcastChatWarState,
+  clearChatWarState,
+  clearEmotes,
+} from "./routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const CLIENT_ID = process.env.CLIENT_ID
-const CLIENT_SECRET = process.env.CLIENT_SECRET
-const AUTH_CODE = process.env.AUTH_CODE
-let USER_ACCESS_TOKEN = '';
-let BOT_USERNAME = ''
-const TOKEN_FILE = path.join(__dirname, 'data', 'tokens.json');
-let COMMAND_COOLDOWN=process.env.COMMAND_COOLDOWN || 1000
-const getDuelTax = () => parseFloat(globalConfig['duel_tax'] || '0.05');
+const CLIENT_ID = process.env.CLIENT_ID;
+const CLIENT_SECRET = process.env.CLIENT_SECRET;
+const AUTH_CODE = process.env.AUTH_CODE;
+let USER_ACCESS_TOKEN = "";
+let BOT_USERNAME = "";
+const TOKEN_FILE = path.join(__dirname, "data", "tokens.json");
+let COMMAND_COOLDOWN = process.env.COMMAND_COOLDOWN || 1000;
+const getDuelTax = () => parseFloat(globalConfig["duel_tax"] || "0.05");
 
-const DB_PATH = path.join(__dirname, 'data', 'database.sqlite');
-if (!fs.existsSync(path.join(__dirname, 'data'))) {
-  fs.mkdirSync(path.join(__dirname, 'data'));
+const lidl_mods = ["aurory_naru", "sandbed"];
+
+const DB_PATH = path.join(__dirname, "data", "database.sqlite");
+if (!fs.existsSync(path.join(__dirname, "data"))) {
+  fs.mkdirSync(path.join(__dirname, "data"));
 }
-if (!fs.existsSync(path.join(__dirname, 'data', 'playsounds'))) {
-  fs.mkdirSync(path.join(__dirname, 'data', 'playsounds'));
+if (!fs.existsSync(path.join(__dirname, "data", "playsounds"))) {
+  fs.mkdirSync(path.join(__dirname, "data", "playsounds"));
 }
-if (!fs.existsSync(path.join(__dirname, 'data', 'channels'))) {
-  fs.mkdirSync(path.join(__dirname, 'data', 'channels'), { recursive: true });
+if (!fs.existsSync(path.join(__dirname, "data", "channels"))) {
+  fs.mkdirSync(path.join(__dirname, "data", "channels"), { recursive: true });
 }
 
-const configuredChannelLogins = Array.from(new Set(
-  (process.env.TARGET_CHANNELS || process.env.TARGET_CHANNEL || '')
-    .split(',')
-    .map(channel => channel.trim().replace(/^#/, '').toLowerCase())
-    .filter(Boolean)
-));
+const configuredChannelLogins = Array.from(
+  new Set(
+    (process.env.TARGET_CHANNELS || process.env.TARGET_CHANNEL || "")
+      .split(",")
+      .map((channel) => channel.trim().replace(/^#/, "").toLowerCase())
+      .filter(Boolean),
+  ),
+);
 
 if (configuredChannelLogins.length === 0) {
-  throw new Error('Set TARGET_CHANNEL or TARGET_CHANNELS to at least one Twitch channel.');
+  throw new Error(
+    "Set TARGET_CHANNEL or TARGET_CHANNELS to at least one Twitch channel.",
+  );
 }
 
-const requestedMainChannel = (process.env.MAIN_CHANNEL || process.env.TARGET_CHANNEL || configuredChannelLogins[0])
+const requestedMainChannel = (
+  process.env.MAIN_CHANNEL ||
+  process.env.TARGET_CHANNEL ||
+  configuredChannelLogins[0]
+)
   .trim()
-  .replace(/^#/, '')
+  .replace(/^#/, "")
   .toLowerCase();
-const MAIN_CHANNEL_LOGIN = configuredChannelLogins.includes(requestedMainChannel)
+const MAIN_CHANNEL_LOGIN = configuredChannelLogins.includes(
+  requestedMainChannel,
+)
   ? requestedMainChannel
   : configuredChannelLogins[0];
 const orderedChannelLogins = [
   MAIN_CHANNEL_LOGIN,
-  ...configuredChannelLogins.filter(channel => channel !== MAIN_CHANNEL_LOGIN)
+  ...configuredChannelLogins.filter(
+    (channel) => channel !== MAIN_CHANNEL_LOGIN,
+  ),
 ];
 
 const channelStorage = new AsyncLocalStorage();
 const channelRuntimes = new Map();
 
 function createChannelRuntime(login, index) {
-  const id = login.replace(/[^a-z0-9_]/g, '_');
+  const id = login.replace(/[^a-z0-9_]/g, "_");
   return {
     id,
     login,
     isMain: index === 0,
     broadcasterId: null,
     db: null,
-    dbPath: index === 0 ? DB_PATH : path.join(__dirname, 'data', 'channels', `${id}.sqlite`),
+    dbPath:
+      index === 0
+        ? DB_PATH
+        : path.join(__dirname, "data", "channels", `${id}.sqlite`),
     config: {},
     maps: {},
     state: {
@@ -95,8 +121,8 @@ function createChannelRuntime(login, index) {
       sendChatMessage: null,
       passiveRewardLastRun: null,
       passiveRewardRunning: false,
-      passiveRewardLastError: null
-    }
+      passiveRewardLastError: null,
+    },
   };
 }
 
@@ -106,9 +132,11 @@ orderedChannelLogins.forEach((login, index) => {
   channelRuntimes.set(runtime.login, runtime);
 });
 
-const channelList = orderedChannelLogins.map(login => channelRuntimes.get(login));
+const channelList = orderedChannelLogins.map((login) =>
+  channelRuntimes.get(login),
+);
 const mainChannelRuntime = channelRuntimes.get(MAIN_CHANNEL_LOGIN);
-const SHARED_CONFIG_KEYS = new Set(['level_base_cost']);
+const SHARED_CONFIG_KEYS = new Set(["level_base_cost"]);
 const getChannelRuntime = () => channelStorage.getStore() || mainChannelRuntime;
 const getCurrentChannelLogin = () => getChannelRuntime().login;
 const getCurrentBroadcasterId = () => getChannelRuntime().broadcasterId;
@@ -117,20 +145,23 @@ const getCurrentDbPath = () => getChannelRuntime().dbPath;
 
 function getSoundsDir(runtime = getChannelRuntime()) {
   const directory = runtime.isMain
-    ? path.join(__dirname, 'data', 'playsounds')
-    : path.join(__dirname, 'data', 'channels', runtime.id, 'playsounds');
+    ? path.join(__dirname, "data", "playsounds")
+    : path.join(__dirname, "data", "channels", runtime.id, "playsounds");
   if (!fs.existsSync(directory)) fs.mkdirSync(directory, { recursive: true });
   return directory;
 }
 
 function resolveChannelRuntime(value) {
   if (!value) return mainChannelRuntime;
-  const normalized = String(value).trim().replace(/^#/, '').toLowerCase();
+  const normalized = String(value).trim().replace(/^#/, "").toLowerCase();
   return channelRuntimes.get(normalized) || null;
 }
 
 function runInChannel(runtimeOrId, callback) {
-  const runtime = typeof runtimeOrId === 'string' ? resolveChannelRuntime(runtimeOrId) : runtimeOrId;
+  const runtime =
+    typeof runtimeOrId === "string"
+      ? resolveChannelRuntime(runtimeOrId)
+      : runtimeOrId;
   if (!runtime) throw new Error(`Unknown channel: ${runtimeOrId}`);
   return channelStorage.run(runtime, callback);
 }
@@ -146,8 +177,8 @@ function createChannelMapProxy(name) {
     get(_target, property) {
       const map = getChannelMap(name);
       const value = Reflect.get(map, property, map);
-      return typeof value === 'function' ? value.bind(map) : value;
-    }
+      return typeof value === "function" ? value.bind(map) : value;
+    },
   });
 }
 
@@ -162,36 +193,58 @@ function createChannelSetProxy(name) {
     get(_target, property) {
       const set = getChannelSet(name);
       const value = Reflect.get(set, property, set);
-      return typeof value === 'function' ? value.bind(set) : value;
-    }
+      return typeof value === "function" ? value.bind(set) : value;
+    },
   });
 }
 
-const globalConfig = new Proxy({}, {
-  get: (_target, property) => SHARED_CONFIG_KEYS.has(property)
-    ? mainChannelRuntime.config[property]
-    : getChannelRuntime().config[property],
-  set: (_target, property, value) => {
-    const runtime = SHARED_CONFIG_KEYS.has(property) ? mainChannelRuntime : getChannelRuntime();
-    runtime.config[property] = value;
-    return true;
+const globalConfig = new Proxy(
+  {},
+  {
+    get: (_target, property) =>
+      SHARED_CONFIG_KEYS.has(property)
+        ? mainChannelRuntime.config[property]
+        : getChannelRuntime().config[property],
+    set: (_target, property, value) => {
+      const runtime = SHARED_CONFIG_KEYS.has(property)
+        ? mainChannelRuntime
+        : getChannelRuntime();
+      runtime.config[property] = value;
+      return true;
+    },
+    deleteProperty: (_target, property) =>
+      delete (
+        SHARED_CONFIG_KEYS.has(property)
+          ? mainChannelRuntime
+          : getChannelRuntime()
+      ).config[property],
+    ownKeys: () =>
+      Array.from(
+        new Set([
+          ...Reflect.ownKeys(getChannelRuntime().config),
+          ...Reflect.ownKeys(mainChannelRuntime.config).filter((key) =>
+            SHARED_CONFIG_KEYS.has(key),
+          ),
+        ]),
+      ),
+    getOwnPropertyDescriptor: () => ({ enumerable: true, configurable: true }),
   },
-  deleteProperty: (_target, property) => delete (SHARED_CONFIG_KEYS.has(property) ? mainChannelRuntime : getChannelRuntime()).config[property],
-  ownKeys: () => Array.from(new Set([
-    ...Reflect.ownKeys(getChannelRuntime().config),
-    ...Reflect.ownKeys(mainChannelRuntime.config).filter(key => SHARED_CONFIG_KEYS.has(key))
-  ])),
-  getOwnPropertyDescriptor: () => ({ enumerable: true, configurable: true })
-});
+);
 
-const POINT_EARNING_MODE_LEGACY = 'legacy';
-const POINT_EARNING_MODE_PASSIVE = 'passive';
+const POINT_EARNING_MODE_LEGACY = "legacy";
+const POINT_EARNING_MODE_PASSIVE = "passive";
 
 function getPointEarningMode(runtime = getChannelRuntime()) {
-  const configuredMode = String(runtime.config.points_earning_mode || '').trim().toLowerCase();
-  if (configuredMode === POINT_EARNING_MODE_PASSIVE) return POINT_EARNING_MODE_PASSIVE;
-  if (configuredMode === POINT_EARNING_MODE_LEGACY) return POINT_EARNING_MODE_LEGACY;
-  return runtime.isMain ? POINT_EARNING_MODE_LEGACY : POINT_EARNING_MODE_PASSIVE;
+  const configuredMode = String(runtime.config.points_earning_mode || "")
+    .trim()
+    .toLowerCase();
+  if (configuredMode === POINT_EARNING_MODE_PASSIVE)
+    return POINT_EARNING_MODE_PASSIVE;
+  if (configuredMode === POINT_EARNING_MODE_LEGACY)
+    return POINT_EARNING_MODE_LEGACY;
+  return runtime.isMain
+    ? POINT_EARNING_MODE_LEGACY
+    : POINT_EARNING_MODE_PASSIVE;
 }
 
 function getPassiveRewardSettings(runtime = getChannelRuntime()) {
@@ -201,167 +254,214 @@ function getPassiveRewardSettings(runtime = getChannelRuntime()) {
   };
 
   return {
-    intervalMinutes: Math.max(1, parseNonNegativeInteger(runtime.config.reward_passive_interval_minutes, 10)),
-    subscriberPoints: parseNonNegativeInteger(runtime.config.reward_passive_sub, 300),
-    nonSubscriberPoints: parseNonNegativeInteger(runtime.config.reward_passive_nonsub, 60)
+    intervalMinutes: Math.max(
+      1,
+      parseNonNegativeInteger(
+        runtime.config.reward_passive_interval_minutes,
+        10,
+      ),
+    ),
+    subscriberPoints: parseNonNegativeInteger(
+      runtime.config.reward_passive_sub,
+      300,
+    ),
+    nonSubscriberPoints: parseNonNegativeInteger(
+      runtime.config.reward_passive_nonsub,
+      60,
+    ),
   };
 }
 
 function hasSubscriberChatBadge(tags = {}) {
-  return tags.subscriber === '1' || String(tags.badges || '').split(',').some(badge => {
-    const badgeName = badge.split('/')[0];
-    return badgeName === 'subscriber' || badgeName === 'founder';
-  });
+  return (
+    tags.subscriber === "1" ||
+    String(tags.badges || "")
+      .split(",")
+      .some((badge) => {
+        const badgeName = badge.split("/")[0];
+        return badgeName === "subscriber" || badgeName === "founder";
+      })
+  );
 }
 
 function areRandomSupportRafflesEnabled(runtime = getChannelRuntime()) {
   const configuredValue = runtime.config.random_support_raffles_enabled;
-  if (configuredValue === undefined || configuredValue === null || configuredValue === '') {
+  if (
+    configuredValue === undefined ||
+    configuredValue === null ||
+    configuredValue === ""
+  ) {
     return runtime.isMain;
   }
-  return ['1', 'true', 'yes', 'on'].includes(String(configuredValue).trim().toLowerCase());
+  return ["1", "true", "yes", "on"].includes(
+    String(configuredValue).trim().toLowerCase(),
+  );
 }
 
 function isSupportPointRewardEnabled(configKey, runtime = getChannelRuntime()) {
   const configuredValue = runtime.config[configKey];
-  if (configuredValue === undefined || configuredValue === null || configuredValue === '') {
+  if (
+    configuredValue === undefined ||
+    configuredValue === null ||
+    configuredValue === ""
+  ) {
     return runtime.isMain;
   }
-  return ['1', 'true', 'yes', 'on'].includes(String(configuredValue).trim().toLowerCase());
+  return ["1", "true", "yes", "on"].includes(
+    String(configuredValue).trim().toLowerCase(),
+  );
 }
 
-const channelState = new Proxy({}, {
-  get: (_target, property) => getChannelRuntime().state[property],
-  set: (_target, property, value) => {
-    getChannelRuntime().state[property] = value;
-    return true;
-  }
-});
+const channelState = new Proxy(
+  {},
+  {
+    get: (_target, property) => getChannelRuntime().state[property],
+    set: (_target, property, value) => {
+      getChannelRuntime().state[property] = value;
+      return true;
+    },
+  },
+);
 
 for (const stateProperty of [
-  'activeChatWar',
-  'activeRaffle',
-  'activeTrivia',
-  'triviaLoopActive',
-  'nextTriviaTimeout',
-  'consecutiveUnansweredTrivia',
-  'lastChatWideCommandTime'
+  "activeChatWar",
+  "activeRaffle",
+  "activeTrivia",
+  "triviaLoopActive",
+  "nextTriviaTimeout",
+  "consecutiveUnansweredTrivia",
+  "lastChatWideCommandTime",
 ]) {
   Object.defineProperty(globalThis, stateProperty, {
     configurable: true,
     get: () => getChannelRuntime().state[stateProperty],
-    set: value => { getChannelRuntime().state[stateProperty] = value; }
+    set: (value) => {
+      getChannelRuntime().state[stateProperty] = value;
+    },
   });
 }
 
-Object.defineProperty(globalThis, 'TARGET_CHANNEL', {
+Object.defineProperty(globalThis, "TARGET_CHANNEL", {
   configurable: true,
-  get: getCurrentChannelLogin
+  get: getCurrentChannelLogin,
 });
 
-const customAliasesMap = createChannelMapProxy('customAliasesMap');
-const userCooldowns = createChannelMapProxy('userCooldowns');
-const commandCooldowns = createChannelMapProxy('commandCooldowns');
-const playsoundCooldowns = createChannelMapProxy('playsoundCooldowns');
-const customAliasTimers = createChannelMapProxy('customAliasTimers');
-const ignoredBots = ['nightbot', 'streamelements', 'streamlabs', 'moobot', 'dotabod', 'wizebot', 'fossabot', 'kofibot', 'soundalerts','Tangiabot'];
+const customAliasesMap = createChannelMapProxy("customAliasesMap");
+const userCooldowns = createChannelMapProxy("userCooldowns");
+const commandCooldowns = createChannelMapProxy("commandCooldowns");
+const playsoundCooldowns = createChannelMapProxy("playsoundCooldowns");
+const customAliasTimers = createChannelMapProxy("customAliasTimers");
+const ignoredBots = [
+  "nightbot",
+  "streamelements",
+  "streamlabs",
+  "moobot",
+  "dotabod",
+  "wizebot",
+  "fossabot",
+  "kofibot",
+  "soundalerts",
+  "Tangiabot",
+];
 
 function setChannelInterval(callback, delay) {
-  return channelList.map(runtime => runInChannel(runtime, () => setInterval(callback, delay)));
+  return channelList.map((runtime) =>
+    runInChannel(runtime, () => setInterval(callback, delay)),
+  );
 }
 
 const builtInAliases = {
-  '!point': '!points',
-  '!pts': '!points',
-  '!givepoint': '!givepoints',
-  '!givept': '!givepoints',
-  '!givepts': '!givepoints',
-  '!startbet': '!betstart',
-  '!stopbet': '!betstop',
-  '!checkbet': '!betstatus',
-  '!statusbet': '!betstatus',
-  '!editpoint': '!editpoints',
-  '!toppoint': '!toppoints',
-  '!top': '!toppoints',
-  '!leaderboard': '!toppoints',
-  '!addpoint': '!masspointsadd',
-  '!subpoint': '!masspointssub',
-  '!delcommand': '!removecommand',
-  '!deletecommand': '!removecommand',
-  '!commands': '!commandlist',
-  '!cmds': '!commandlist',
-  '!cmdlist': '!commandlist',
-  '!roulette': '!gamble',
-  '!roll': '!gamble',
-  '!setrewards': '!editrewards',
-  '!buylvl': '!lvlup',
-  '!buylevel': '!lvlup',
-  '!buylevels': '!lvlup',
-  '!levelup': '!lvlup',
-  '!inv': '!inventory',
-  '!redeem': '!use'
+  "!point": "!points",
+  "!pts": "!points",
+  "!givepoint": "!givepoints",
+  "!givept": "!givepoints",
+  "!givepts": "!givepoints",
+  "!startbet": "!betstart",
+  "!stopbet": "!betstop",
+  "!checkbet": "!betstatus",
+  "!statusbet": "!betstatus",
+  "!editpoint": "!editpoints",
+  "!toppoint": "!toppoints",
+  "!top": "!toppoints",
+  "!leaderboard": "!toppoints",
+  "!addpoint": "!masspointsadd",
+  "!subpoint": "!masspointssub",
+  "!delcommand": "!removecommand",
+  "!deletecommand": "!removecommand",
+  "!commands": "!commandlist",
+  "!cmds": "!commandlist",
+  "!cmdlist": "!commandlist",
+  "!roulette": "!gamble",
+  "!roll": "!gamble",
+  "!setrewards": "!editrewards",
+  "!buylvl": "!lvlup",
+  "!buylevel": "!lvlup",
+  "!buylevels": "!lvlup",
+  "!levelup": "!lvlup",
+  "!inv": "!inventory",
+  "!redeem": "!use",
 };
 
 const commandConfigSchema = {
-  '!triviastart': ['cost', 'cooldown'],
-  '!triviastop': ['cost', 'cooldown'],
-  '!playsound': ['cost', 'cooldown'],
-  '!showemote': ['cost', 'duration', 'size', 'cooldown'],
-  '!betstart': ['cost', 'cooldown'],
-  '!betstop': ['cost', 'cooldown'],
-  '!givepoints':['cooldown'],
-  '!deleteplaysound': ['cooldown'],
-  '!betstatus': ['cost', 'cooldown'],
-  '!points': ['cost', 'cooldown'],
-  '!toppoints': ['cost', 'cooldown'],
-  '!editpoints': ['cooldown'],
-  '!editcommand': ['cost', 'cooldown'],
-  '!gamble': ['cost', 'cooldown'],
-  '!refreshemotes': ['cost', 'cooldown'],
-  '!addcommand': ['cost', 'cooldown'],
-  '!removecommand': ['cost', 'cooldown'],
-  '!commandlist': ['cost', 'cooldown'],
-  '!chatwar': ['cost', 'cooldown'],
-  '!chatwarcancel': ['cost', 'cooldown'],
-  '!global': ['cooldown'],
-  '!chatcooldown': ['cooldown'],
-  '!clearoverlay': ['cooldown'],
-  '!duel': ['cooldown'],
-  '!acceptduel': ['cooldown'],
-  '!declineduel': ['cooldown'],
-  '!dueltax': ['cooldown'],
-  '!disable': ['cooldown'],
-  '!shoot': ['cost', 'duration', 'cooldown'],
-  '!enable':['cooldown'],
-  '!raffle': ['cooldown'],
-  '!multiraffle': ['cooldown'],
-  '!join': ['cooldown'],
-  '!masspointsadd': ['cooldown'],
-  '!masspointssub': ['cooldown'],
-  '!editpoints': ['cooldown'],
-  '!toppoints': ['cooldown'],
-  '!editrewards': ['cooldown'],
-  '!lvlup': ['cooldown'],
-  '!use': ['cooldown'],
-  '!fish': ['cost','cooldown'],
-  '!inventory': ['cooldown'],
-  '!buffs': ['cooldown'],
-  '!emotesize': ['cooldown'],
-  '!emoteduration': ['cooldown'],
-  '!removepoints': ['cooldown'],
-  '!betcancel': ['cooldown'],
-  '!bet': ['cooldown']
+  "!triviastart": ["cost", "cooldown"],
+  "!triviastop": ["cost", "cooldown"],
+  "!playsound": ["cost", "cooldown"],
+  "!showemote": ["cost", "duration", "size", "cooldown"],
+  "!betstart": ["cost", "cooldown"],
+  "!betstop": ["cost", "cooldown"],
+  "!givepoints": ["cooldown"],
+  "!deleteplaysound": ["cooldown"],
+  "!betstatus": ["cost", "cooldown"],
+  "!points": ["cost", "cooldown"],
+  "!toppoints": ["cost", "cooldown"],
+  "!editpoints": ["cooldown"],
+  "!editcommand": ["cost", "cooldown"],
+  "!gamble": ["cost", "cooldown"],
+  "!refreshemotes": ["cost", "cooldown"],
+  "!addcommand": ["cost", "cooldown"],
+  "!removecommand": ["cost", "cooldown"],
+  "!commandlist": ["cost", "cooldown"],
+  "!chatwar": ["cost", "cooldown"],
+  "!chatwarcancel": ["cost", "cooldown"],
+  "!global": ["cooldown"],
+  "!chatcooldown": ["cooldown"],
+  "!clearoverlay": ["cooldown"],
+  "!duel": ["cooldown"],
+  "!acceptduel": ["cooldown"],
+  "!declineduel": ["cooldown"],
+  "!dueltax": ["cooldown"],
+  "!disable": ["cooldown"],
+  "!shoot": ["cost", "duration", "cooldown"],
+  "!enable": ["cooldown"],
+  "!raffle": ["cooldown"],
+  "!multiraffle": ["cooldown"],
+  "!join": ["cooldown"],
+  "!masspointsadd": ["cooldown"],
+  "!masspointssub": ["cooldown"],
+  "!editpoints": ["cooldown"],
+  "!toppoints": ["cooldown"],
+  "!editrewards": ["cooldown"],
+  "!lvlup": ["cooldown"],
+  "!use": ["cooldown"],
+  "!fish": ["cost", "cooldown"],
+  "!inventory": ["cooldown"],
+  "!buffs": ["cooldown"],
+  "!emotesize": ["cooldown"],
+  "!emoteduration": ["cooldown"],
+  "!removepoints": ["cooldown"],
+  "!betcancel": ["cooldown"],
+  "!bet": ["cooldown"],
 };
 
-const activeDuels = createChannelMapProxy('activeDuels');
-const activeBets = createChannelMapProxy('activeBets');
-const pendingActivityUpdates = createChannelMapProxy('pendingActivityUpdates');
-const spamTimeouts = createChannelMapProxy('spamTimeouts');
-const spamPunishMsgDebounce = createChannelMapProxy('spamPunishMsgDebounce');
-const spamWarnings = createChannelMapProxy('spamWarnings');
-const userSpamHistory = createChannelMapProxy('userSpamHistory');
-const recentMassGifters = createChannelSetProxy('recentMassGifters');
-const thirdPartyEmotes = createChannelMapProxy('thirdPartyEmotes');
+const activeDuels = createChannelMapProxy("activeDuels");
+const activeBets = createChannelMapProxy("activeBets");
+const pendingActivityUpdates = createChannelMapProxy("pendingActivityUpdates");
+const spamTimeouts = createChannelMapProxy("spamTimeouts");
+const spamPunishMsgDebounce = createChannelMapProxy("spamPunishMsgDebounce");
+const spamWarnings = createChannelMapProxy("spamWarnings");
+const userSpamHistory = createChannelMapProxy("userSpamHistory");
+const recentMassGifters = createChannelSetProxy("recentMassGifters");
+const thirdPartyEmotes = createChannelMapProxy("thirdPartyEmotes");
 
 const duelWinMessages = [
   "{winner} absolutely destroyed {loser} and took their {amount} points!",
@@ -376,48 +476,58 @@ const duelWinMessages = [
   "{loser} thought they had a chance, but {winner} took their {amount} points anyway!",
   "A swift kick to the shins by {winner} leaves {loser} crying without their {amount} points!",
   "{winner} parried {loser}'s attack and counter-struck for {amount} points!",
-  "{winner} 360-no-scoped {loser} for an easy {amount} points!"
+  "{winner} 360-no-scoped {loser} for an easy {amount} points!",
 ];
 
 const duelTimeoutMessages = [
   "{target} was too scared to face {challenger} in a duel! Points refunded.",
   "{target} ran away from {challenger}'s duel!",
-  "The duel timer ran out! {target} ignored {challenger}."
+  "The duel timer ran out! {target} ignored {challenger}.",
 ];
 
 const duelBrokeMessages = [
   "{target} tried to accept {challenger}'s duel, but they are too broke!",
-  "The duel is canceled because {target} doesn't have {amount} points!"
+  "The duel is canceled because {target} doesn't have {amount} points!",
 ];
 
 let FISHING_ITEMS = {
   common: [],
   uncommon: [],
   rare: [],
-  legendary: []
+  legendary: [],
 };
 let ITEMS_REGISTRY = {};
 
 async function loadItemsConfig() {
   try {
-    let itemsFromDb = await db.all('SELECT * FROM items');
-    
+    let itemsFromDb = await db.all("SELECT * FROM items");
 
-    if (itemsFromDb.length === 0 && fs.existsSync('./items.json')) {
-      console.log('* Migrating items from items.json to database...');
-      const data = fs.readFileSync('./items.json', 'utf8');
+    if (itemsFromDb.length === 0 && fs.existsSync("./items.json")) {
+      console.log("* Migrating items from items.json to database...");
+      const data = fs.readFileSync("./items.json", "utf8");
       const parsed = JSON.parse(data);
       for (const [name, info] of Object.entries(parsed)) {
-        await db.run(`
+        await db.run(
+          `
           INSERT INTO items (name, rarity, description, effectType, effectValue, effectDurationMinutes, isGlobal, uses, autoConsume, isPercentage, maxGambleLimit)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-          name, info.rarity || 'Common', info.description || '', info.effectType || '', info.effectValue || 0,
-          info.effectDurationMinutes || 0, info.isGlobal ? 1 : 0, info.uses || 1, info.autoConsume ? 1 : 0,
-          info.isPercentage ? 1 : 0, info.maxGambleLimit || 0
-        ]);
+        `,
+          [
+            name,
+            info.rarity || "Common",
+            info.description || "",
+            info.effectType || "",
+            info.effectValue || 0,
+            info.effectDurationMinutes || 0,
+            info.isGlobal ? 1 : 0,
+            info.uses || 1,
+            info.autoConsume ? 1 : 0,
+            info.isPercentage ? 1 : 0,
+            info.maxGambleLimit || 0,
+          ],
+        );
       }
-      itemsFromDb = await db.all('SELECT * FROM items');
+      itemsFromDb = await db.all("SELECT * FROM items");
     }
 
     for (let key in ITEMS_REGISTRY) delete ITEMS_REGISTRY[key];
@@ -440,122 +550,154 @@ async function loadItemsConfig() {
         uses: row.uses,
         autoConsume: row.autoConsume === 1,
         isPercentage: row.isPercentage === 1,
-        maxGambleLimit: row.maxGambleLimit
+        maxGambleLimit: row.maxGambleLimit,
       };
-      
+
       ITEMS_REGISTRY[lowerName] = info;
-      
+
       try {
         const canonicalName = row.name;
-        await db.run(`
+        await db.run(
+          `
           INSERT INTO user_inventory (username, item_name, quantity)
           SELECT username, ?, quantity FROM user_inventory 
           WHERE LOWER(item_name) = LOWER(?) AND item_name != ?
           ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + excluded.quantity
-        `, [canonicalName, canonicalName, canonicalName]);
-        
-        await db.run(`
+        `,
+          [canonicalName, canonicalName, canonicalName],
+        );
+
+        await db.run(
+          `
           DELETE FROM user_inventory 
           WHERE LOWER(item_name) = LOWER(?) AND item_name != ?
-        `, [canonicalName, canonicalName]);
-      } catch(e) {
-        console.error('Error syncing inventory case for item:', row.name, e);
+        `,
+          [canonicalName, canonicalName],
+        );
+      } catch (e) {
+        console.error("Error syncing inventory case for item:", row.name, e);
       }
 
       const rarity = info.rarity.toLowerCase();
       if (FISHING_ITEMS[rarity]) {
-        FISHING_ITEMS[rarity].push({ 
-          name: lowerName, 
-          originalName: row.name, 
-          rarity: info.rarity, 
+        FISHING_ITEMS[rarity].push({
+          name: lowerName,
+          originalName: row.name,
+          rarity: info.rarity,
           description: info.description,
           effectType: info.effectType,
           effectValue: info.effectValue,
           uses: info.uses,
           effectDurationMinutes: info.effectDurationMinutes,
-          isGlobal: info.isGlobal ? 1 : 0
+          isGlobal: info.isGlobal ? 1 : 0,
         });
       }
     }
-    console.log(`* Loaded ${Object.keys(ITEMS_REGISTRY).length} items from database`);
+    console.log(
+      `* Loaded ${Object.keys(ITEMS_REGISTRY).length} items from database`,
+    );
   } catch (err) {
-    console.error('Error loading items:', err);
+    console.error("Error loading items:", err);
   }
 }
 
 const FISHING_RARITIES = [
-  { rarity: 'legendary', threshold: 0.7 },
-  { rarity: 'rare', threshold: 10.7 },
-  { rarity: 'uncommon', threshold: 45.7 },
-  { rarity: 'common', threshold: 100.0 }
+  { rarity: "legendary", threshold: 0.7 },
+  { rarity: "rare", threshold: 10.7 },
+  { rarity: "uncommon", threshold: 45.7 },
+  { rarity: "common", threshold: 100.0 },
 ];
 
-const SHARED_TABLES = ['user_inventory', 'admin_users', 'audit_logs', 'items'];
+const SHARED_TABLES = ["user_inventory", "admin_users", "audit_logs", "items"];
 
 function rewriteChannelSql(sql, runtime = getChannelRuntime()) {
-  if (!runtime || runtime.isMain || typeof sql !== 'string') return sql;
+  if (!runtime || runtime.isMain || typeof sql !== "string") return sql;
 
   let rewritten = sql;
-  const referencesChannelActivity = /\b(last_message_time|true_last_chat_time|timeout_until)\b/i.test(sql);
-  const tables = referencesChannelActivity ? SHARED_TABLES : ['users', ...SHARED_TABLES];
+  const referencesChannelActivity =
+    /\b(last_message_time|true_last_chat_time|timeout_until)\b/i.test(sql);
+  const tables = referencesChannelActivity
+    ? SHARED_TABLES
+    : ["users", ...SHARED_TABLES];
 
   for (const table of tables) {
-    const tablePattern = new RegExp(`\\b(FROM|JOIN|UPDATE|INTO)\\s+${table}\\b`, 'gi');
-    rewritten = rewritten.replace(tablePattern, (_match, keyword) => `${keyword} shared.${table}`);
+    const tablePattern = new RegExp(
+      `\\b(FROM|JOIN|UPDATE|INTO)\\s+${table}\\b`,
+      "gi",
+    );
+    rewritten = rewritten.replace(
+      tablePattern,
+      (_match, keyword) => `${keyword} shared.${table}`,
+    );
   }
   return rewritten;
 }
 
-const db = new Proxy({}, {
-  get(_target, property) {
-    const runtime = getChannelRuntime();
-    const connection = runtime.db;
-    if (!connection) {
-      if (property === 'then') return undefined;
-      return () => { throw new Error(`Database is not ready for channel ${runtime.login}`); };
-    }
-    const value = connection[property];
-    if (typeof value !== 'function') return value;
-    return (...args) => {
-      const parameterList = Array.isArray(args[1]) ? args[1] : args.slice(1);
-      const configKey = parameterList[0];
-      if (
-        !runtime.isMain &&
-        property === 'run' &&
-        typeof args[0] === 'string' &&
-        /\bapp_config\b/i.test(args[0]) &&
-        SHARED_CONFIG_KEYS.has(configKey)
-      ) {
-        return mainChannelRuntime.db.run(args[0], ...(Array.isArray(args[1]) ? [args[1]] : args.slice(1)));
+const db = new Proxy(
+  {},
+  {
+    get(_target, property) {
+      const runtime = getChannelRuntime();
+      const connection = runtime.db;
+      if (!connection) {
+        if (property === "then") return undefined;
+        return () => {
+          throw new Error(`Database is not ready for channel ${runtime.login}`);
+        };
       }
-      if (['run', 'get', 'all'].includes(property) && typeof args[0] === 'string') {
-        args[0] = rewriteChannelSql(args[0], runtime);
-      }
-      return value.apply(connection, args);
-    };
-  }
-});
+      const value = connection[property];
+      if (typeof value !== "function") return value;
+      return (...args) => {
+        const parameterList = Array.isArray(args[1]) ? args[1] : args.slice(1);
+        const configKey = parameterList[0];
+        if (
+          !runtime.isMain &&
+          property === "run" &&
+          typeof args[0] === "string" &&
+          /\bapp_config\b/i.test(args[0]) &&
+          SHARED_CONFIG_KEYS.has(configKey)
+        ) {
+          return mainChannelRuntime.db.run(
+            args[0],
+            ...(Array.isArray(args[1]) ? [args[1]] : args.slice(1)),
+          );
+        }
+        if (
+          ["run", "get", "all"].includes(property) &&
+          typeof args[0] === "string"
+        ) {
+          args[0] = rewriteChannelSql(args[0], runtime);
+        }
+        return value.apply(connection, args);
+      };
+    },
+  },
+);
 
 async function getRecentChannelUsernames(since) {
-  const placeholders = ignoredBots.map(() => '?').join(',');
+  const placeholders = ignoredBots.map(() => "?").join(",");
   const rows = await db.all(
     `SELECT username FROM users WHERE true_last_chat_time >= ? AND username NOT IN (${placeholders})`,
-    [since, ...ignoredBots]
+    [since, ...ignoredBots],
   );
-  return rows.map(row => row.username);
+  return rows.map((row) => row.username);
 }
 
-async function adjustRecentChannelUserPoints(amount, since, { percentage = false } = {}) {
+async function adjustRecentChannelUserPoints(
+  amount,
+  since,
+  { percentage = false } = {},
+) {
   const usernames = await getRecentChannelUsernames(since);
   if (usernames.length === 0) return 0;
 
-  const placeholders = usernames.map(() => '?').join(',');
+  const placeholders = usernames.map(() => "?").join(",");
   const expression = percentage
-    ? 'MAX(0, points + (points * ?))'
-    : 'MAX(0, points + ?)';
+    ? "MAX(0, points + (points * ?))"
+    : "MAX(0, points + ?)";
   await db.run(
     `UPDATE users SET points = ${expression} WHERE username IN (${placeholders})`,
-    [amount, ...usernames]
+    [amount, ...usernames],
   );
   return usernames.length;
 }
@@ -569,12 +711,14 @@ async function initDb(runtime = getChannelRuntime()) {
   if (runtime.maps.customAliasesMap) runtime.maps.customAliasesMap.clear();
   runtime.db = await open({
     filename: runtime.dbPath,
-    driver: sqlite3.Database
+    driver: sqlite3.Database,
   });
-  await runtime.db.exec('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;');
+  await runtime.db.exec(
+    "PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;",
+  );
 
   if (!runtime.isMain) {
-    await runtime.db.run('ATTACH DATABASE ? AS shared', [DB_PATH]);
+    await runtime.db.run("ATTACH DATABASE ? AS shared", [DB_PATH]);
   }
 
   await db.exec(`
@@ -584,17 +728,21 @@ async function initDb(runtime = getChannelRuntime()) {
       last_message_time INTEGER DEFAULT 0
     )
   `);
-  
+
   try {
-    await db.exec('ALTER TABLE users ADD COLUMN true_last_chat_time INTEGER DEFAULT 0');
+    await db.exec(
+      "ALTER TABLE users ADD COLUMN true_last_chat_time INTEGER DEFAULT 0",
+    );
   } catch (err) {}
 
   try {
-    await db.exec('ALTER TABLE users ADD COLUMN xp INTEGER DEFAULT 0');
+    await db.exec("ALTER TABLE users ADD COLUMN xp INTEGER DEFAULT 0");
   } catch (err) {}
 
   try {
-    await db.exec('ALTER TABLE users ADD COLUMN timeout_until INTEGER DEFAULT 0');
+    await db.exec(
+      "ALTER TABLE users ADD COLUMN timeout_until INTEGER DEFAULT 0",
+    );
   } catch (err) {}
 
   await db.exec(`
@@ -632,7 +780,7 @@ async function initDb(runtime = getChannelRuntime()) {
   `);
 
   try {
-    await db.exec('ALTER TABLE active_effects ADD COLUMN caster TEXT');
+    await db.exec("ALTER TABLE active_effects ADD COLUMN caster TEXT");
   } catch (err) {
     // Column might already exist
   }
@@ -690,8 +838,10 @@ async function initDb(runtime = getChannelRuntime()) {
   `);
 
   try {
-    await db.exec('ALTER TABLE emote_stats ADD COLUMN chatwar_points_spent INTEGER DEFAULT 0');
-  } catch (err) { }
+    await db.exec(
+      "ALTER TABLE emote_stats ADD COLUMN chatwar_points_spent INTEGER DEFAULT 0",
+    );
+  } catch (err) {}
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS user_inventory (
@@ -719,7 +869,7 @@ async function initDb(runtime = getChannelRuntime()) {
     )
   `);
 
-  console.log('* Ensuring app_config defaults...');
+  console.log("* Ensuring app_config defaults...");
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS custom_aliases (
@@ -745,7 +895,9 @@ async function initDb(runtime = getChannelRuntime()) {
     )
   `);
 
-  await db.exec(`
+  await db
+    .exec(
+      `
     CREATE TABLE IF NOT EXISTS trivia_questions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       question TEXT,
@@ -771,13 +923,27 @@ async function initDb(runtime = getChannelRuntime()) {
     );
     -- Ensure categories column exists on trivia_questions if it was already created
     ALTER TABLE trivia_questions ADD COLUMN categories TEXT;
-  `).catch(() => {}); // Catch error if column already exists
+  `,
+    )
+    .catch(() => {}); // Catch error if column already exists
 
-  try { await db.exec('ALTER TABLE user_submissions ADD COLUMN points_earned INTEGER DEFAULT 0'); } catch (err) {}
-  try { await db.exec('ALTER TABLE trivia_questions ADD COLUMN submission_id INTEGER'); } catch (err) {}
-  try { await db.exec('ALTER TABLE playsounds_metadata ADD COLUMN submission_id INTEGER'); } catch (err) {}
+  try {
+    await db.exec(
+      "ALTER TABLE user_submissions ADD COLUMN points_earned INTEGER DEFAULT 0",
+    );
+  } catch (err) {}
+  try {
+    await db.exec(
+      "ALTER TABLE trivia_questions ADD COLUMN submission_id INTEGER",
+    );
+  } catch (err) {}
+  try {
+    await db.exec(
+      "ALTER TABLE playsounds_metadata ADD COLUMN submission_id INTEGER",
+    );
+  } catch (err) {}
 
-  const configs = await db.all('SELECT * FROM app_config');
+  const configs = await db.all("SELECT * FROM app_config");
   for (const row of configs) {
     globalConfig[row.key] = row.value;
   }
@@ -790,46 +956,58 @@ async function initDb(runtime = getChannelRuntime()) {
       ? POINT_EARNING_MODE_LEGACY
       : POINT_EARNING_MODE_PASSIVE;
   }
-  if (runtime.config.reward_passive_interval_minutes === undefined) runtime.config.reward_passive_interval_minutes = '10';
-  if (runtime.config.reward_passive_sub === undefined) runtime.config.reward_passive_sub = '300';
-  if (runtime.config.reward_passive_nonsub === undefined) runtime.config.reward_passive_nonsub = '60';
+  if (runtime.config.reward_passive_interval_minutes === undefined)
+    runtime.config.reward_passive_interval_minutes = "10";
+  if (runtime.config.reward_passive_sub === undefined)
+    runtime.config.reward_passive_sub = "300";
+  if (runtime.config.reward_passive_nonsub === undefined)
+    runtime.config.reward_passive_nonsub = "60";
   if (runtime.config.random_support_raffles_enabled === undefined) {
-    runtime.config.random_support_raffles_enabled = runtime.isMain ? 'true' : 'false';
+    runtime.config.random_support_raffles_enabled = runtime.isMain
+      ? "true"
+      : "false";
   }
   for (const rewardToggle of [
-    'reward_sub_enabled',
-    'reward_bits_enabled',
-    'reward_giftsub_enabled',
-    'reward_watchstreak_enabled'
+    "reward_sub_enabled",
+    "reward_bits_enabled",
+    "reward_giftsub_enabled",
+    "reward_watchstreak_enabled",
   ]) {
     if (runtime.config[rewardToggle] === undefined) {
-      runtime.config[rewardToggle] = runtime.isMain ? 'true' : 'false';
+      runtime.config[rewardToggle] = runtime.isMain ? "true" : "false";
     }
   }
 
-  const aliases = await db.all('SELECT * FROM custom_aliases');
+  const aliases = await db.all("SELECT * FROM custom_aliases");
   for (const row of aliases) {
-    customAliasesMap.set(row.command, { 
-      cost: row.cost, 
+    customAliasesMap.set(row.command, {
+      cost: row.cost,
       action: row.action,
       auto_interval_minutes: row.auto_interval_minutes,
       auto_min_messages: row.auto_min_messages,
       auto_run_online: row.auto_run_online,
-      auto_run_offline: row.auto_run_offline
+      auto_run_offline: row.auto_run_offline,
     });
   }
 
-
   try {
-    await db.run('UPDATE users SET points = CAST(points AS INTEGER)');
-    console.log('* Ensured all user points are integers.');
+    await db.run("UPDATE users SET points = CAST(points AS INTEGER)");
+    console.log("* Ensured all user points are integers.");
 
     try {
-      await db.run('ALTER TABLE custom_aliases ADD COLUMN auto_interval_minutes INTEGER DEFAULT 0');
-      await db.run('ALTER TABLE custom_aliases ADD COLUMN auto_min_messages INTEGER DEFAULT 0');
-      await db.run('ALTER TABLE custom_aliases ADD COLUMN auto_run_online BOOLEAN DEFAULT 1');
-      await db.run('ALTER TABLE custom_aliases ADD COLUMN auto_run_offline BOOLEAN DEFAULT 0');
-      console.log('* Added timer columns to custom_aliases table.');
+      await db.run(
+        "ALTER TABLE custom_aliases ADD COLUMN auto_interval_minutes INTEGER DEFAULT 0",
+      );
+      await db.run(
+        "ALTER TABLE custom_aliases ADD COLUMN auto_min_messages INTEGER DEFAULT 0",
+      );
+      await db.run(
+        "ALTER TABLE custom_aliases ADD COLUMN auto_run_online BOOLEAN DEFAULT 1",
+      );
+      await db.run(
+        "ALTER TABLE custom_aliases ADD COLUMN auto_run_offline BOOLEAN DEFAULT 0",
+      );
+      console.log("* Added timer columns to custom_aliases table.");
     } catch (e) {
       // Columns likely already exist, ignore error.
     }
@@ -857,20 +1035,23 @@ async function initDb(runtime = getChannelRuntime()) {
     `);
 
     try {
-      await db.run('ALTER TABLE user_submissions ADD COLUMN reviewer TEXT');
+      await db.run("ALTER TABLE user_submissions ADD COLUMN reviewer TEXT");
     } catch (e) {
       // Column might already exist
     }
 
     // Migrate bomb to rng_effect
-    await db.run("UPDATE items SET effectType = 'rng_effect' WHERE effectType = 'bomb'");
-    await db.run("UPDATE active_effects SET effect_type = 'rng_effect' WHERE effect_type = 'bomb'");
-    
+    await db.run(
+      "UPDATE items SET effectType = 'rng_effect' WHERE effectType = 'bomb'",
+    );
+    await db.run(
+      "UPDATE active_effects SET effect_type = 'rng_effect' WHERE effect_type = 'bomb'",
+    );
+
     // Refresh items config after migration
     if (loadItemsConfig) await loadItemsConfig();
-    
   } catch (err) {
-    console.error('Error cleaning up database / migrating:', err);
+    console.error("Error cleaning up database / migrating:", err);
   }
 }
 
@@ -881,8 +1062,8 @@ async function swapDatabase() {
       runtime.db = null;
     }
   }
-  const stagingPath = path.join(__dirname, 'data', 'database_staging.sqlite');
-  const actualPath = path.join(__dirname, 'data', 'database.sqlite');
+  const stagingPath = path.join(__dirname, "data", "database_staging.sqlite");
+  const actualPath = path.join(__dirname, "data", "database.sqlite");
   if (fs.existsSync(stagingPath)) {
     if (fs.existsSync(actualPath)) fs.unlinkSync(actualPath);
     fs.renameSync(stagingPath, actualPath);
@@ -893,16 +1074,18 @@ async function swapDatabase() {
   await runInChannel(mainChannelRuntime, loadItemsConfig);
 }
 
-
 async function updateUserStat(username, field, amount) {
   if (!db || !username || !field) return;
   try {
     await db.run(
       `INSERT INTO user_stats (username, ${field}) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET ${field} = ${field} + ?`,
-      [username, amount, amount]
+      [username, amount, amount],
     );
   } catch (err) {
-    console.error(`Error updating user_stats for ${username} on field ${field}:`, err);
+    console.error(
+      `Error updating user_stats for ${username} on field ${field}:`,
+      err,
+    );
   }
 }
 
@@ -912,27 +1095,31 @@ async function updateEmoteStat(emote, isWinner) {
     const winsVal = isWinner ? 1 : 0;
     await db.run(
       `INSERT INTO emote_stats (emote, chatwar_battles, chatwar_wins) VALUES (?, 1, ?) ON CONFLICT(emote) DO UPDATE SET chatwar_battles = chatwar_battles + 1, chatwar_wins = chatwar_wins + ?`,
-      [emote, winsVal, winsVal]
+      [emote, winsVal, winsVal],
     );
   } catch (err) {
     console.error(`Error updating emote_stats for ${emote}:`, err);
   }
 }
 
-async function updateRaffleStats(participants, winnersArray, pointsWonPerWinner) {
+async function updateRaffleStats(
+  participants,
+  winnersArray,
+  pointsWonPerWinner,
+) {
   if (!participants || participants.length === 0) return;
   for (const user of participants) {
-    await updateUserStat(user, 'raffles_joined', 1);
+    await updateUserStat(user, "raffles_joined", 1);
   }
   for (const winner of winnersArray) {
-    await updateUserStat(winner, 'raffles_won', 1);
-    await updateUserStat(winner, 'raffles_points_won', pointsWonPerWinner);
+    await updateUserStat(winner, "raffles_won", 1);
+    await updateUserStat(winner, "raffles_points_won", pointsWonPerWinner);
   }
 }
 
 async function loadTokens() {
   if (fs.existsSync(TOKEN_FILE)) {
-    return JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8'));
+    return JSON.parse(fs.readFileSync(TOKEN_FILE, "utf8"));
   }
   return null;
 }
@@ -942,45 +1129,52 @@ async function saveTokens(tokens) {
 }
 
 async function exchangeAuthCode() {
-  console.log('* First time setup! Exchanging Auth Code for permanent tokens...');
-  const res = await fetch('https://id.twitch.tv/oauth2/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  console.log(
+    "* First time setup! Exchanging Auth Code for permanent tokens...",
+  );
+  const res = await fetch("https://id.twitch.tv/oauth2/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       client_id: CLIENT_ID,
       client_secret: CLIENT_SECRET,
       code: AUTH_CODE,
-      grant_type: 'authorization_code',
-      redirect_uri: 'http://localhost'
-    })
+      grant_type: "authorization_code",
+      redirect_uri: "http://localhost",
+    }),
   });
   const data = await res.json();
   if (data.access_token) {
     await saveTokens(data);
     return data.access_token;
   } else {
-    throw new Error('Failed to exchange auth code. Make sure you pasted the code and secret correctly: ' + JSON.stringify(data));
+    throw new Error(
+      "Failed to exchange auth code. Make sure you pasted the code and secret correctly: " +
+        JSON.stringify(data),
+    );
   }
 }
 
 async function refreshAccessToken(refreshToken) {
-  console.log('* Token expired! Automatically fetching a new one in the background...');
-  const res = await fetch('https://id.twitch.tv/oauth2/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  console.log(
+    "* Token expired! Automatically fetching a new one in the background...",
+  );
+  const res = await fetch("https://id.twitch.tv/oauth2/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       client_id: CLIENT_ID,
       client_secret: CLIENT_SECRET,
       refresh_token: refreshToken,
-      grant_type: 'refresh_token'
-    })
+      grant_type: "refresh_token",
+    }),
   });
   const data = await res.json();
   if (data.access_token) {
     await saveTokens(data);
     return data.access_token;
   } else {
-    throw new Error('Failed to refresh token: ' + JSON.stringify(data));
+    throw new Error("Failed to refresh token: " + JSON.stringify(data));
   }
 }
 
@@ -989,19 +1183,22 @@ async function getValidAccessToken() {
 
   if (!tokens) {
     if (!AUTH_CODE || !CLIENT_SECRET) {
-      throw new Error('No tokens.json found, and AUTH_CODE/CLIENT_SECRET are missing! Please fill them in at the top of app.js.');
+      throw new Error(
+        "No tokens.json found, and AUTH_CODE/CLIENT_SECRET are missing! Please fill them in at the top of app.js.",
+      );
     }
     const token = await exchangeAuthCode();
     return token;
   }
 
-
-  const res = await fetch('https://api.twitch.tv/helix/users', {
-    headers: { 'Authorization': `Bearer ${tokens.access_token}`, 'Client-Id': CLIENT_ID }
+  const res = await fetch("https://api.twitch.tv/helix/users", {
+    headers: {
+      Authorization: `Bearer ${tokens.access_token}`,
+      "Client-Id": CLIENT_ID,
+    },
   });
 
   if (res.status === 401) {
-
     const newToken = await refreshAccessToken(tokens.refresh_token);
     return newToken;
   }
@@ -1014,21 +1211,24 @@ app.use(cors());
 const PORT = process.env.PORT || 3000;
 
 app.use((req, res, next) => {
-  const requestedChannel = req.query.channel || req.headers['x-irc-overlay-channel'];
+  const requestedChannel =
+    req.query.channel || req.headers["x-irc-overlay-channel"];
   const runtime = resolveChannelRuntime(requestedChannel);
   if (requestedChannel && !runtime) {
-    return res.status(400).json({ success: false, error: `Unknown channel: ${requestedChannel}` });
+    return res
+      .status(400)
+      .json({ success: false, error: `Unknown channel: ${requestedChannel}` });
   }
   return runInChannel(runtime || mainChannelRuntime, next);
 });
 
 function clearOverlaySystem() {
-  if (activeBets.has('default')) {
-    const bet = activeBets.get('default');
+  if (activeBets.has("default")) {
+    const bet = activeBets.get("default");
     bet.isHidden = true;
     clearBetState(null);
   }
-  
+
   if (channelState.activeChatWar) {
     channelState.activeChatWar.isHidden = true;
     clearChatWarState(null);
@@ -1058,106 +1258,162 @@ setupRoutes(app, {
   getSoundsDir,
   adjustRecentChannelUserPoints,
   channels: channelList.map(({ id, login, isMain }) => ({ id, login, isMain })),
-  isStreamerLive: async () => channelState.isStreamerLive ? await channelState.isStreamerLive() : false
+  isStreamerLive: async () =>
+    channelState.isStreamerLive ? await channelState.isStreamerLive() : false,
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
-app.get('/playsounds/:channelId/:filename', (req, res) => {
+app.use(express.static(path.join(__dirname, "public")));
+app.get("/playsounds/:channelId/:filename", (req, res) => {
   const runtime = resolveChannelRuntime(req.params.channelId);
-  if (!runtime) return res.status(404).send('Unknown channel');
+  if (!runtime) return res.status(404).send("Unknown channel");
   const filename = path.basename(req.params.filename);
   res.sendFile(path.join(getSoundsDir(runtime), filename));
 });
-app.use('/playsounds', express.static(path.join(__dirname, 'data', 'playsounds')));
+app.use(
+  "/playsounds",
+  express.static(path.join(__dirname, "data", "playsounds")),
+);
 
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== "test") {
   app.listen(PORT, () => {
     console.log(`==================================================`);
     console.log(`* Emote Overlay Server running on port ${PORT}!`);
-    console.log(`* OBS Users: Add Browser Source: http://localhost:${PORT}/overlay`);
+    console.log(
+      `* OBS Users: Add Browser Source: http://localhost:${PORT}/overlay`,
+    );
     console.log(`==================================================\n`);
   });
 }
 
-
-
 const REFRESH_COOLDOWN_MS = 10000;
 
 async function loadThirdPartyEmotes(broadcasterId) {
-  console.log('* Loading 3rd party emotes (7TV, BTTV, FFZ)...');
+  console.log("* Loading 3rd party emotes (7TV, BTTV, FFZ)...");
   try {
-    const res7tv = await fetch(`https://7tv.io/v3/users/twitch/${broadcasterId}`);
+    const res7tv = await fetch(
+      `https://7tv.io/v3/users/twitch/${broadcasterId}`,
+    );
     if (res7tv.ok) {
       const data = await res7tv.json();
       if (data.emote_set && data.emote_set.emotes) {
         channelState.sevenTvEmoteSetId = data.emote_set.id;
-        data.emote_set.emotes.forEach(emote => {
+        data.emote_set.emotes.forEach((emote) => {
           const flags = emote.data ? emote.data.flags : emote.flags;
           const isZeroWidth = (flags & 256) === 256;
-          
+
           let isNativelyWide = false;
           const host = emote.data ? emote.data.host : emote.host;
           if (host && host.files && host.files.length > 0) {
             const file = host.files[0];
-            if (file.width && file.height && (file.width / file.height >= 1.6)) {
+            if (file.width && file.height && file.width / file.height >= 1.6) {
               isNativelyWide = true;
             }
           }
-          
-          thirdPartyEmotes.set(emote.name, { url: `https://cdn.7tv.app/emote/${emote.id}/4x.webp`, isZeroWidth, isNativelyWide });
+
+          thirdPartyEmotes.set(emote.name, {
+            url: `https://cdn.7tv.app/emote/${emote.id}/4x.webp`,
+            isZeroWidth,
+            isNativelyWide,
+          });
         });
       }
     }
 
-    const res7tvGlobal = await fetch('https://7tv.io/v3/emote-sets/global');
+    const res7tvGlobal = await fetch("https://7tv.io/v3/emote-sets/global");
     if (res7tvGlobal.ok) {
       const data = await res7tvGlobal.json();
-      if (data.emotes) data.emotes.forEach(emote => {
-        const flags = emote.data ? emote.data.flags : emote.flags;
-        const isZeroWidth = (flags & 256) === 256;
-        
-        let isNativelyWide = false;
-        const host = emote.data ? emote.data.host : emote.host;
-        if (host && host.files && host.files.length > 0) {
-          const file = host.files[0];
-          if (file.width && file.height && (file.width / file.height >= 1.6)) {
-            isNativelyWide = true;
+      if (data.emotes)
+        data.emotes.forEach((emote) => {
+          const flags = emote.data ? emote.data.flags : emote.flags;
+          const isZeroWidth = (flags & 256) === 256;
+
+          let isNativelyWide = false;
+          const host = emote.data ? emote.data.host : emote.host;
+          if (host && host.files && host.files.length > 0) {
+            const file = host.files[0];
+            if (file.width && file.height && file.width / file.height >= 1.6) {
+              isNativelyWide = true;
+            }
           }
-        }
-        
-        thirdPartyEmotes.set(emote.name, { url: `https://cdn.7tv.app/emote/${emote.id}/4x.webp`, isZeroWidth, isNativelyWide });
-      });
+
+          thirdPartyEmotes.set(emote.name, {
+            url: `https://cdn.7tv.app/emote/${emote.id}/4x.webp`,
+            isZeroWidth,
+            isNativelyWide,
+          });
+        });
     }
 
-    const resBttvGlobal = await fetch('https://api.betterttv.net/3/cached/emotes/global');
+    const resBttvGlobal = await fetch(
+      "https://api.betterttv.net/3/cached/emotes/global",
+    );
     if (resBttvGlobal.ok) {
       const bttvGlobal = await resBttvGlobal.json();
-      bttvGlobal.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/emote/${emote.id}/3x`, isZeroWidth: false, isNativelyWide: false }));
+      bttvGlobal.forEach((emote) =>
+        thirdPartyEmotes.set(emote.code, {
+          url: `https://cdn.betterttv.net/emote/${emote.id}/3x`,
+          isZeroWidth: false,
+          isNativelyWide: false,
+        }),
+      );
     }
 
-    const resBttvChannel = await fetch(`https://api.betterttv.net/3/cached/users/twitch/${broadcasterId}`);
+    const resBttvChannel = await fetch(
+      `https://api.betterttv.net/3/cached/users/twitch/${broadcasterId}`,
+    );
     if (resBttvChannel.ok) {
       const bttvChannel = await resBttvChannel.json();
-      if (bttvChannel.channelEmotes) bttvChannel.channelEmotes.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/emote/${emote.id}/3x`, isZeroWidth: false, isNativelyWide: false }));
-      if (bttvChannel.sharedEmotes) bttvChannel.sharedEmotes.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/emote/${emote.id}/3x`, isZeroWidth: false, isNativelyWide: false }));
+      if (bttvChannel.channelEmotes)
+        bttvChannel.channelEmotes.forEach((emote) =>
+          thirdPartyEmotes.set(emote.code, {
+            url: `https://cdn.betterttv.net/emote/${emote.id}/3x`,
+            isZeroWidth: false,
+            isNativelyWide: false,
+          }),
+        );
+      if (bttvChannel.sharedEmotes)
+        bttvChannel.sharedEmotes.forEach((emote) =>
+          thirdPartyEmotes.set(emote.code, {
+            url: `https://cdn.betterttv.net/emote/${emote.id}/3x`,
+            isZeroWidth: false,
+            isNativelyWide: false,
+          }),
+        );
     }
 
-    const resFfzGlobal = await fetch('https://api.betterttv.net/3/cached/frankerfacez/emotes/global');
+    const resFfzGlobal = await fetch(
+      "https://api.betterttv.net/3/cached/frankerfacez/emotes/global",
+    );
     if (resFfzGlobal.ok) {
       const ffzGlobal = await resFfzGlobal.json();
-      ffzGlobal.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/frankerfacez_emote/${emote.id}/4`, isZeroWidth: false, isNativelyWide: false }));
+      ffzGlobal.forEach((emote) =>
+        thirdPartyEmotes.set(emote.code, {
+          url: `https://cdn.betterttv.net/frankerfacez_emote/${emote.id}/4`,
+          isZeroWidth: false,
+          isNativelyWide: false,
+        }),
+      );
     }
 
-    const resFfzChannel = await fetch(`https://api.betterttv.net/3/cached/frankerfacez/users/twitch/${broadcasterId}`);
+    const resFfzChannel = await fetch(
+      `https://api.betterttv.net/3/cached/frankerfacez/users/twitch/${broadcasterId}`,
+    );
     if (resFfzChannel.ok) {
       const ffzChannel = await resFfzChannel.json();
-      ffzChannel.forEach(emote => thirdPartyEmotes.set(emote.code, { url: `https://cdn.betterttv.net/frankerfacez_emote/${emote.id}/4`, isZeroWidth: false, isNativelyWide: false }));
+      ffzChannel.forEach((emote) =>
+        thirdPartyEmotes.set(emote.code, {
+          url: `https://cdn.betterttv.net/frankerfacez_emote/${emote.id}/4`,
+          isZeroWidth: false,
+          isNativelyWide: false,
+        }),
+      );
     }
 
-    console.log(`* Successfully loaded ${thirdPartyEmotes.size} total 3rd-party emotes into memory!`);
-
+    console.log(
+      `* Successfully loaded ${thirdPartyEmotes.size} total 3rd-party emotes into memory!`,
+    );
   } catch (err) {
-    console.error('! Failed to load some 3rd party emotes:', err);
+    console.error("! Failed to load some 3rd party emotes:", err);
   }
 }
 
@@ -1166,32 +1422,45 @@ async function start() {
     await runInChannel(runtime, () => initDb(runtime));
   }
   await runInChannel(mainChannelRuntime, loadItemsConfig);
-  console.log(`* SQLite databases initialized for ${channelList.length} channel(s)!`);
+  console.log(
+    `* SQLite databases initialized for ${channelList.length} channel(s)!`,
+  );
 
   try {
     USER_ACCESS_TOKEN = await getValidAccessToken();
   } catch (err) {
-    console.error('! Authentication Error:', err.message);
-    console.error('! Did you forget to paste your CLIENT_SECRET or AUTH_CODE?');
+    console.error("! Authentication Error:", err.message);
+    console.error("! Did you forget to paste your CLIENT_SECRET or AUTH_CODE?");
     return;
   }
 
-  console.log('* Fetching Twitch User IDs...');
+  console.log("* Fetching Twitch User IDs...");
 
   for (const runtime of channelList) {
-    const userRes = await fetch(`https://api.twitch.tv/helix/users?login=${runtime.login}`, {
-      headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
-    });
+    const userRes = await fetch(
+      `https://api.twitch.tv/helix/users?login=${runtime.login}`,
+      {
+        headers: {
+          Authorization: `Bearer ${USER_ACCESS_TOKEN}`,
+          "Client-Id": CLIENT_ID,
+        },
+      },
+    );
     const userData = await userRes.json();
     if (!userRes.ok || !userData.data || userData.data.length === 0) {
       throw new Error(`Unable to resolve Twitch channel ${runtime.login}`);
     }
     runtime.broadcasterId = userData.data[0].id;
-    console.log(`* Target channel: ${runtime.login} (Broadcaster ID: ${runtime.broadcasterId})`);
+    console.log(
+      `* Target channel: ${runtime.login} (Broadcaster ID: ${runtime.broadcasterId})`,
+    );
   }
 
-  const myRes = await fetch('https://api.twitch.tv/helix/users', {
-    headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
+  const myRes = await fetch("https://api.twitch.tv/helix/users", {
+    headers: {
+      Authorization: `Bearer ${USER_ACCESS_TOKEN}`,
+      "Client-Id": CLIENT_ID,
+    },
   });
   const myData = await myRes.json();
   const YOUR_USER_ID = myData.data[0].id;
@@ -1200,7 +1469,10 @@ async function start() {
 
   async function botHelixGet(url, retryOnUnauthorized = true) {
     let response = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
+      headers: {
+        Authorization: `Bearer ${USER_ACCESS_TOKEN}`,
+        "Client-Id": CLIENT_ID,
+      },
     });
     if (response.status === 401 && retryOnUnauthorized) {
       USER_ACCESS_TOKEN = await getValidAccessToken();
@@ -1216,14 +1488,18 @@ async function start() {
       const query = new URLSearchParams({
         broadcaster_id: runtime.broadcasterId,
         moderator_id: YOUR_USER_ID,
-        first: '1000'
+        first: "1000",
       });
-      if (cursor) query.set('after', cursor);
-      const response = await botHelixGet(`https://api.twitch.tv/helix/chat/chatters?${query.toString()}`);
+      if (cursor) query.set("after", cursor);
+      const response = await botHelixGet(
+        `https://api.twitch.tv/helix/chat/chatters?${query.toString()}`,
+      );
       const data = await response.json();
       if (!response.ok) {
         const message = data?.message || `Twitch returned ${response.status}`;
-        throw new Error(`Could not fetch chatters for ${runtime.login}: ${message}`);
+        throw new Error(
+          `Could not fetch chatters for ${runtime.login}: ${message}`,
+        );
       }
       chatters.push(...(data.data || []));
       cursor = data.pagination?.cursor || null;
@@ -1233,27 +1509,31 @@ async function start() {
 
   async function awardPassivePoints(runtime = getChannelRuntime()) {
     if (getPointEarningMode(runtime) !== POINT_EARNING_MODE_PASSIVE) return 0;
-    if (!await isStreamerLive()) return 0;
+    if (!(await isStreamerLive())) return 0;
 
     const chatters = await fetchAllChatters(runtime);
     const observedSubscribers = await db.all(
       `SELECT twitch_user_id FROM chatter_subscription_status
        WHERE is_subscriber = 1 AND last_observed_at >= ?`,
-      [channelState.streamStartTime]
+      [channelState.streamStartTime],
     );
-    const subscriberIds = new Set(observedSubscribers.map(row => row.twitch_user_id));
+    const subscriberIds = new Set(
+      observedSubscribers.map((row) => row.twitch_user_id),
+    );
     const settings = getPassiveRewardSettings(runtime);
-    const excludedUsers = new Set([...ignoredBots, BOT_USERNAME].map(name => String(name).toLowerCase()));
+    const excludedUsers = new Set(
+      [...ignoredBots, BOT_USERNAME].map((name) => String(name).toLowerCase()),
+    );
     const eligibleChatters = new Map();
 
     for (const chatter of chatters) {
-      const username = String(chatter.user_login || '').toLowerCase();
+      const username = String(chatter.user_login || "").toLowerCase();
       if (!username || excludedUsers.has(username)) continue;
       eligibleChatters.set(chatter.user_id, username);
     }
     if (eligibleChatters.size === 0) return 0;
 
-    await db.exec('BEGIN TRANSACTION');
+    await db.exec("BEGIN TRANSACTION");
     try {
       for (const [userId, username] of eligibleChatters) {
         const amount = subscriberIds.has(userId)
@@ -1263,133 +1543,181 @@ async function start() {
         await db.run(
           `INSERT INTO users (username, points) VALUES (?, ?)
            ON CONFLICT(username) DO UPDATE SET points = points + excluded.points`,
-          [username, amount]
+          [username, amount],
         );
       }
-      await db.exec('COMMIT');
+      await db.exec("COMMIT");
     } catch (error) {
-      await db.exec('ROLLBACK');
+      await db.exec("ROLLBACK");
       throw error;
     }
 
     console.log(
       `* [PASSIVE POINTS] ${runtime.login}: rewarded ${eligibleChatters.size} chatters ` +
-      `(${subscriberIds.size} subscriber badges observed this stream; ` +
-      `${settings.subscriberPoints} sub / ${settings.nonSubscriberPoints} non-sub).`
+        `(${subscriberIds.size} subscriber badges observed this stream; ` +
+        `${settings.subscriberPoints} sub / ${settings.nonSubscriberPoints} non-sub).`,
     );
     return eligibleChatters.size;
   }
 
-  const getLevelBase = () => parseInt(mainChannelRuntime.config['level_base_cost'] || '200', 10);
+  const getLevelBase = () =>
+    parseInt(mainChannelRuntime.config["level_base_cost"] || "200", 10);
   const getLvl = (xp) => Math.floor(Math.sqrt((xp || 0) / getLevelBase())) + 1;
   const getXpForLvl = (lvl) => getLevelBase() * Math.pow(lvl - 1, 2);
-  
-  const getLegBonusRate = () => parseFloat(globalConfig['leg_bonus_rate'] || '0.01');
-  const getRareBonusRate = () => parseFloat(globalConfig['rare_bonus_rate'] || '0.05');
-  const getPointsBonusRate = () => parseFloat(globalConfig['lvl_bonus_rate'] || '0.001');
-  const getPointsToXpRate = () => parseFloat(globalConfig['points_to_xp_rate'] || '1');
+
+  const getLegBonusRate = () =>
+    parseFloat(globalConfig["leg_bonus_rate"] || "0.01");
+  const getRareBonusRate = () =>
+    parseFloat(globalConfig["rare_bonus_rate"] || "0.05");
+  const getPointsBonusRate = () =>
+    parseFloat(globalConfig["lvl_bonus_rate"] || "0.001");
+  const getPointsToXpRate = () =>
+    parseFloat(globalConfig["points_to_xp_rate"] || "1");
 
   async function getActiveEffects(username, effectType) {
     const now = Date.now();
-    await db.run('DELETE FROM active_effects WHERE expires_at IS NOT NULL AND expires_at < ?', [now]);
-    await db.run('DELETE FROM active_effects WHERE uses_left IS NOT NULL AND uses_left <= 0');
+    await db.run(
+      "DELETE FROM active_effects WHERE expires_at IS NOT NULL AND expires_at < ?",
+      [now],
+    );
+    await db.run(
+      "DELETE FROM active_effects WHERE uses_left IS NOT NULL AND uses_left <= 0",
+    );
     return await db.all(
       'SELECT * FROM active_effects WHERE (target_user = ? OR target_user = "GLOBAL") AND effect_type = ?',
-      [username, effectType]
+      [username, effectType],
     );
   }
 
   async function distributeRobinHoodTax(taxAmount) {
     if (taxAmount <= 0) return;
     await isStreamerLive(); // Fetch latest start time if live
-    const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
-    const row = await db.get(`SELECT COUNT(*) as count FROM users WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`, [channelState.streamStartTime]);
+    const ignoredBotsStr = ignoredBots.map((b) => `'${b}'`).join(",");
+    const row = await db.get(
+      `SELECT COUNT(*) as count FROM users WHERE true_last_chat_time >= ? AND username NOT IN (${ignoredBotsStr})`,
+      [channelState.streamStartTime],
+    );
     const count = row ? row.count : 0;
     if (count > 0) {
       const splitAmount = Math.floor(taxAmount / count);
       if (splitAmount > 0) {
-        await addPointsToRecentChannelUsers(splitAmount, channelState.streamStartTime);
+        await addPointsToRecentChannelUsers(
+          splitAmount,
+          channelState.streamStartTime,
+        );
       }
     }
   }
-  
-  async function addPointsWithBonus(username, amount, ignoreBoosts = false, actionType = 'none') {
+
+  async function addPointsWithBonus(
+    username,
+    amount,
+    ignoreBoosts = false,
+    actionType = "none",
+  ) {
     if (ignoreBoosts) {
       const finalAmount = amount;
       const xpAmount = Math.max(1, Math.floor(finalAmount / 10));
       await db.run(
         `INSERT INTO users (username, points, xp) VALUES (?, ?, ?)
          ON CONFLICT(username) DO UPDATE SET points = points + excluded.points, xp = xp + excluded.xp`,
-        [username, finalAmount, xpAmount]
+        [username, finalAmount, xpAmount],
       );
       return finalAmount;
     }
 
-    const userRow = await db.get('SELECT xp FROM users WHERE username = ?', [username]);
+    const userRow = await db.get("SELECT xp FROM users WHERE username = ?", [
+      username,
+    ]);
     const xp = userRow ? userRow.xp : 0;
     const lvl = getLvl(xp);
     const lvlBonus = Math.round(amount * (lvl * getPointsBonusRate()));
-    
+
     // Check for item buffs/debuffs
-    const personalBoosts = await getActiveEffects(username, 'personal_point_boost');
-    const globalBoosts = await getActiveEffects(username, 'global_point_boost');
-    const globalDebuffs = await getActiveEffects(username, 'global_point_debuff');
-    const personalDebuffs = await getActiveEffects(username, 'personal_point_debuff_target');
-    
+    const personalBoosts = await getActiveEffects(
+      username,
+      "personal_point_boost",
+    );
+    const globalBoosts = await getActiveEffects(username, "global_point_boost");
+    const globalDebuffs = await getActiveEffects(
+      username,
+      "global_point_debuff",
+    );
+    const personalDebuffs = await getActiveEffects(
+      username,
+      "personal_point_debuff_target",
+    );
 
     let multiplier = 1.0;
-    for (const b of personalBoosts) multiplier *= (1 + b.effect_value);
-    for (const b of globalBoosts) multiplier *= (1 + b.effect_value);
+    for (const b of personalBoosts) multiplier *= 1 + b.effect_value;
+    for (const b of globalBoosts) multiplier *= 1 + b.effect_value;
     for (const b of globalDebuffs) {
       if (b.caster !== username) {
-        const evaders = await db.all('SELECT * FROM active_effects WHERE target_user = ? AND effect_type = "tax_evader" AND uses_left > 0', [username]);
+        const evaders = await db.all(
+          'SELECT * FROM active_effects WHERE target_user = ? AND effect_type = "tax_evader" AND uses_left > 0',
+          [username],
+        );
         if (evaders.length > 0) {
-           if (evaders[0].uses_left > 1) {
-              await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [evaders[0].id]);
-           } else {
-              await db.run('DELETE FROM active_effects WHERE id = ?', [evaders[0].id]);
-           }
-           continue;
+          if (evaders[0].uses_left > 1) {
+            await db.run(
+              "UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?",
+              [evaders[0].id],
+            );
+          } else {
+            await db.run("DELETE FROM active_effects WHERE id = ?", [
+              evaders[0].id,
+            ]);
+          }
+          continue;
         }
-        multiplier *= (1 - b.effect_value);
+        multiplier *= 1 - b.effect_value;
       }
     }
-    
+
     for (const b of personalDebuffs) {
       if (b.caster !== username) {
-         const evaders = await db.all('SELECT * FROM active_effects WHERE target_user = ? AND effect_type = "tax_evader" AND uses_left > 0', [username]);
-         if (evaders.length > 0) {
-            if (evaders[0].uses_left > 1) {
-               await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [evaders[0].id]);
-            } else {
-               await db.run('DELETE FROM active_effects WHERE id = ?', [evaders[0].id]);
-            }
-            continue;
-         }
-         multiplier *= (1 - b.effect_value);
+        const evaders = await db.all(
+          'SELECT * FROM active_effects WHERE target_user = ? AND effect_type = "tax_evader" AND uses_left > 0',
+          [username],
+        );
+        if (evaders.length > 0) {
+          if (evaders[0].uses_left > 1) {
+            await db.run(
+              "UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?",
+              [evaders[0].id],
+            );
+          } else {
+            await db.run("DELETE FROM active_effects WHERE id = ?", [
+              evaders[0].id,
+            ]);
+          }
+          continue;
+        }
+        multiplier *= 1 - b.effect_value;
       }
     }
-    
+
     // Calculate final
-    let itemBonus = Math.round((amount * multiplier) - amount);
-    
+    let itemBonus = Math.round(amount * multiplier - amount);
+
     let totalExtra = lvlBonus + itemBonus;
-    if (actionType !== 'none' && totalExtra > 0) {
+    if (actionType !== "none" && totalExtra > 0) {
       let pctCapStr, flatCapStr, defPctCap, defFlatCap;
-      
-      if (actionType === 'gamble') {
-        pctCapStr = globalConfig['active_action_bonus_percent_cap'];
-        flatCapStr = globalConfig['active_action_bonus_cap'];
+
+      if (actionType === "gamble") {
+        pctCapStr = globalConfig["active_action_bonus_percent_cap"];
+        flatCapStr = globalConfig["active_action_bonus_cap"];
         defPctCap = 50;
         defFlatCap = 5000;
-      } else if (actionType === 'engagement') {
-        pctCapStr = globalConfig['engagement_action_bonus_percent_cap'];
-        flatCapStr = globalConfig['engagement_action_bonus_cap'];
+      } else if (actionType === "engagement") {
+        pctCapStr = globalConfig["engagement_action_bonus_percent_cap"];
+        flatCapStr = globalConfig["engagement_action_bonus_cap"];
         defPctCap = 1000;
         defFlatCap = 100000;
       }
 
-      const pctCap = pctCapStr !== undefined ? parseFloat(pctCapStr) : defPctCap;
+      const pctCap =
+        pctCapStr !== undefined ? parseFloat(pctCapStr) : defPctCap;
       if (!isNaN(pctCap)) {
         const maxExtra = Math.floor(amount * (pctCap / 100));
         if (totalExtra > maxExtra) {
@@ -1402,23 +1730,32 @@ async function start() {
         totalExtra = cap;
       }
     }
-    
+
     const finalAmount = amount + totalExtra;
-    await db.run('INSERT INTO users (username, points, xp) VALUES (?, ?, 0) ON CONFLICT(username) DO UPDATE SET points = points + ?', [username, finalAmount, finalAmount]);
-    
+    await db.run(
+      "INSERT INTO users (username, points, xp) VALUES (?, ?, 0) ON CONFLICT(username) DO UPDATE SET points = points + ?",
+      [username, finalAmount, finalAmount],
+    );
+
     // Tax Collector (only global effect, but applies to the collector's points)
     // Avoid recursion if adding tax collector points, but since it's a global passive, we can just do:
-    const taxCollectors = await db.all('SELECT target_user, effect_value FROM active_effects WHERE effect_type = "tax_collector" AND target_user != ?', [username]);
+    const taxCollectors = await db.all(
+      'SELECT target_user, effect_value FROM active_effects WHERE effect_type = "tax_collector" AND target_user != ?',
+      [username],
+    );
     for (const collector of taxCollectors) {
-      const taxAmount = Math.max(1, Math.round(finalAmount * collector.effect_value));
+      const taxAmount = Math.max(
+        1,
+        Math.round(finalAmount * collector.effect_value),
+      );
       // Give tax directly to them without bonuses to prevent infinite loops
       await db.run(
         `INSERT INTO users (username, points) VALUES (?, ?)
          ON CONFLICT(username) DO UPDATE SET points = points + excluded.points`,
-        [collector.target_user, taxAmount]
+        [collector.target_user, taxAmount],
       );
     }
-    
+
     return finalAmount;
   }
 
@@ -1429,59 +1766,72 @@ async function start() {
     if (appAccessToken && Date.now() < appAccessTokenExpiry) {
       return appAccessToken;
     }
-    const res = await fetch(`https://id.twitch.tv/oauth2/token?client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&grant_type=client_credentials`, {
-      method: 'POST'
-    });
+    const res = await fetch(
+      `https://id.twitch.tv/oauth2/token?client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&grant_type=client_credentials`,
+      {
+        method: "POST",
+      },
+    );
     const data = await res.json();
     if (!data.access_token) {
-      throw new Error('Failed to get App Access Token: ' + JSON.stringify(data));
+      throw new Error(
+        "Failed to get App Access Token: " + JSON.stringify(data),
+      );
     }
     appAccessToken = data.access_token;
-    appAccessTokenExpiry = Date.now() + (data.expires_in * 1000) - 60000;
+    appAccessTokenExpiry = Date.now() + data.expires_in * 1000 - 60000;
     return appAccessToken;
   }
-//helix chat bot badge
+  //helix chat bot badge
   async function sendChatMessage(messageText, author = null) {
     try {
       if (author) {
-        const userRow = await db.get('SELECT xp FROM users WHERE username = ?', [author]);
+        const userRow = await db.get(
+          "SELECT xp FROM users WHERE username = ?",
+          [author],
+        );
         const xp = userRow ? userRow.xp : 0;
         const lvl = getLvl(xp);
-        
+
         // Find the author's name in the message (with optional @) and insert the level before it
-        const nameRegex = new RegExp(`(@?${author})`, 'i');
+        const nameRegex = new RegExp(`(@?${author})`, "i");
         if (nameRegex.test(messageText)) {
           messageText = messageText.replace(nameRegex, `[${lvl}]$1`);
         } else {
           messageText = `[${lvl}]` + messageText;
         }
       }
-      
+
       const token = await getAppAccessToken();
-      const res = await fetch('https://api.twitch.tv/helix/chat/messages', {
-        method: 'POST',
+      const res = await fetch("https://api.twitch.tv/helix/chat/messages", {
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Client-Id': CLIENT_ID,
-          'Content-Type': 'application/json'
+          Authorization: `Bearer ${token}`,
+          "Client-Id": CLIENT_ID,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           broadcaster_id: getCurrentBroadcasterId(),
           sender_id: YOUR_USER_ID,
-          message: messageText
-        })
+          message: messageText,
+        }),
       });
 
       if (!res.ok) {
         const errData = await res.text();
-        console.error('! Failed to send chat message via API:', res.status, errData);
-        console.log('* Falling back to IRC messaging...');
-        if (activeWs && activeWs.readyState === 1) { // 1 === WebSocket.OPEN
+        console.error(
+          "! Failed to send chat message via API:",
+          res.status,
+          errData,
+        );
+        console.log("* Falling back to IRC messaging...");
+        if (activeWs && activeWs.readyState === 1) {
+          // 1 === WebSocket.OPEN
           activeWs.send(`PRIVMSG #${getCurrentChannelLogin()} :${messageText}`);
         }
       }
     } catch (err) {
-      console.error('! Error sending chat message:', err);
+      console.error("! Error sending chat message:", err);
       if (activeWs && activeWs.readyState === 1) {
         activeWs.send(`PRIVMSG #${getCurrentChannelLogin()} :${messageText}`);
       }
@@ -1489,16 +1839,23 @@ async function start() {
   }
 
   for (const runtime of channelList) {
-    runtime.state.sendChatMessage = (...args) => runInChannel(runtime, () => sendChatMessage(...args));
+    runtime.state.sendChatMessage = (...args) =>
+      runInChannel(runtime, () => sendChatMessage(...args));
   }
 
   const userIdCache = new Map();
 
   async function getUserIdByUsername(username) {
     if (userIdCache.has(username)) return userIdCache.get(username);
-    const res = await fetch(`https://api.twitch.tv/helix/users?login=${username}`, {
-      headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
-    });
+    const res = await fetch(
+      `https://api.twitch.tv/helix/users?login=${username}`,
+      {
+        headers: {
+          Authorization: `Bearer ${USER_ACCESS_TOKEN}`,
+          "Client-Id": CLIENT_ID,
+        },
+      },
+    );
     if (res.ok) {
       const data = await res.json();
       if (data.data && data.data.length > 0) {
@@ -1514,18 +1871,21 @@ async function start() {
     try {
       const targetUserId = await getUserIdByUsername(username);
       if (!targetUserId) {
-        throw new Error('User ID not found');
+        throw new Error("User ID not found");
       }
 
-      const res = await fetch(`https://api.twitch.tv/helix/whispers?from_user_id=${YOUR_USER_ID}&to_user_id=${targetUserId}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${USER_ACCESS_TOKEN}`,
-          'Client-Id': CLIENT_ID,
-          'Content-Type': 'application/json'
+      const res = await fetch(
+        `https://api.twitch.tv/helix/whispers?from_user_id=${YOUR_USER_ID}&to_user_id=${targetUserId}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${USER_ACCESS_TOKEN}`,
+            "Client-Id": CLIENT_ID,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ message: messageText }),
         },
-        body: JSON.stringify({ message: messageText })
-      });
+      );
 
       if (res.status === 204) {
         return true;
@@ -1544,7 +1904,9 @@ async function start() {
   }
 
   for (const runtime of channelList) {
-    await runInChannel(runtime, () => loadThirdPartyEmotes(runtime.broadcasterId));
+    await runInChannel(runtime, () =>
+      loadThirdPartyEmotes(runtime.broadcasterId),
+    );
   }
 
   // Pajbot-style snapshot rewards: at each configured interval, everyone in
@@ -1558,7 +1920,8 @@ async function start() {
     if (channelState.passiveRewardRunning) return;
 
     const now = Date.now();
-    const intervalMs = getPassiveRewardSettings(runtime).intervalMinutes * 60 * 1000;
+    const intervalMs =
+      getPassiveRewardSettings(runtime).intervalMinutes * 60 * 1000;
     if (channelState.passiveRewardLastRun === null) {
       channelState.passiveRewardLastRun = now;
       return;
@@ -1573,7 +1936,9 @@ async function start() {
     } catch (error) {
       const errorMessage = error?.message || String(error);
       if (channelState.passiveRewardLastError !== errorMessage) {
-        console.error(`! Passive points disabled for this interval on ${runtime.login}: ${errorMessage}`);
+        console.error(
+          `! Passive points disabled for this interval on ${runtime.login}: ${errorMessage}`,
+        );
         channelState.passiveRewardLastError = errorMessage;
       }
     } finally {
@@ -1585,9 +1950,9 @@ async function start() {
     if (pendingActivityUpdates.size === 0 || !db) return;
     const updates = Array.from(pendingActivityUpdates.entries());
     pendingActivityUpdates.clear();
-    
+
     try {
-      await db.exec('BEGIN TRANSACTION');
+      await db.exec("BEGIN TRANSACTION");
       for (const [username, data] of updates) {
         await db.run(
           `INSERT INTO users (username, points, last_message_time, true_last_chat_time)
@@ -1595,7 +1960,12 @@ async function start() {
            ON CONFLICT(username) DO UPDATE SET
              last_message_time = CASE WHEN ? THEN excluded.last_message_time ELSE users.last_message_time END,
              true_last_chat_time = excluded.true_last_chat_time`,
-          [username, data.lastMessageTime, data.trueLastChatTime, data.awardedPoints ? 1 : 0]
+          [
+            username,
+            data.lastMessageTime,
+            data.trueLastChatTime,
+            data.awardedPoints ? 1 : 0,
+          ],
         );
 
         if (data.twitchUserId) {
@@ -1607,7 +1977,12 @@ async function start() {
                username = excluded.username,
                is_subscriber = excluded.is_subscriber,
                last_observed_at = excluded.last_observed_at`,
-            [data.twitchUserId, username, data.isSubscriber ? 1 : 0, data.trueLastChatTime]
+            [
+              data.twitchUserId,
+              username,
+              data.isSubscriber ? 1 : 0,
+              data.trueLastChatTime,
+            ],
           );
         }
 
@@ -1615,21 +1990,23 @@ async function start() {
           await db.run(
             `INSERT INTO users (username, points) VALUES (?, ?)
              ON CONFLICT(username) DO UPDATE SET points = points + excluded.points`,
-            [username, data.pointsReward]
+            [username, data.pointsReward],
           );
         }
       }
-      await db.exec('COMMIT');
+      await db.exec("COMMIT");
     } catch (e) {
-      console.error('Batch chat update failed:', e);
-      await db.exec('ROLLBACK');
+      console.error("Batch chat update failed:", e);
+      await db.exec("ROLLBACK");
     }
   }, 10000);
 
   setChannelInterval(async () => {
     try {
       if (!db) return;
-      const aliases = await db.all('SELECT * FROM custom_aliases WHERE auto_interval_minutes > 0');
+      const aliases = await db.all(
+        "SELECT * FROM custom_aliases WHERE auto_interval_minutes > 0",
+      );
       if (!aliases || !aliases.length) return;
 
       const isLive = await isStreamerLive();
@@ -1641,15 +2018,19 @@ async function start() {
 
         let state = customAliasTimers.get(alias.command);
         if (!state) {
-          state = { lastFiredTime: now, lastFiredMsgCount: channelState.globalValidMessageCount };
+          state = {
+            lastFiredTime: now,
+            lastFiredMsgCount: channelState.globalValidMessageCount,
+          };
           customAliasTimers.set(alias.command, state);
-          continue; 
+          continue;
         }
 
         const msPassed = now - state.lastFiredTime;
         const reqIntervalMs = alias.auto_interval_minutes * 60 * 1000;
-        
-        const msgsPassed = channelState.globalValidMessageCount - state.lastFiredMsgCount;
+
+        const msgsPassed =
+          channelState.globalValidMessageCount - state.lastFiredMsgCount;
         const reqMinMsgs = alias.auto_min_messages || 0;
 
         if (msPassed >= reqIntervalMs && msgsPassed >= reqMinMsgs) {
@@ -1659,219 +2040,320 @@ async function start() {
         }
       }
     } catch (e) {
-      console.error('Custom commands timer error:', e);
+      console.error("Custom commands timer error:", e);
     }
   }, 60000);
 
   setChannelInterval(async () => {
     try {
       const now = Date.now();
-      const readyFishes = await db.all('SELECT * FROM pending_fish WHERE catch_time <= ?', [now]);
-      
+      const readyFishes = await db.all(
+        "SELECT * FROM pending_fish WHERE catch_time <= ?",
+        [now],
+      );
+
       const isLive = await isStreamerLive();
-      
+
       let processedUsernames = [];
       let failedUsernames = [];
 
       for (const fish of readyFishes) {
-        const userRow = await db.get('SELECT xp FROM users WHERE username = ?', [fish.username]);
+        const userRow = await db.get(
+          "SELECT xp FROM users WHERE username = ?",
+          [fish.username],
+        );
         const lvl = getLvl(userRow ? userRow.xp : 0);
-        const rarityBoosts = await getActiveEffects(fish.username, 'rarity_boost');
+        const rarityBoosts = await getActiveEffects(
+          fish.username,
+          "rarity_boost",
+        );
         let rarityBoostVal = 0;
         for (const b of rarityBoosts) rarityBoostVal += b.effect_value;
 
-        const legBonus = (lvl * getLegBonusRate()) + (rarityBoostVal / 2);
-        const rareBonus = (lvl * getRareBonusRate()) + rarityBoostVal;
+        const legBonus = lvl * getLegBonusRate() + rarityBoostVal / 2;
+        const rareBonus = lvl * getRareBonusRate() + rarityBoostVal;
 
         const customRarities = [
-          { rarity: 'legendary', threshold: FISHING_RARITIES[0].threshold + legBonus },
-          { rarity: 'rare', threshold: FISHING_RARITIES[1].threshold + legBonus + rareBonus },
-          { rarity: 'uncommon', threshold: FISHING_RARITIES[2].threshold + legBonus + rareBonus },
-          { rarity: 'common', threshold: 100.0 }
+          {
+            rarity: "legendary",
+            threshold: FISHING_RARITIES[0].threshold + legBonus,
+          },
+          {
+            rarity: "rare",
+            threshold: FISHING_RARITIES[1].threshold + legBonus + rareBonus,
+          },
+          {
+            rarity: "uncommon",
+            threshold: FISHING_RARITIES[2].threshold + legBonus + rareBonus,
+          },
+          { rarity: "common", threshold: 100.0 },
         ];
 
         let numCatches = 1;
-        const multiCatch = await db.get('SELECT * FROM active_effects WHERE target_user = ? AND effect_type = ? AND uses_left > 0', [fish.username, 'multi_catch']);
+        const multiCatch = await db.get(
+          "SELECT * FROM active_effects WHERE target_user = ? AND effect_type = ? AND uses_left > 0",
+          [fish.username, "multi_catch"],
+        );
         if (multiCatch) {
-           numCatches += multiCatch.effect_value;
-           if (multiCatch.uses_left > 1) {
-              await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [multiCatch.id]);
-           } else {
-              await db.run('DELETE FROM active_effects WHERE id = ?', [multiCatch.id]);
-           }
+          numCatches += multiCatch.effect_value;
+          if (multiCatch.uses_left > 1) {
+            await db.run(
+              "UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?",
+              [multiCatch.id],
+            );
+          } else {
+            await db.run("DELETE FROM active_effects WHERE id = ?", [
+              multiCatch.id,
+            ]);
+          }
         }
-        
+
         let allItemsCaught = [];
         let autoConsumedMsgs = [];
         let globalMsgs = [];
 
         for (let c = 0; c < numCatches; c++) {
-            const roll = Math.random() * 100;
-            let rarityTier = 'common';
-            for (const tier of customRarities) {
-              if (roll <= tier.threshold) {
-                rarityTier = tier.rarity;
-                break;
-              }
+          const roll = Math.random() * 100;
+          let rarityTier = "common";
+          for (const tier of customRarities) {
+            if (roll <= tier.threshold) {
+              rarityTier = tier.rarity;
+              break;
             }
-            
-            const itemPool = FISHING_ITEMS[rarityTier];
-            const item = itemPool[Math.floor(Math.random() * itemPool.length)];
-            const itemConfig = ITEMS_REGISTRY[item.name];
-            
-            if (itemConfig && itemConfig.autoConsume) {
-               if (itemConfig.effectType === 'instant_points') {
-                  const prefix = rarityTier !== 'common' ? `[${item.rarity}] ` : '';
-                  const isPercent = itemConfig.isPercentage || (Math.abs(itemConfig.effectValue) > 0 && Math.abs(itemConfig.effectValue) < 1);
-                  
-                  if (itemConfig.isGlobal) {
-                     await isStreamerLive();
-                     const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
-                     if (isPercent) {
-                        const modifier = itemConfig.effectValue;
-                        if (modifier < 0) {
-                           await adjustRecentChannelUserPoints(modifier, channelState.streamStartTime, { percentage: true });
-                        } else {
-                           await adjustRecentChannelUserPoints(modifier, channelState.streamStartTime, { percentage: true });
-                        }
-                     } else {
-                        const pts = Math.floor(itemConfig.effectValue);
-                        if (pts < 0) {
-                           await adjustRecentChannelUserPoints(pts, channelState.streamStartTime);
-                        } else {
-                           await adjustRecentChannelUserPoints(pts, channelState.streamStartTime);
-                        }
-                     }
-                     const gMsg = `${prefix}${item.originalName} ${itemConfig.description}`;
-                     autoConsumedMsgs.push(gMsg);
-                     globalMsgs.push(gMsg);
+          }
+
+          const itemPool = FISHING_ITEMS[rarityTier];
+          const item = itemPool[Math.floor(Math.random() * itemPool.length)];
+          const itemConfig = ITEMS_REGISTRY[item.name];
+
+          if (itemConfig && itemConfig.autoConsume) {
+            if (itemConfig.effectType === "instant_points") {
+              const prefix = rarityTier !== "common" ? `[${item.rarity}] ` : "";
+              const isPercent =
+                itemConfig.isPercentage ||
+                (Math.abs(itemConfig.effectValue) > 0 &&
+                  Math.abs(itemConfig.effectValue) < 1);
+
+              if (itemConfig.isGlobal) {
+                await isStreamerLive();
+                const ignoredBotsStr = ignoredBots
+                  .map((b) => `'${b}'`)
+                  .join(",");
+                if (isPercent) {
+                  const modifier = itemConfig.effectValue;
+                  if (modifier < 0) {
+                    await adjustRecentChannelUserPoints(
+                      modifier,
+                      channelState.streamStartTime,
+                      { percentage: true },
+                    );
                   } else {
-                     if (isPercent) {
-                        const user = await db.get('SELECT points FROM users WHERE username = ?', [fish.username]);
-                        const currPoints = user ? user.points : 0;
-                        const modifier = Math.floor(currPoints * Math.abs(itemConfig.effectValue));
-                        if (itemConfig.effectValue < 0) {
-                           await db.run('UPDATE users SET points = MAX(0, CAST(points - ? AS INTEGER)) WHERE username = ?', [modifier, fish.username]);
-                           autoConsumedMsgs.push(`${prefix}${item.originalName} drained ${modifier} points`);
-                        } else {
-                           const addedAmount = await addPointsWithBonus(fish.username, modifier);
-                           autoConsumedMsgs.push(`${prefix}${item.originalName} granted ${addedAmount} points`);
-                        }
-                     } else {
-                         const pts = Math.floor(itemConfig.effectValue);
-                         if (pts < 0) {
-                            await db.run('UPDATE users SET points = MAX(0, CAST(points + ? AS INTEGER)) WHERE username = ?', [Math.abs(pts), fish.username]);
-                            autoConsumedMsgs.push(`${prefix}${item.originalName} drained ${Math.abs(pts)} points`);
-                         } else {
-                            const addedAmount = await addPointsWithBonus(fish.username, pts);
-                            autoConsumedMsgs.push(`${prefix}${item.originalName} granted ${addedAmount} points`);
-                         }
-                     }
+                    await adjustRecentChannelUserPoints(
+                      modifier,
+                      channelState.streamStartTime,
+                      { percentage: true },
+                    );
                   }
-               } else {
-                  await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, 1) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + 1', [fish.username, item.originalName]);
-                  const prefix = rarityTier !== 'common' ? `[${item.rarity}] ` : '';
-                  allItemsCaught.push(`${prefix}${item.originalName}`);
-               }
+                } else {
+                  const pts = Math.floor(itemConfig.effectValue);
+                  if (pts < 0) {
+                    await adjustRecentChannelUserPoints(
+                      pts,
+                      channelState.streamStartTime,
+                    );
+                  } else {
+                    await adjustRecentChannelUserPoints(
+                      pts,
+                      channelState.streamStartTime,
+                    );
+                  }
+                }
+                const gMsg = `${prefix}${item.originalName} ${itemConfig.description}`;
+                autoConsumedMsgs.push(gMsg);
+                globalMsgs.push(gMsg);
+              } else {
+                if (isPercent) {
+                  const user = await db.get(
+                    "SELECT points FROM users WHERE username = ?",
+                    [fish.username],
+                  );
+                  const currPoints = user ? user.points : 0;
+                  const modifier = Math.floor(
+                    currPoints * Math.abs(itemConfig.effectValue),
+                  );
+                  if (itemConfig.effectValue < 0) {
+                    await db.run(
+                      "UPDATE users SET points = MAX(0, CAST(points - ? AS INTEGER)) WHERE username = ?",
+                      [modifier, fish.username],
+                    );
+                    autoConsumedMsgs.push(
+                      `${prefix}${item.originalName} drained ${modifier} points`,
+                    );
+                  } else {
+                    const addedAmount = await addPointsWithBonus(
+                      fish.username,
+                      modifier,
+                    );
+                    autoConsumedMsgs.push(
+                      `${prefix}${item.originalName} granted ${addedAmount} points`,
+                    );
+                  }
+                } else {
+                  const pts = Math.floor(itemConfig.effectValue);
+                  if (pts < 0) {
+                    await db.run(
+                      "UPDATE users SET points = MAX(0, CAST(points + ? AS INTEGER)) WHERE username = ?",
+                      [Math.abs(pts), fish.username],
+                    );
+                    autoConsumedMsgs.push(
+                      `${prefix}${item.originalName} drained ${Math.abs(pts)} points`,
+                    );
+                  } else {
+                    const addedAmount = await addPointsWithBonus(
+                      fish.username,
+                      pts,
+                    );
+                    autoConsumedMsgs.push(
+                      `${prefix}${item.originalName} granted ${addedAmount} points`,
+                    );
+                  }
+                }
+              }
             } else {
-               await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, 1) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + 1', [fish.username, item.originalName]);
-               const prefix = rarityTier !== 'common' ? `[${item.rarity}] ` : '';
-               allItemsCaught.push(`${prefix}${item.originalName}`);
+              await db.run(
+                "INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, 1) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + 1",
+                [fish.username, item.originalName],
+              );
+              const prefix = rarityTier !== "common" ? `[${item.rarity}] ` : "";
+              allItemsCaught.push(`${prefix}${item.originalName}`);
             }
+          } else {
+            await db.run(
+              "INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, 1) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + 1",
+              [fish.username, item.originalName],
+            );
+            const prefix = rarityTier !== "common" ? `[${item.rarity}] ` : "";
+            allItemsCaught.push(`${prefix}${item.originalName}`);
+          }
         }
-        
-        await db.run('DELETE FROM pending_fish WHERE username = ?', [fish.username]);
+
+        await db.run("DELETE FROM pending_fish WHERE username = ?", [
+          fish.username,
+        ]);
         processedUsernames.push(fish.username);
-        
+
         let parts = [];
-        if (allItemsCaught.length > 0) parts.push(`caught ${allItemsCaught.join(', ')}`);
-        if (autoConsumedMsgs.length > 0) parts.push(`( ${autoConsumedMsgs.join(' | ')} )`);
-        const msg = `🎣 You reeled in your line and ${parts.join(' ')}`;
-        
+        if (allItemsCaught.length > 0)
+          parts.push(`caught ${allItemsCaught.join(", ")}`);
+        if (autoConsumedMsgs.length > 0)
+          parts.push(`( ${autoConsumedMsgs.join(" | ")} )`);
+        const msg = `🎣 You reeled in your line and ${parts.join(" ")}`;
+
         if (!isLive) {
-            const success = await sendWhisper(fish.username, msg, false);
-            
-            const nonGlobalAuto = autoConsumedMsgs.filter(m => !globalMsgs.includes(m));
-            let fallbackParts = [];
-            if (allItemsCaught.length > 0) fallbackParts.push(`caught ${allItemsCaught.join(', ')}`);
-            if (nonGlobalAuto.length > 0) fallbackParts.push(`( ${nonGlobalAuto.join(' | ')} )`);
-            const fallbackPartsStr = fallbackParts.join(' ');
+          const success = await sendWhisper(fish.username, msg, false);
 
-            if (!success && fallbackPartsStr.length > 0) {
-               failedUsernames.push({ username: fish.username, partsStr: fallbackPartsStr });
-            }
+          const nonGlobalAuto = autoConsumedMsgs.filter(
+            (m) => !globalMsgs.includes(m),
+          );
+          let fallbackParts = [];
+          if (allItemsCaught.length > 0)
+            fallbackParts.push(`caught ${allItemsCaught.join(", ")}`);
+          if (nonGlobalAuto.length > 0)
+            fallbackParts.push(`( ${nonGlobalAuto.join(" | ")} )`);
+          const fallbackPartsStr = fallbackParts.join(" ");
 
-            if (globalMsgs.length > 0) {
-               await sendChatMessage(`🎣 ${fish.username} caught a GLOBAL ITEM: ${globalMsgs.join(' | ')}`);
-            }
+          if (!success && fallbackPartsStr.length > 0) {
+            failedUsernames.push({
+              username: fish.username,
+              partsStr: fallbackPartsStr,
+            });
+          }
+
+          if (globalMsgs.length > 0) {
+            await sendChatMessage(
+              `🎣 ${fish.username} caught a GLOBAL ITEM: ${globalMsgs.join(" | ")}`,
+            );
+          }
         }
       }
 
       if (failedUsernames.length > 0) {
         if (failedUsernames.length === 1) {
           const u = failedUsernames[0];
-          await sendChatMessage(`🎣 ${u.username} reeled in their line and ${u.partsStr}`);
+          await sendChatMessage(
+            `🎣 ${u.username} reeled in their line and ${u.partsStr}`,
+          );
         } else {
-          let displayNames = failedUsernames.slice(0, 3).map(u => `@${u.username}`).join(', ');
+          let displayNames = failedUsernames
+            .slice(0, 3)
+            .map((u) => `@${u.username}`)
+            .join(", ");
           if (failedUsernames.length > 3) {
             displayNames += ` and ${failedUsernames.length - 3} more`;
           }
-          await sendChatMessage(`🎣 ${displayNames} are done fishing! Type !inv to check what new items you caught (or points instantly awarded)!`);
+          await sendChatMessage(
+            `🎣 ${displayNames} are done fishing! Type !inv to check what new items you caught (or points instantly awarded)!`,
+          );
         }
       }
     } catch (err) {
-      console.error('Error resolving fishes:', err);
+      console.error("Error resolving fishes:", err);
     }
   }, 10000);
 
-  
   async function buildRaffleParticipants(baseSet) {
     const baseUsers = Array.from(baseSet);
     let expanded = [];
     let guaranteed = [];
 
     for (const p of baseUsers) {
-      const goldens = await getActiveEffects(p, 'golden_ticket');
+      const goldens = await getActiveEffects(p, "golden_ticket");
       if (goldens.length > 0) {
-         await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [goldens[0].id]);
-         guaranteed.push(p);
+        await db.run(
+          "UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?",
+          [goldens[0].id],
+        );
+        guaranteed.push(p);
       }
 
-      const muls = await getActiveEffects(p, 'raffle_ticket_multiplier');
+      const muls = await getActiveEffects(p, "raffle_ticket_multiplier");
       let tickets = 1;
       for (const m of muls) {
-         tickets += (m.effect_value - 1);
-         await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [m.id]);
+        tickets += m.effect_value - 1;
+        await db.run(
+          "UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?",
+          [m.id],
+        );
       }
-      
+
       for (let i = 0; i < tickets; i++) expanded.push(p);
     }
     return { expanded, guaranteed };
   }
 
   const customCommands = {
-    '!triviastart': {
+    "!triviastart": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (activeTrivia || triviaLoopActive) {
-        //  await sendChatMessage(`${chatterName} trivia is already active!`);
+          //  await sendChatMessage(`${chatterName} trivia is already active!`);
           return;
         }
         triviaLoopActive = true;
         consecutiveUnansweredTrivia = 0;
         startTriviaQuestion();
-      }
+      },
     },
-    '!triviastop': {
+    "!triviastop": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (!activeTrivia && !triviaLoopActive) {
-         // await sendChatMessage(`${chatterName} there is no active trivia to stop!`);
+          // await sendChatMessage(`${chatterName} there is no active trivia to stop!`);
           return;
         }
         triviaLoopActive = false;
         if (nextTriviaTimeout) clearTimeout(nextTriviaTimeout);
-        
+
         let a = null;
         if (activeTrivia) {
           if (activeTrivia.hintTimeout) clearTimeout(activeTrivia.hintTimeout);
@@ -1879,49 +2361,84 @@ async function start() {
           a = activeTrivia.answer;
         }
         activeTrivia = null;
-        const answerMsg = a ? ` The answer was: ${a}` : '';
-        await sendChatMessage(`Trivia has been stopped by ${chatterName}. WeirdChamp `);
-      }
+        const answerMsg = a ? ` The answer was: ${a}` : "";
+        await sendChatMessage(
+          `Trivia has been stopped by ${chatterName}. WeirdChamp `,
+        );
+      },
     },
-    '!editconfig': {
+    "!editconfig": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (!hasPermission) {
-          await sendChatMessage(`${chatterName}, you don't have permission to use this command!`, chatterName);
+          await sendChatMessage(
+            `${chatterName}, you don't have permission to use this command!`,
+            chatterName,
+          );
           return;
         }
-        
+
         if (args.length < 2) {
-          await sendChatMessage(`Usage: !editconfig <key> <value>. Available keys: level_base_cost, points_to_xp_rate, leg_bonus_rate, rare_bonus_rate, lvl_bonus_rate`, chatterName);
+          await sendChatMessage(
+            `Usage: !editconfig <key> <value>. Available keys: level_base_cost, points_to_xp_rate, leg_bonus_rate, rare_bonus_rate, lvl_bonus_rate`,
+            chatterName,
+          );
           return;
         }
 
         const key = args[0].toLowerCase();
         const value = args[1];
-        
+
         const validKeys = [
-          'level_base_cost', 'points_to_xp_rate', 'leg_bonus_rate', 'rare_bonus_rate', 'lvl_bonus_rate',
-          'mod_wide_cost', 'mod_cursed_cost', 'mod_flipx_cost', 'mod_flipy_cost', 'mod_bounce_cost', 
-          'mod_leave_cost', 'mod_arrive_cost', 'mod_jam_cost', 'mod_rainbow_cost', 'mod_hyper_cost'
+          "level_base_cost",
+          "points_to_xp_rate",
+          "leg_bonus_rate",
+          "rare_bonus_rate",
+          "lvl_bonus_rate",
+          "mod_wide_cost",
+          "mod_cursed_cost",
+          "mod_flipx_cost",
+          "mod_flipy_cost",
+          "mod_bounce_cost",
+          "mod_leave_cost",
+          "mod_arrive_cost",
+          "mod_jam_cost",
+          "mod_rainbow_cost",
+          "mod_hyper_cost",
         ];
         if (!validKeys.includes(key)) {
-           await sendChatMessage(`Invalid key. Available keys: ${validKeys.join(', ')}`, chatterName);
-           return;
+          await sendChatMessage(
+            `Invalid key. Available keys: ${validKeys.join(", ")}`,
+            chatterName,
+          );
+          return;
         }
 
         // Save to DB
-        await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [key, value, value]);
+        await db.run(
+          "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+          [key, value, value],
+        );
         globalConfig[key] = value; // Update in-memory
-        
-        await sendChatMessage(`Config '${key}' has been updated to ${value}!`, chatterName);
-      }
+
+        await sendChatMessage(
+          `Config '${key}' has been updated to ${value}!`,
+          chatterName,
+        );
+      },
     },
-    '!lvlup': {
+    "!lvlup": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        let user = await db.get('SELECT points, xp FROM users WHERE username = ?', chatterName);
+        let user = await db.get(
+          "SELECT points, xp FROM users WHERE username = ?",
+          chatterName,
+        );
         if (!user) {
-          await db.run('INSERT OR IGNORE INTO users (username, points, xp) VALUES (?, 0, 0)', [chatterName]);
+          await db.run(
+            "INSERT OR IGNORE INTO users (username, points, xp) VALUES (?, 0, 0)",
+            [chatterName],
+          );
           user = { points: 0, xp: 0 };
         }
 
@@ -1930,17 +2447,21 @@ async function start() {
         const xpNeeded = nextLvlXp - user.xp;
 
         if (args.length === 0) {
-          await sendWhisper(chatterName, `you are Level ${currentLvl}! You need ${xpNeeded} more XP (points) for Level ${currentLvl + 1}.`, true);
+          await sendWhisper(
+            chatterName,
+            `you are Level ${currentLvl}! You need ${xpNeeded} more XP (points) for Level ${currentLvl + 1}.`,
+            true,
+          );
           return false;
         }
 
         let spendAmount = 0;
         const arg = args[0].toLowerCase();
-        
-        if (arg === 'all') {
+
+        if (arg === "all") {
           spendAmount = user.points;
-        } else if (arg.endsWith('%')) {
-          const pct = parseFloat(arg.replace('%', ''));
+        } else if (arg.endsWith("%")) {
+          const pct = parseFloat(arg.replace("%", ""));
           if (!isNaN(pct) && pct > 0 && pct <= 100) {
             spendAmount = Math.floor(user.points * (pct / 100));
           }
@@ -1952,7 +2473,11 @@ async function start() {
         }
 
         if (spendAmount <= 0) {
-          await sendWhisper(chatterName, `invalid amount! Use !lvlup <amount> or !lvlup 30% or !lvlup all`, true);
+          await sendWhisper(
+            chatterName,
+            `invalid amount! Use !lvlup <amount> or !lvlup 30% or !lvlup all`,
+            true,
+          );
           return false;
         }
 
@@ -1962,11 +2487,14 @@ async function start() {
         }
 
         let gainedXp = Math.floor(spendAmount * getPointsToXpRate());
-        
-        const xpBoosts = await getActiveEffects(chatterName, 'personal_xp_boost');
+
+        const xpBoosts = await getActiveEffects(
+          chatterName,
+          "personal_xp_boost",
+        );
         let xpMultiplier = 1.0;
         for (const b of xpBoosts) {
-           xpMultiplier *= (1 + b.effect_value);
+          xpMultiplier *= 1 + b.effect_value;
         }
         gainedXp = Math.floor(gainedXp * xpMultiplier);
 
@@ -1974,115 +2502,138 @@ async function start() {
         const newLvl = getLvl(newXp);
         const levelsGained = newLvl - currentLvl;
 
-        await db.run('UPDATE users SET points = points - ?, xp = xp + ? WHERE username = ?', [spendAmount, gainedXp, chatterName]);
+        await db.run(
+          "UPDATE users SET points = points - ?, xp = xp + ? WHERE username = ?",
+          [spendAmount, gainedXp, chatterName],
+        );
 
         if (levelsGained > 0) {
-          await sendWhisper(chatterName, `spent ${spendAmount} points and gained ${levelsGained} level(s)! You are now Level ${newLvl}!`, true);
+          await sendWhisper(
+            chatterName,
+            `spent ${spendAmount} points and gained ${levelsGained} level(s)! You are now Level ${newLvl}!`,
+            true,
+          );
         } else {
           const xpStillNeeded = getXpForLvl(newLvl + 1) - newXp;
-          await sendWhisper(chatterName, `spent ${spendAmount} points! You need ${xpStillNeeded} more for Level ${newLvl + 1}.`, true);
+          await sendWhisper(
+            chatterName,
+            `spent ${spendAmount} points! You need ${xpStillNeeded} more for Level ${newLvl + 1}.`,
+            true,
+          );
         }
-      }
+      },
     },
-    
+
     getEffectDisplayName: (type) => {
       const names = {
-          'global_point_boost': 'Global Point Boost',
-          'personal_point_boost': 'Point Boost',
-          'fishing_time_reduction': 'Fishing Haste',
-          'tax_collector': 'Tax Collection',
-          'global_point_debuff': 'Global Debuff',
-          'rarity_boost': 'Rarity Boost',
-          'personal_xp_boost': 'XP Boost',
-          'fishing_debuff_target': 'Fishing Sabotage',
-          'steal_points': 'Steal Points',
-          'destroy_points_target': 'Destroy Points',
-          'personal_point_debuff_target': 'Point Debuff',
-          'point_shield': 'Point Shield',
-          'point_defense': 'Point Defense',
-          'duel_shield': 'Duel Shield',
-          'duel_win_boost': 'Duel Boost',
-          'gamble_multiplier': 'Gamble Boost',
-          'golden_ticket': 'Golden Ticket',
-          'raffle_ticket_multiplier': 'Raffle Boost',
-          'instant_points': 'Instant Points',
-          'global_point_drain': 'Global Drain',
-          'gamble_guaranteed_win': 'Gamble Win',
-          'mirror_shield': 'Mirror Shield',
-          'instant_catch': 'Instant Catch',
-          'multi_catch': 'Multi Catch',
-          'gamble_shield': 'Gamble Shield',
-          'tax_evader': 'Tax Evasion'
+        global_point_boost: "Global Point Boost",
+        personal_point_boost: "Point Boost",
+        fishing_time_reduction: "Fishing Haste",
+        tax_collector: "Tax Collection",
+        global_point_debuff: "Global Debuff",
+        rarity_boost: "Rarity Boost",
+        personal_xp_boost: "XP Boost",
+        fishing_debuff_target: "Fishing Sabotage",
+        steal_points: "Steal Points",
+        destroy_points_target: "Destroy Points",
+        personal_point_debuff_target: "Point Debuff",
+        point_shield: "Point Shield",
+        point_defense: "Point Defense",
+        duel_shield: "Duel Shield",
+        duel_win_boost: "Duel Boost",
+        gamble_multiplier: "Gamble Boost",
+        golden_ticket: "Golden Ticket",
+        raffle_ticket_multiplier: "Raffle Boost",
+        instant_points: "Instant Points",
+        global_point_drain: "Global Drain",
+        gamble_guaranteed_win: "Gamble Win",
+        mirror_shield: "Mirror Shield",
+        instant_catch: "Instant Catch",
+        multi_catch: "Multi Catch",
+        gamble_shield: "Gamble Shield",
+        tax_evader: "Tax Evasion",
       };
       return names[type] || type;
     },
 
-    '!use': {
+    "!use": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (args.length === 0) {
-        //  await sendChatMessage(`${chatterName}, please specify an item to use! Example: !use energy drink 1 london passport all`, chatterName);
+          //  await sendChatMessage(`${chatterName}, please specify an item to use! Example: !use energy drink 1 london passport all`, chatterName);
           return false;
         }
 
         let useTarget = null;
         let filteredArgs = [];
         for (const arg of args) {
-          if (arg.startsWith('@')) {
-            useTarget = arg.replace('@', '').toLowerCase();
+          if (arg.startsWith("@")) {
+            useTarget = arg.replace("@", "").toLowerCase();
           } else {
             filteredArgs.push(arg);
           }
         }
 
-        let remainingInput = filteredArgs.join(' ').toLowerCase();
+        let remainingInput = filteredArgs.join(" ").toLowerCase();
         let requestedItems = [];
-        const validItems = Object.keys(ITEMS_REGISTRY).sort((a,b) => b.length - a.length);
+        const validItems = Object.keys(ITEMS_REGISTRY).sort(
+          (a, b) => b.length - a.length,
+        );
 
         while (remainingInput.trim().length > 0) {
           remainingInput = remainingInput.trim();
           let matchedItem = null;
-          
+
           for (const item of validItems) {
             const lowerItem = item.toLowerCase();
-            if (remainingInput.startsWith(lowerItem) && (remainingInput.length === lowerItem.length || remainingInput[lowerItem.length] === ' ')) {
-               matchedItem = item;
-               break;
+            if (
+              remainingInput.startsWith(lowerItem) &&
+              (remainingInput.length === lowerItem.length ||
+                remainingInput[lowerItem.length] === " ")
+            ) {
+              matchedItem = item;
+              break;
             }
           }
-          
+
           if (!matchedItem) {
-             const word = remainingInput.split(' ')[0];
-             remainingInput = remainingInput.substring(word.length);
-             if (!useTarget) {
-                 useTarget = word.toLowerCase();
-             }
-             continue;
+            const word = remainingInput.split(" ")[0];
+            remainingInput = remainingInput.substring(word.length);
+            if (!useTarget) {
+              useTarget = word.toLowerCase();
+            }
+            continue;
           }
-          
+
           remainingInput = remainingInput.substring(matchedItem.length).trim();
-          
-          let qtyWord = remainingInput.split(' ')[0];
+
+          let qtyWord = remainingInput.split(" ")[0];
           let qty = 1;
           let hasQty = false;
-          
-          if (qtyWord === 'all') {
-             qty = 'all';
-             hasQty = true;
-          } else if (!isNaN(parseInt(qtyWord, 10)) && parseInt(qtyWord, 10) > 0) {
-             qty = parseInt(qtyWord, 10);
-             hasQty = true;
+
+          if (qtyWord === "all") {
+            qty = "all";
+            hasQty = true;
+          } else if (
+            !isNaN(parseInt(qtyWord, 10)) &&
+            parseInt(qtyWord, 10) > 0
+          ) {
+            qty = parseInt(qtyWord, 10);
+            hasQty = true;
           }
-          
+
           if (hasQty) {
-             remainingInput = remainingInput.substring(qtyWord.length);
+            remainingInput = remainingInput.substring(qtyWord.length);
           }
-          
+
           requestedItems.push({ name: matchedItem, amountReq: qty });
         }
 
         if (requestedItems.length === 0) {
-          await sendChatMessage(`${chatterName}, I couldn't recognize any items!`, chatterName);
+          await sendChatMessage(
+            `${chatterName}, I couldn't recognize any items!`,
+            chatterName,
+          );
           return false;
         }
 
@@ -2098,404 +2649,705 @@ async function start() {
         for (const req of requestedItems) {
           const lowerItemName = req.name;
           let itemConfig = { ...ITEMS_REGISTRY[lowerItemName] };
-          const itemName = itemConfig && itemConfig.name ? itemConfig.name : lowerItemName; 
-          
-          const inventoryRow = await db.get('SELECT quantity FROM user_inventory WHERE username = ? AND item_name = ?', [chatterName, itemName]);
+          const itemName =
+            itemConfig && itemConfig.name ? itemConfig.name : lowerItemName;
+
+          const inventoryRow = await db.get(
+            "SELECT quantity FROM user_inventory WHERE username = ? AND item_name = ?",
+            [chatterName, itemName],
+          );
           if (!inventoryRow || inventoryRow.quantity <= 0) continue;
 
-          const amountToUse = req.amountReq === 'all' ? inventoryRow.quantity : Math.min(req.amountReq, inventoryRow.quantity);
+          const amountToUse =
+            req.amountReq === "all"
+              ? inventoryRow.quantity
+              : Math.min(req.amountReq, inventoryRow.quantity);
           if (amountToUse <= 0) continue;
 
           const chatMsgCountBefore = chatMsgs.length;
-          const isLegacy = (lowerItemName === 'fishing ticket' || lowerItemName === 'knife');
-          
-          if (!isLegacy && (!itemConfig || !itemConfig.effectType || itemConfig.effectType === 'none')) continue;
+          const isLegacy =
+            lowerItemName === "fishing ticket" || lowerItemName === "knife";
 
-          if (!isLegacy && itemConfig.effectType === 'rng_effect') {
-              const possibleEffects = [
-                  'instant_points', 'global_point_drain', 'global_point_boost', 'personal_point_boost', 
-                  'fishing_time_reduction', 'tax_collector', 'global_point_debuff', 'gamble_guaranteed_win', 
-                  'mirror_shield', 'rarity_boost', 'instant_catch', 'multi_catch', 'personal_xp_boost', 
-                  'gamble_shield', 'fishing_debuff_target', 'tax_evader', 'steal_points', 
-                  'destroy_points_target', 'personal_point_debuff_target', 'point_shield', 'point_defense', 
-                  'duel_shield', 'duel_win_boost', 'gamble_multiplier', 'golden_ticket', 'raffle_ticket_multiplier'
+          if (
+            !isLegacy &&
+            (!itemConfig ||
+              !itemConfig.effectType ||
+              itemConfig.effectType === "none")
+          )
+            continue;
+
+          if (!isLegacy && itemConfig.effectType === "rng_effect") {
+            const possibleEffects = [
+              "instant_points",
+              "global_point_drain",
+              "global_point_boost",
+              "personal_point_boost",
+              "fishing_time_reduction",
+              "tax_collector",
+              "global_point_debuff",
+              "gamble_guaranteed_win",
+              "mirror_shield",
+              "rarity_boost",
+              "instant_catch",
+              "multi_catch",
+              "personal_xp_boost",
+              "gamble_shield",
+              "fishing_debuff_target",
+              "tax_evader",
+              "steal_points",
+              "destroy_points_target",
+              "personal_point_debuff_target",
+              "point_shield",
+              "point_defense",
+              "duel_shield",
+              "duel_win_boost",
+              "gamble_multiplier",
+              "golden_ticket",
+              "raffle_ticket_multiplier",
+            ];
+            itemConfig.effectType =
+              possibleEffects[
+                Math.floor(Math.random() * possibleEffects.length)
               ];
-              itemConfig.effectType = possibleEffects[Math.floor(Math.random() * possibleEffects.length)];
-              
-             
-              const rolledEffect = itemConfig.effectType;
-              if (['instant_points', 'global_point_drain', 'global_point_boost', 'tax_collector', 'steal_points', 'destroy_points_target'].includes(rolledEffect)) {
 
-                  itemConfig.effectValue = Math.floor(Math.random() * 3401) + 100;
-                  itemConfig.isPercentage = false;
-              } else if (['point_defense', 'duel_shield', 'point_shield', 'global_point_debuff', 'personal_point_debuff_target'].includes(rolledEffect)) {
-                  
-                  itemConfig.effectValue = Number(((Math.random() * 0.4) + 0.1).toFixed(2));
-                  itemConfig.isPercentage = false; 
-              } else if (['personal_point_boost', 'duel_win_boost', 'gamble_multiplier', 'raffle_ticket_multiplier', 'personal_xp_boost'].includes(rolledEffect)) {
-                  itemConfig.effectValue = Number(((Math.random() * 1.5) + 1.5).toFixed(2));
-                  itemConfig.isPercentage = false;
-              } else if (['fishing_time_reduction', 'fishing_debuff_target'].includes(rolledEffect)) {
-      
-                  itemConfig.effectValue = Math.floor(Math.random() * 10) + 1;
-                  itemConfig.isPercentage = false;
-              } else {
-       
-                  itemConfig.effectValue = 1;
+            const rolledEffect = itemConfig.effectType;
+            if (
+              [
+                "instant_points",
+                "global_point_drain",
+                "global_point_boost",
+                "tax_collector",
+                "steal_points",
+                "destroy_points_target",
+              ].includes(rolledEffect)
+            ) {
+              itemConfig.effectValue = Math.floor(Math.random() * 3401) + 100;
+              itemConfig.isPercentage = false;
+            } else if (
+              [
+                "point_defense",
+                "duel_shield",
+                "point_shield",
+                "global_point_debuff",
+                "personal_point_debuff_target",
+              ].includes(rolledEffect)
+            ) {
+              itemConfig.effectValue = Number(
+                (Math.random() * 0.4 + 0.1).toFixed(2),
+              );
+              itemConfig.isPercentage = false;
+            } else if (
+              [
+                "personal_point_boost",
+                "duel_win_boost",
+                "gamble_multiplier",
+                "raffle_ticket_multiplier",
+                "personal_xp_boost",
+              ].includes(rolledEffect)
+            ) {
+              itemConfig.effectValue = Number(
+                (Math.random() * 1.5 + 1.5).toFixed(2),
+              );
+              itemConfig.isPercentage = false;
+            } else if (
+              ["fishing_time_reduction", "fishing_debuff_target"].includes(
+                rolledEffect,
+              )
+            ) {
+              itemConfig.effectValue = Math.floor(Math.random() * 10) + 1;
+              itemConfig.isPercentage = false;
+            } else {
+              itemConfig.effectValue = 1;
+            }
+
+            let rngPrefix = `🎲 `;
+
+            if (
+              [
+                "global_point_debuff",
+                "personal_point_debuff_target",
+                "personal_point_boost",
+                "fishing_time_reduction",
+                "rarity_boost",
+                "personal_xp_boost",
+              ].includes(itemConfig.effectType)
+            ) {
+              if (
+                !itemConfig.effectDurationMinutes ||
+                itemConfig.effectDurationMinutes <= 0
+              ) {
+                itemConfig.effectDurationMinutes = 5;
               }
-              
-              let rngPrefix = `🎲 `;
-              
-          
-              if (['global_point_debuff', 'personal_point_debuff_target', 'personal_point_boost', 'fishing_time_reduction', 'rarity_boost', 'personal_xp_boost'].includes(itemConfig.effectType)) {
-                  if (!itemConfig.effectDurationMinutes || itemConfig.effectDurationMinutes <= 0) {
-                      itemConfig.effectDurationMinutes = 5;
-                  }
+            }
+
+            if (
+              [
+                "fishing_debuff_target",
+                "steal_points",
+                "destroy_points_target",
+                "personal_point_debuff_target",
+              ].includes(itemConfig.effectType)
+            ) {
+              if (!useTarget || useTarget === chatterName) {
+                const randomRow = await db.get(
+                  "SELECT username FROM users WHERE username != ? AND points > 0 ORDER BY RANDOM() LIMIT 1",
+                  [chatterName],
+                );
+                if (randomRow) {
+                  useTarget = randomRow.username;
+                } else {
+                  useTarget = globalConfig["target_channel"];
+                }
+                rngPrefix += `🎯 `;
               }
-              
-        
-              if (['fishing_debuff_target', 'steal_points', 'destroy_points_target', 'personal_point_debuff_target'].includes(itemConfig.effectType)) {
-                  if (!useTarget || useTarget === chatterName) {
-                      const randomRow = await db.get('SELECT username FROM users WHERE username != ? AND points > 0 ORDER BY RANDOM() LIMIT 1', [chatterName]);
-                      if (randomRow) {
-                          useTarget = randomRow.username;
-                      } else {
-                          useTarget = globalConfig['target_channel'];
-                      }
-                      rngPrefix += `🎯 `;
-                  }
-              }
-              
-              itemConfig.rngPrefix = rngPrefix;
+            }
+
+            itemConfig.rngPrefix = rngPrefix;
           }
 
           const effectType = itemConfig.effectType;
           const baseValue = itemConfig.effectValue;
-          const isGlobal = effectType && effectType.startsWith('global_') || itemConfig.isGlobal;
+          const isGlobal =
+            (effectType && effectType.startsWith("global_")) ||
+            itemConfig.isGlobal;
           if (isGlobal) hasGlobalItem = true;
-          const targetUser = isGlobal ? 'GLOBAL' : chatterName;
+          const targetUser = isGlobal ? "GLOBAL" : chatterName;
 
           if (!isLegacy) {
-             const effType = itemConfig.effectType;
-             if (['fishing_debuff_target', 'steal_points', 'destroy_points_target', 'personal_point_debuff_target'].includes(effType)) {
-                 const actualTarget = useTarget || chatterName;
-                 if (actualTarget === chatterName) {
-                     chatMsgs.push(`⚠️ You must specify another user as a target to use ${itemName} !`);
-                     continue;
-                 }
-                 affectedTargets.add(actualTarget);
-             }
+            const effType = itemConfig.effectType;
+            if (
+              [
+                "fishing_debuff_target",
+                "steal_points",
+                "destroy_points_target",
+                "personal_point_debuff_target",
+              ].includes(effType)
+            ) {
+              const actualTarget = useTarget || chatterName;
+              if (actualTarget === chatterName) {
+                chatMsgs.push(
+                  `⚠️ You must specify another user as a target to use ${itemName} !`,
+                );
+                continue;
+              }
+              affectedTargets.add(actualTarget);
+            }
           }
 
-          await db.run('UPDATE user_inventory SET quantity = quantity - ? WHERE username = ? AND item_name = ?', [amountToUse, chatterName, itemName]);
+          await db.run(
+            "UPDATE user_inventory SET quantity = quantity - ? WHERE username = ? AND item_name = ?",
+            [amountToUse, chatterName, itemName],
+          );
           itemsConsumed = true;
 
           if (isLegacy) {
-            const usesPerItem = itemConfig ? (itemConfig.uses || 1) : 1;
+            const usesPerItem = itemConfig ? itemConfig.uses || 1 : 1;
             const totalGranted = amountToUse * usesPerItem;
-            if (itemName === 'fishing ticket') {
-              await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [chatterName, 'free_fish', totalGranted, totalGranted]);
-            } else if (itemName === 'knife') {
-              await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [chatterName, 'auto_duel', totalGranted, totalGranted]);
+            if (itemName === "fishing ticket") {
+              await db.run(
+                "INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?",
+                [chatterName, "free_fish", totalGranted, totalGranted],
+              );
+            } else if (itemName === "knife") {
+              await db.run(
+                "INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?",
+                [chatterName, "auto_duel", totalGranted, totalGranted],
+              );
             }
             chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName}!`);
             continue;
           }
 
-          if (effectType === 'instant_points') {
+          if (effectType === "instant_points") {
             const rawPointsToAdd = baseValue * amountToUse;
             if (isGlobal) {
               await isStreamerLive();
-              const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
+              const ignoredBotsStr = ignoredBots.map((b) => `'${b}'`).join(",");
               if (itemConfig.isPercentage) {
                 if (rawPointsToAdd > 0) {
-                   await adjustRecentChannelUserPoints(rawPointsToAdd, channelState.streamStartTime, { percentage: true });
-                   chatMsgs.push(`🎁 ${chatterName} used ${amountToUse}x ${itemName}! Everyone gained ${rawPointsToAdd * 100}% pts!`);
+                  await adjustRecentChannelUserPoints(
+                    rawPointsToAdd,
+                    channelState.streamStartTime,
+                    { percentage: true },
+                  );
+                  chatMsgs.push(
+                    `🎁 ${chatterName} used ${amountToUse}x ${itemName}! Everyone gained ${rawPointsToAdd * 100}% pts!`,
+                  );
                 } else {
-                   await adjustRecentChannelUserPoints(rawPointsToAdd, channelState.streamStartTime, { percentage: true });
-                   chatMsgs.push(`⚠️ ${chatterName} used ${amountToUse}x ${itemName}! Everyone lost ${Math.abs(rawPointsToAdd * 100)}% pts!`);
+                  await adjustRecentChannelUserPoints(
+                    rawPointsToAdd,
+                    channelState.streamStartTime,
+                    { percentage: true },
+                  );
+                  chatMsgs.push(
+                    `⚠️ ${chatterName} used ${amountToUse}x ${itemName}! Everyone lost ${Math.abs(rawPointsToAdd * 100)}% pts!`,
+                  );
                 }
               } else {
                 if (rawPointsToAdd > 0) {
-                   await adjustRecentChannelUserPoints(rawPointsToAdd, channelState.streamStartTime);
-                   chatMsgs.push(`🎁 ${chatterName} used ${amountToUse}x ${itemName}! Everyone gained ${rawPointsToAdd} pts!`);
+                  await adjustRecentChannelUserPoints(
+                    rawPointsToAdd,
+                    channelState.streamStartTime,
+                  );
+                  chatMsgs.push(
+                    `🎁 ${chatterName} used ${amountToUse}x ${itemName}! Everyone gained ${rawPointsToAdd} pts!`,
+                  );
                 } else {
-                   await adjustRecentChannelUserPoints(rawPointsToAdd, channelState.streamStartTime);
-                   chatMsgs.push(`⚠️ ${chatterName} used ${amountToUse}x ${itemName}! Everyone lost ${Math.abs(rawPointsToAdd)} pts!`);
+                  await adjustRecentChannelUserPoints(
+                    rawPointsToAdd,
+                    channelState.streamStartTime,
+                  );
+                  chatMsgs.push(
+                    `⚠️ ${chatterName} used ${amountToUse}x ${itemName}! Everyone lost ${Math.abs(rawPointsToAdd)} pts!`,
+                  );
                 }
               }
             } else {
               let pointsToAdd = rawPointsToAdd;
               if (itemConfig.isPercentage) {
-                 const uRow = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
-                 const currentPts = uRow ? uRow.points : 0;
-                 pointsToAdd = Math.round(currentPts * rawPointsToAdd);
+                const uRow = await db.get(
+                  "SELECT points FROM users WHERE username = ?",
+                  chatterName,
+                );
+                const currentPts = uRow ? uRow.points : 0;
+                pointsToAdd = Math.round(currentPts * rawPointsToAdd);
               }
               if (pointsToAdd > 0) {
-                 const finalGained = await addPointsWithBonus(chatterName, pointsToAdd);
-                 totalPointsGained += finalGained;
-                 chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} and gained ${finalGained} pts!`);
+                const finalGained = await addPointsWithBonus(
+                  chatterName,
+                  pointsToAdd,
+                );
+                totalPointsGained += finalGained;
+                chatMsgs.push(
+                  `${chatterName} used ${amountToUse}x ${itemName} and gained ${finalGained} pts!`,
+                );
               } else {
-                 await db.run('UPDATE users SET points = MAX(0, points + ?) WHERE username = ?', [pointsToAdd, chatterName]);
-                 totalPointsGained += pointsToAdd;
-                 chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} and lost ${Math.abs(pointsToAdd)} pts!`);
+                await db.run(
+                  "UPDATE users SET points = MAX(0, points + ?) WHERE username = ?",
+                  [pointsToAdd, chatterName],
+                );
+                totalPointsGained += pointsToAdd;
+                chatMsgs.push(
+                  `${chatterName} used ${amountToUse}x ${itemName} and lost ${Math.abs(pointsToAdd)} pts!`,
+                );
               }
             }
-          } else if (effectType === 'global_point_drain') {
+          } else if (effectType === "global_point_drain") {
             const drainAmount = itemConfig.effectValue * amountToUse;
-            await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE username != ?', [drainAmount, chatterName]);
-            chatMsgs.push(`⚠️ ${chatterName} used ${amountToUse}x ${itemName}! Global drain of ${drainAmount} pts! monkaS`);
-          } else if (effectType === 'global_point_boost' || effectType === 'personal_point_boost' || effectType === 'fishing_time_reduction' || effectType === 'tax_collector' || effectType === 'global_point_debuff' || effectType === 'rarity_boost' || effectType === 'personal_xp_boost') {
+            await db.run(
+              "UPDATE users SET points = MAX(0, points - ?) WHERE username != ?",
+              [drainAmount, chatterName],
+            );
+            chatMsgs.push(
+              `⚠️ ${chatterName} used ${amountToUse}x ${itemName}! Global drain of ${drainAmount} pts! monkaS`,
+            );
+          } else if (
+            effectType === "global_point_boost" ||
+            effectType === "personal_point_boost" ||
+            effectType === "fishing_time_reduction" ||
+            effectType === "tax_collector" ||
+            effectType === "global_point_debuff" ||
+            effectType === "rarity_boost" ||
+            effectType === "personal_xp_boost"
+          ) {
             const actualTarget = useTarget || chatterName;
-            const finalTarget = isGlobal ? 'GLOBAL' : actualTarget;
+            const finalTarget = isGlobal ? "GLOBAL" : actualTarget;
             const now = Date.now();
             const durationMs = itemConfig.effectDurationMinutes * 60 * 1000;
-            
+
             let combinedValue = 0;
-            if (effectType === 'global_point_debuff' || effectType === 'fishing_time_reduction') {
-               combinedValue = 1 - Math.pow(1 - baseValue, amountToUse);
-            } else if (effectType === 'rarity_boost' || effectType === 'personal_xp_boost') {
-               combinedValue = baseValue * amountToUse;
+            if (
+              effectType === "global_point_debuff" ||
+              effectType === "fishing_time_reduction"
+            ) {
+              combinedValue = 1 - Math.pow(1 - baseValue, amountToUse);
+            } else if (
+              effectType === "rarity_boost" ||
+              effectType === "personal_xp_boost"
+            ) {
+              combinedValue = baseValue * amountToUse;
             } else {
-               combinedValue = Math.pow(1 + baseValue, amountToUse) - 1;
+              combinedValue = Math.pow(1 + baseValue, amountToUse) - 1;
             }
 
             await db.run(
-              'INSERT INTO active_effects (target_user, effect_type, effect_value, expires_at, caster) VALUES (?, ?, ?, ?, ?)',
-              [finalTarget, effectType, combinedValue, now + durationMs, chatterName]
+              "INSERT INTO active_effects (target_user, effect_type, effect_value, expires_at, caster) VALUES (?, ?, ?, ?, ?)",
+              [
+                finalTarget,
+                effectType,
+                combinedValue,
+                now + durationMs,
+                chatterName,
+              ],
             );
-            
+
             if (isGlobal) {
-               chatMsgs.push(`✨ ${chatterName} used ${amountToUse}x ${itemName}! Applied ${chatCommands.getEffectDisplayName(effectType)} for everyone!`);
+              chatMsgs.push(
+                `✨ ${chatterName} used ${amountToUse}x ${itemName}! Applied ${chatCommands.getEffectDisplayName(effectType)} for everyone!`,
+              );
             } else {
-               const isLive = await isStreamerLive();
-               if (!isLive) {
-                 chatMsgs.push(`✨ ${chatterName} used ${amountToUse}x ${itemName}! Applied ${chatCommands.getEffectDisplayName(effectType)}!`);
-               }
+              const isLive = await isStreamerLive();
+              if (!isLive) {
+                chatMsgs.push(
+                  `✨ ${chatterName} used ${amountToUse}x ${itemName}! Applied ${chatCommands.getEffectDisplayName(effectType)}!`,
+                );
+              }
             }
-          } else if (effectType === 'fishing_debuff_target') {
-             const actualTarget = useTarget || chatterName;
-             let timeToAddMinutes = baseValue * amountToUse;
-             if (itemConfig.isPercentage) {
-                const isLive = await isStreamerLive();
-                let baseTimeMinutes;
-                if (isLive) {
-                    baseTimeMinutes = parseFloat(globalConfig['cmd_!fish_time_online'] !== undefined ? globalConfig['cmd_!fish_time_online'] : '5');
-                } else {
-                    baseTimeMinutes = parseFloat(globalConfig['cmd_!fish_time_offline'] !== undefined ? globalConfig['cmd_!fish_time_offline'] : '15');
-                }
-                timeToAddMinutes = baseTimeMinutes * baseValue * amountToUse;
-             }
-             const timeToAddMs = timeToAddMinutes * 60 * 1000;
-             const pendingFish = await db.get('SELECT * FROM pending_fish WHERE username = ?', [actualTarget]);
-             if (pendingFish) {
-                await db.run('UPDATE pending_fish SET catch_time = catch_time + ? WHERE username = ?', [timeToAddMs, actualTarget]);
-                chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} on ${actualTarget}! Added ${timeToAddMinutes} mins to their fish wait!`);
-             } else {
-                await db.run('INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?', [actualTarget, 'delayed_fish', timeToAddMs, timeToAddMs]);
-                chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} on ${actualTarget}! Next fish trip is ${timeToAddMinutes} mins longer!`);
-             }
-          } else if (effectType === 'steal_points') {
-             const actualTarget = useTarget || chatterName;
-             if (actualTarget === chatterName) {
-               // self target ignore
-             } else {
-                const targetRow = await db.get('SELECT points FROM users WHERE username = ?', [actualTarget]);
-                if (targetRow && targetRow.points > 0) {
-                    let remainingAttacks = amountToUse;
-                    let shieldedAttacks = 0;
-                    let defendedAttacks = 0;
-                    let defenseMultiplier = 1;
-
-                    const pointShields = await getActiveEffects(actualTarget, 'point_shield');
-                    if (pointShields.length > 0) {
-                        const shield = pointShields[0];
-                        shieldedAttacks = Math.min(shield.uses_left, remainingAttacks);
-                        if (shieldedAttacks > 0) {
-                            await db.run('UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?', [shieldedAttacks, shield.id]);
-                            remainingAttacks -= shieldedAttacks;
-                        }
-                    }
-
-                    if (remainingAttacks > 0) {
-                        const pointDefenses = await getActiveEffects(actualTarget, 'point_defense');
-                        if (pointDefenses.length > 0) {
-                            const defense = pointDefenses[0];
-                            defendedAttacks = Math.min(defense.uses_left, remainingAttacks);
-                            if (defendedAttacks > 0) {
-                                await db.run('UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?', [defendedAttacks, defense.id]);
-                                defenseMultiplier = Math.max(0, 1 - defense.effect_value);
-                            }
-                        }
-                    }
-
-                    let blockString = '';
-                    if (shieldedAttacks > 0 || defendedAttacks > 0) {
-                        const parts = [];
-                        if (shieldedAttacks > 0) parts.push(`${shieldedAttacks} Blocked`);
-                        if (defendedAttacks > 0) parts.push(`${defendedAttacks} Defended`);
-                        blockString = ` (🛡️ ${parts.join(', ')})`;
-                    }
-
-                    if (remainingAttacks === 0 && amountToUse > 0) {
-                        chatMsgs.push(`🛡️ ${actualTarget}'s SHIELD completely blocked ${chatterName}'s ${amountToUse}x ${itemName}!`);
-                    } else if (remainingAttacks > 0) {
-                        const undefendedAttacks = remainingAttacks - defendedAttacks;
-                        let totalCalcAmount = 0;
-                        if (itemConfig.isPercentage) {
-                            const perAttack = targetRow.points * baseValue;
-                            totalCalcAmount = (defendedAttacks * perAttack * defenseMultiplier) + (undefendedAttacks * perAttack);
-                        } else {
-                            const perAttack = baseValue;
-                            totalCalcAmount = (defendedAttacks * perAttack * defenseMultiplier) + (undefendedAttacks * perAttack);
-                        }
-                        
-                        const stealAmount = Math.floor(Math.min(targetRow.points, totalCalcAmount));
-                        await db.run('UPDATE users SET points = points - ? WHERE username = ?', [stealAmount, actualTarget]);
-                        await addPointsWithBonus(chatterName, stealAmount, false, 'gamble');
-                        chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} and stole ${stealAmount} pts from ${actualTarget}!${blockString}`);
-                    }
-                 } else {
-                   chatMsgs.push(`⚠️ ${chatterName} tried to steal from ${actualTarget}, but they are broke!`);
-                 }
-              }
-           } else if (effectType === 'destroy_points_target') {
-              const actualTarget = useTarget || chatterName;
-              if (actualTarget === chatterName) {
-                 chatMsgs.push(`⚠️ ${chatterName} tried to destroy their own points!`);
+          } else if (effectType === "fishing_debuff_target") {
+            const actualTarget = useTarget || chatterName;
+            let timeToAddMinutes = baseValue * amountToUse;
+            if (itemConfig.isPercentage) {
+              const isLive = await isStreamerLive();
+              let baseTimeMinutes;
+              if (isLive) {
+                baseTimeMinutes = parseFloat(
+                  globalConfig["cmd_!fish_time_online"] !== undefined
+                    ? globalConfig["cmd_!fish_time_online"]
+                    : "5",
+                );
               } else {
-                 const targetRow = await db.get('SELECT points FROM users WHERE username = ?', [actualTarget]);
-                 if (targetRow && targetRow.points > 0) {
-                    let remainingAttacks = amountToUse;
-                    let shieldedAttacks = 0;
-                    let defendedAttacks = 0;
-                    let defenseMultiplier = 1;
-
-                    const pointShields = await getActiveEffects(actualTarget, 'point_shield');
-                    if (pointShields.length > 0) {
-                        const shield = pointShields[0];
-                        shieldedAttacks = Math.min(shield.uses_left, remainingAttacks);
-                        if (shieldedAttacks > 0) {
-                            await db.run('UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?', [shieldedAttacks, shield.id]);
-                            remainingAttacks -= shieldedAttacks;
-                        }
-                    }
-
-                    if (remainingAttacks > 0) {
-                        const pointDefenses = await getActiveEffects(actualTarget, 'point_defense');
-                        if (pointDefenses.length > 0) {
-                            const defense = pointDefenses[0];
-                            defendedAttacks = Math.min(defense.uses_left, remainingAttacks);
-                            if (defendedAttacks > 0) {
-                                await db.run('UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?', [defendedAttacks, defense.id]);
-                                defenseMultiplier = Math.max(0, 1 - defense.effect_value);
-                            }
-                        }
-                    }
-
-                    let blockString = '';
-                    if (shieldedAttacks > 0 || defendedAttacks > 0) {
-                        const parts = [];
-                        if (shieldedAttacks > 0) parts.push(`${shieldedAttacks} Blocked`);
-                        if (defendedAttacks > 0) parts.push(`${defendedAttacks} Defended`);
-                        blockString = ` (🛡️ ${parts.join(', ')})`;
-                    }
-
-                    if (remainingAttacks === 0 && amountToUse > 0) {
-                        chatMsgs.push(`🛡️ ${actualTarget}'s SHIELD completely blocked ${chatterName}'s ${amountToUse}x ${itemName}!`);
-                    } else if (remainingAttacks > 0) {
-                        const undefendedAttacks = remainingAttacks - defendedAttacks;
-                        let totalCalcAmount = 0;
-                        if (itemConfig.isPercentage) {
-                            const perAttack = targetRow.points * baseValue;
-                            totalCalcAmount = (defendedAttacks * perAttack * defenseMultiplier) + (undefendedAttacks * perAttack);
-                        } else {
-                            const perAttack = baseValue;
-                            totalCalcAmount = (defendedAttacks * perAttack * defenseMultiplier) + (undefendedAttacks * perAttack);
-                        }
-                        
-                        const destroyAmount = Math.floor(Math.min(targetRow.points, totalCalcAmount));
-                        await db.run('UPDATE users SET points = points - ? WHERE username = ?', [destroyAmount, actualTarget]);
-                        chatMsgs.push(`${chatterName} used ${amountToUse}x ${itemName} and destroyed ${destroyAmount} pts from ${actualTarget}!${blockString}`);
-                    }
-                 } else {
-                    chatMsgs.push(`⚠️ ${chatterName} tried to destroy points from ${actualTarget}, but they are already broke!`);
-                 }
+                baseTimeMinutes = parseFloat(
+                  globalConfig["cmd_!fish_time_offline"] !== undefined
+                    ? globalConfig["cmd_!fish_time_offline"]
+                    : "15",
+                );
               }
-           } else if (effectType === 'personal_point_debuff_target') {
-             const actualTarget = useTarget || chatterName;
-             const now = Date.now();
-             const durationMs = itemConfig.effectDurationMinutes * 60 * 1000;
-             const combinedValue = 1 - Math.pow(1 - baseValue, amountToUse);
-             await db.run(
-               'INSERT INTO active_effects (target_user, effect_type, effect_value, expires_at, caster) VALUES (?, ?, ?, ?, ?)',
-               [actualTarget, 'global_point_debuff', combinedValue, now + durationMs, chatterName]
-             );
-             chatMsgs.push(`${chatterName} cursed ${actualTarget} with a ${Math.round(combinedValue * 100)}% point debuff for ${itemConfig.effectDurationMinutes} mins using ${amountToUse}x ${itemName}!`);
-          } else {
-
-            const uses = itemConfig.uses * amountToUse;
-            const existing = await db.get('SELECT * FROM active_effects WHERE target_user = ? AND effect_type = ? AND effect_value = ?', [targetUser, effectType, baseValue]);
-            if (existing) {
-               await db.run('UPDATE active_effects SET uses_left = uses_left + ? WHERE id = ?', [uses, existing.id]);
+              timeToAddMinutes = baseTimeMinutes * baseValue * amountToUse;
+            }
+            const timeToAddMs = timeToAddMinutes * 60 * 1000;
+            const pendingFish = await db.get(
+              "SELECT * FROM pending_fish WHERE username = ?",
+              [actualTarget],
+            );
+            if (pendingFish) {
+              await db.run(
+                "UPDATE pending_fish SET catch_time = catch_time + ? WHERE username = ?",
+                [timeToAddMs, actualTarget],
+              );
+              chatMsgs.push(
+                `${chatterName} used ${amountToUse}x ${itemName} on ${actualTarget}! Added ${timeToAddMinutes} mins to their fish wait!`,
+              );
             } else {
-               await db.run(
-                 'INSERT INTO active_effects (target_user, effect_type, effect_value, uses_left, caster) VALUES (?, ?, ?, ?, ?)',
-                 [targetUser, effectType, baseValue, uses, chatterName]
-               );
+              await db.run(
+                "INSERT INTO user_modifiers (username, modifier, value) VALUES (?, ?, ?) ON CONFLICT(username, modifier) DO UPDATE SET value = value + ?",
+                [actualTarget, "delayed_fish", timeToAddMs, timeToAddMs],
+              );
+              chatMsgs.push(
+                `${chatterName} used ${amountToUse}x ${itemName} on ${actualTarget}! Next fish trip is ${timeToAddMinutes} mins longer!`,
+              );
+            }
+          } else if (effectType === "steal_points") {
+            const actualTarget = useTarget || chatterName;
+            if (actualTarget === chatterName) {
+              // self target ignore
+            } else {
+              const targetRow = await db.get(
+                "SELECT points FROM users WHERE username = ?",
+                [actualTarget],
+              );
+              if (targetRow && targetRow.points > 0) {
+                let remainingAttacks = amountToUse;
+                let shieldedAttacks = 0;
+                let defendedAttacks = 0;
+                let defenseMultiplier = 1;
+
+                const pointShields = await getActiveEffects(
+                  actualTarget,
+                  "point_shield",
+                );
+                if (pointShields.length > 0) {
+                  const shield = pointShields[0];
+                  shieldedAttacks = Math.min(
+                    shield.uses_left,
+                    remainingAttacks,
+                  );
+                  if (shieldedAttacks > 0) {
+                    await db.run(
+                      "UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?",
+                      [shieldedAttacks, shield.id],
+                    );
+                    remainingAttacks -= shieldedAttacks;
+                  }
+                }
+
+                if (remainingAttacks > 0) {
+                  const pointDefenses = await getActiveEffects(
+                    actualTarget,
+                    "point_defense",
+                  );
+                  if (pointDefenses.length > 0) {
+                    const defense = pointDefenses[0];
+                    defendedAttacks = Math.min(
+                      defense.uses_left,
+                      remainingAttacks,
+                    );
+                    if (defendedAttacks > 0) {
+                      await db.run(
+                        "UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?",
+                        [defendedAttacks, defense.id],
+                      );
+                      defenseMultiplier = Math.max(0, 1 - defense.effect_value);
+                    }
+                  }
+                }
+
+                let blockString = "";
+                if (shieldedAttacks > 0 || defendedAttacks > 0) {
+                  const parts = [];
+                  if (shieldedAttacks > 0)
+                    parts.push(`${shieldedAttacks} Blocked`);
+                  if (defendedAttacks > 0)
+                    parts.push(`${defendedAttacks} Defended`);
+                  blockString = ` (🛡️ ${parts.join(", ")})`;
+                }
+
+                if (remainingAttacks === 0 && amountToUse > 0) {
+                  chatMsgs.push(
+                    `🛡️ ${actualTarget}'s SHIELD completely blocked ${chatterName}'s ${amountToUse}x ${itemName}!`,
+                  );
+                } else if (remainingAttacks > 0) {
+                  const undefendedAttacks = remainingAttacks - defendedAttacks;
+                  let totalCalcAmount = 0;
+                  if (itemConfig.isPercentage) {
+                    const perAttack = targetRow.points * baseValue;
+                    totalCalcAmount =
+                      defendedAttacks * perAttack * defenseMultiplier +
+                      undefendedAttacks * perAttack;
+                  } else {
+                    const perAttack = baseValue;
+                    totalCalcAmount =
+                      defendedAttacks * perAttack * defenseMultiplier +
+                      undefendedAttacks * perAttack;
+                  }
+
+                  const stealAmount = Math.floor(
+                    Math.min(targetRow.points, totalCalcAmount),
+                  );
+                  await db.run(
+                    "UPDATE users SET points = points - ? WHERE username = ?",
+                    [stealAmount, actualTarget],
+                  );
+                  await addPointsWithBonus(
+                    chatterName,
+                    stealAmount,
+                    false,
+                    "gamble",
+                  );
+                  chatMsgs.push(
+                    `${chatterName} used ${amountToUse}x ${itemName} and stole ${stealAmount} pts from ${actualTarget}!${blockString}`,
+                  );
+                }
+              } else {
+                chatMsgs.push(
+                  `⚠️ ${chatterName} tried to steal from ${actualTarget}, but they are broke!`,
+                );
+              }
+            }
+          } else if (effectType === "destroy_points_target") {
+            const actualTarget = useTarget || chatterName;
+            if (actualTarget === chatterName) {
+              chatMsgs.push(
+                `⚠️ ${chatterName} tried to destroy their own points!`,
+              );
+            } else {
+              const targetRow = await db.get(
+                "SELECT points FROM users WHERE username = ?",
+                [actualTarget],
+              );
+              if (targetRow && targetRow.points > 0) {
+                let remainingAttacks = amountToUse;
+                let shieldedAttacks = 0;
+                let defendedAttacks = 0;
+                let defenseMultiplier = 1;
+
+                const pointShields = await getActiveEffects(
+                  actualTarget,
+                  "point_shield",
+                );
+                if (pointShields.length > 0) {
+                  const shield = pointShields[0];
+                  shieldedAttacks = Math.min(
+                    shield.uses_left,
+                    remainingAttacks,
+                  );
+                  if (shieldedAttacks > 0) {
+                    await db.run(
+                      "UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?",
+                      [shieldedAttacks, shield.id],
+                    );
+                    remainingAttacks -= shieldedAttacks;
+                  }
+                }
+
+                if (remainingAttacks > 0) {
+                  const pointDefenses = await getActiveEffects(
+                    actualTarget,
+                    "point_defense",
+                  );
+                  if (pointDefenses.length > 0) {
+                    const defense = pointDefenses[0];
+                    defendedAttacks = Math.min(
+                      defense.uses_left,
+                      remainingAttacks,
+                    );
+                    if (defendedAttacks > 0) {
+                      await db.run(
+                        "UPDATE active_effects SET uses_left = uses_left - ? WHERE id = ?",
+                        [defendedAttacks, defense.id],
+                      );
+                      defenseMultiplier = Math.max(0, 1 - defense.effect_value);
+                    }
+                  }
+                }
+
+                let blockString = "";
+                if (shieldedAttacks > 0 || defendedAttacks > 0) {
+                  const parts = [];
+                  if (shieldedAttacks > 0)
+                    parts.push(`${shieldedAttacks} Blocked`);
+                  if (defendedAttacks > 0)
+                    parts.push(`${defendedAttacks} Defended`);
+                  blockString = ` (🛡️ ${parts.join(", ")})`;
+                }
+
+                if (remainingAttacks === 0 && amountToUse > 0) {
+                  chatMsgs.push(
+                    `🛡️ ${actualTarget}'s SHIELD completely blocked ${chatterName}'s ${amountToUse}x ${itemName}!`,
+                  );
+                } else if (remainingAttacks > 0) {
+                  const undefendedAttacks = remainingAttacks - defendedAttacks;
+                  let totalCalcAmount = 0;
+                  if (itemConfig.isPercentage) {
+                    const perAttack = targetRow.points * baseValue;
+                    totalCalcAmount =
+                      defendedAttacks * perAttack * defenseMultiplier +
+                      undefendedAttacks * perAttack;
+                  } else {
+                    const perAttack = baseValue;
+                    totalCalcAmount =
+                      defendedAttacks * perAttack * defenseMultiplier +
+                      undefendedAttacks * perAttack;
+                  }
+
+                  const destroyAmount = Math.floor(
+                    Math.min(targetRow.points, totalCalcAmount),
+                  );
+                  await db.run(
+                    "UPDATE users SET points = points - ? WHERE username = ?",
+                    [destroyAmount, actualTarget],
+                  );
+                  chatMsgs.push(
+                    `${chatterName} used ${amountToUse}x ${itemName} and destroyed ${destroyAmount} pts from ${actualTarget}!${blockString}`,
+                  );
+                }
+              } else {
+                chatMsgs.push(
+                  `⚠️ ${chatterName} tried to destroy points from ${actualTarget}, but they are already broke!`,
+                );
+              }
+            }
+          } else if (effectType === "personal_point_debuff_target") {
+            const actualTarget = useTarget || chatterName;
+            const now = Date.now();
+            const durationMs = itemConfig.effectDurationMinutes * 60 * 1000;
+            const combinedValue = 1 - Math.pow(1 - baseValue, amountToUse);
+            await db.run(
+              "INSERT INTO active_effects (target_user, effect_type, effect_value, expires_at, caster) VALUES (?, ?, ?, ?, ?)",
+              [
+                actualTarget,
+                "global_point_debuff",
+                combinedValue,
+                now + durationMs,
+                chatterName,
+              ],
+            );
+            chatMsgs.push(
+              `${chatterName} cursed ${actualTarget} with a ${Math.round(combinedValue * 100)}% point debuff for ${itemConfig.effectDurationMinutes} mins using ${amountToUse}x ${itemName}!`,
+            );
+          } else {
+            const uses = itemConfig.uses * amountToUse;
+            const existing = await db.get(
+              "SELECT * FROM active_effects WHERE target_user = ? AND effect_type = ? AND effect_value = ?",
+              [targetUser, effectType, baseValue],
+            );
+            if (existing) {
+              await db.run(
+                "UPDATE active_effects SET uses_left = uses_left + ? WHERE id = ?",
+                [uses, existing.id],
+              );
+            } else {
+              await db.run(
+                "INSERT INTO active_effects (target_user, effect_type, effect_value, uses_left, caster) VALUES (?, ?, ?, ?, ?)",
+                [targetUser, effectType, baseValue, uses, chatterName],
+              );
             }
           }
-          
+
           if (itemConfig && itemConfig.rngPrefix) {
-              if (chatMsgs.length > chatMsgCountBefore) {
-                  chatMsgs[chatMsgCountBefore] = itemConfig.rngPrefix + chatMsgs[chatMsgCountBefore];
-              }
+            if (chatMsgs.length > chatMsgCountBefore) {
+              chatMsgs[chatMsgCountBefore] =
+                itemConfig.rngPrefix + chatMsgs[chatMsgCountBefore];
+            }
           }
         }
 
         if (chatMsgs.length > 0) {
-          let finalMsg = chatMsgs.join(' ');
-          
+          let finalMsg = chatMsgs.join(" ");
+
           if (hasGlobalItem) {
-             await sendChatMessage(finalMsg, chatterName);
+            await sendChatMessage(finalMsg, chatterName);
           } else {
-             let fallbackToChat = false;
-             
-             // Send whisper to attacker
-             const attackerSuccess = await sendWhisper(chatterName, finalMsg, false);
-             if (!attackerSuccess) fallbackToChat = true;
-             
-             // Send whisper to any victims
-             for (const target of affectedTargets) {
-                 if (target === chatterName) continue;
-                 const targetSuccess = await sendWhisper(target, finalMsg, false);
-                 if (!targetSuccess) fallbackToChat = true;
-             }
-             
-             if (fallbackToChat) {
-                 await sendChatMessage(finalMsg, chatterName);
-             }
+            let fallbackToChat = false;
+
+            // Send whisper to attacker
+            const attackerSuccess = await sendWhisper(
+              chatterName,
+              finalMsg,
+              false,
+            );
+            if (!attackerSuccess) fallbackToChat = true;
+
+            // Send whisper to any victims
+            for (const target of affectedTargets) {
+              if (target === chatterName) continue;
+              const targetSuccess = await sendWhisper(target, finalMsg, false);
+              if (!targetSuccess) fallbackToChat = true;
+            }
+
+            if (fallbackToChat) {
+              await sendChatMessage(finalMsg, chatterName);
+            }
           }
         } else if (!itemsConsumed) {
-          await sendWhisper(chatterName, "You don't have those items or they cannot be used!", true);
+          await sendWhisper(
+            chatterName,
+            "You don't have those items or they cannot be used!",
+            true,
+          );
           return false;
         }
-      }
+      },
     },
-    '!points': {
+    "!points": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         let targetUser = chatterName;
         if (args.length > 0) {
-          const rawTarget = args[0].replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
+          const rawTarget = args[0].replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
           if (rawTarget.length > 0) {
             targetUser = rawTarget;
           }
         }
 
-        let user = await db.get('SELECT points FROM users WHERE username = ?', targetUser);
+        let user = await db.get(
+          "SELECT points FROM users WHERE username = ?",
+          targetUser,
+        );
         if (!user) {
-          await db.run('INSERT OR IGNORE INTO users (username, points) VALUES (?, 0)', [targetUser]);
+          await db.run(
+            "INSERT OR IGNORE INTO users (username, points) VALUES (?, 0)",
+            [targetUser],
+          );
           user = { points: 0 };
         }
 
@@ -2504,11 +3356,15 @@ async function start() {
         if (targetUser === chatterName) {
           await sendWhisper(chatterName, `you have ${points} points!`, true);
         } else {
-          await sendWhisper(chatterName, `${targetUser} has ${points} points!`, true);
+          await sendWhisper(
+            chatterName,
+            `${targetUser} has ${points} points!`,
+            true,
+          );
         }
-      }
+      },
     },
-    '!toppoints': {
+    "!toppoints": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         let amount = 5;
@@ -2518,32 +3374,40 @@ async function start() {
             amount = Math.min(parsed, 15);
           }
         }
-        
-        const topUsers = await db.all('SELECT username, points FROM users ORDER BY points DESC LIMIT ?', [amount]);
+
+        const topUsers = await db.all(
+          "SELECT username, points FROM users ORDER BY points DESC LIMIT ?",
+          [amount],
+        );
         if (!topUsers || topUsers.length === 0) {
           await sendChatMessage(`No users found!`);
           return;
         }
 
-        const leaderboard = topUsers.map((u, i) => `${i + 1}. ${u.username} (${u.points})`).join(', ');
+        const leaderboard = topUsers
+          .map((u, i) => `${i + 1}. ${u.username} (${u.points})`)
+          .join(", ");
         await sendChatMessage(`🏆 Top Points: ${leaderboard}`);
-      }
+      },
     },
-    '!editpoints': {
+    "!editpoints": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`@${chatterName}, you do not have permission to edit points!`, chatterName);
+          //  await sendChatMessage(`@${chatterName}, you do not have permission to edit points!`, chatterName);
           return;
         }
 
         if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !editpoints <username> <amount>`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !editpoints <username> <amount>`,
+            chatterName,
+          );
           return;
         }
 
-        const targetUser = args[0].replace('@', '').toLowerCase();
+        const targetUser = args[0].replace("@", "").toLowerCase();
         const amount = parseAmount(args[1]);
 
         if (isNaN(amount) || amount < 0) {
@@ -2551,55 +3415,83 @@ async function start() {
           return;
         }
 
-        await db.run('INSERT INTO users (username, points) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET points = ?', [targetUser, amount, amount]);
-        await sendChatMessage(`Successfully set ${targetUser}'s points to ${amount}!`, targetUser);
-      }
+        await db.run(
+          "INSERT INTO users (username, points) VALUES (?, ?) ON CONFLICT(username) DO UPDATE SET points = ?",
+          [targetUser, amount, amount],
+        );
+        await sendChatMessage(
+          `Successfully set ${targetUser}'s points to ${amount}!`,
+          targetUser,
+        );
+      },
     },
-    '!chatcooldown': {
+    "!chatcooldown": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`@${chatterName}, you do not have permission to edit the chat cooldown!`, chatterName);
+          //  await sendChatMessage(`@${chatterName}, you do not have permission to edit the chat cooldown!`, chatterName);
           return;
         }
 
         if (args.length === 1) {
           const cdVal = parseFlexibleTime(args[0]);
           if (isNaN(cdVal) || cdVal < 0) {
-            await sendChatMessage(`${chatterName} invalid time! Use ms (1000), or 10s, 5m.`, chatterName);
+            await sendChatMessage(
+              `${chatterName} invalid time! Use ms (1000), or 10s, 5m.`,
+              chatterName,
+            );
             return;
           }
 
-          const configKey = 'chat_wide_cooldown';
-          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, cdVal, cdVal]);
+          const configKey = "chat_wide_cooldown";
+          await db.run(
+            "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            [configKey, cdVal, cdVal],
+          );
           globalConfig[configKey] = cdVal;
-          
-          await sendChatMessage(`Successfully updated chat-wide global cooldown to ${cdVal} ms!`);
+
+          await sendChatMessage(
+            `Successfully updated chat-wide global cooldown to ${cdVal} ms!`,
+          );
         } else if (args.length === 2) {
           const targetCmd = args[0].toLowerCase();
-          if (!targetCmd.startsWith('!')) {
-            await sendChatMessage(`${chatterName} invalid command! Use: !chatcooldown !command <time>`, chatterName);
+          if (!targetCmd.startsWith("!")) {
+            await sendChatMessage(
+              `${chatterName} invalid command! Use: !chatcooldown !command <time>`,
+              chatterName,
+            );
             return;
           }
-          
+
           const cdVal = parseFlexibleTime(args[1]);
           if (isNaN(cdVal) || cdVal < 0) {
-            await sendChatMessage(`${chatterName} invalid time! Use ms (1000), or 10s, 5m.`, chatterName);
+            await sendChatMessage(
+              `${chatterName} invalid time! Use ms (1000), or 10s, 5m.`,
+              chatterName,
+            );
             return;
           }
 
           const configKey = `cmd_${targetCmd}_global_chat_cooldown`;
-          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, cdVal, cdVal]);
+          await db.run(
+            "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            [configKey, cdVal, cdVal],
+          );
           globalConfig[configKey] = cdVal;
-          
-          await sendChatMessage(`Successfully updated GLOBAL chat cooldown for ${targetCmd} to ${cdVal} ms!`);
+
+          await sendChatMessage(
+            `Successfully updated GLOBAL chat cooldown for ${targetCmd} to ${cdVal} ms!`,
+          );
         } else {
-          await sendChatMessage(`${chatterName} invalid format! Use: !chatcooldown <time> OR !chatcooldown <!command> <time>`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !chatcooldown <time> OR !chatcooldown <!command> <time>`,
+            chatterName,
+          );
         }
-      }
+      },
     },
-    '!playsound': {
+    "!playsound": {
       cost: 1,
       manualCost: true,
       execute: async (args, chatterName, event, hasPermission) => {
@@ -2607,152 +3499,233 @@ async function start() {
         //   console.log(`[PLAYSOUND] Streamer is offline. Ignoring !playsound ${args[0]} from ${chatterName}.`);
         //   return false;
         // }
-        args = [args[0]]
+        args = [args[0]];
 
-        const filename = args.join('').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+        const filename = args
+          .join("")
+          .replace(/[^a-zA-Z0-9_-]/g, "")
+          .toLowerCase();
         if (filename) {
-          const customCooldownRaw = globalConfig[`cooldown_playsound_${filename}`];
-          if (customCooldownRaw !== undefined && customCooldownRaw !== '') {
+          const customCooldownRaw =
+            globalConfig[`cooldown_playsound_${filename}`];
+          if (customCooldownRaw !== undefined && customCooldownRaw !== "") {
             const cooldownMs = parseInt(customCooldownRaw, 10);
             if (cooldownMs > 0) {
               const lastPlayed = playsoundCooldowns.get(filename) || 0;
               const now = Date.now();
               if (now - lastPlayed < cooldownMs) {
-                console.log(`[PLAYSOUND] Sound '${filename}' is on custom cooldown. Ignoring.`);
+                console.log(
+                  `[PLAYSOUND] Sound '${filename}' is on custom cooldown. Ignoring.`,
+                );
                 return false;
               }
             }
           }
 
           const customCostRaw = globalConfig[`cost_playsound_${filename}`];
-          const dynamicCostRaw = globalConfig['cmd_!playsound_cost'];
+          const dynamicCostRaw = globalConfig["cmd_!playsound_cost"];
           let activeCost = 0;
-          if (customCostRaw !== undefined && customCostRaw !== '') {
+          if (customCostRaw !== undefined && customCostRaw !== "") {
             activeCost = parseInt(customCostRaw, 10);
           } else {
-            activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
+            activeCost =
+              dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
           }
 
-          const isBroadcaster = (event.badges && event.badges.some(b => b.set_id === 'broadcaster')) || chatterName === TARGET_CHANNEL;
+          const isBroadcaster =
+            (event.badges &&
+              event.badges.some((b) => b.set_id === "broadcaster")) ||
+            chatterName === TARGET_CHANNEL;
           if (activeCost > 0 && !isBroadcaster) {
-            const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+            const user = await db.get(
+              "SELECT points FROM users WHERE username = ?",
+              chatterName,
+            );
             if (!user || user.points < activeCost) {
-              console.log(`[PLAYSOUND] ${chatterName} lacks points for ${filename}`);
+              console.log(
+                `[PLAYSOUND] ${chatterName} lacks points for ${filename}`,
+              );
               return false;
             }
-            await db.run('UPDATE users SET points = points - ? WHERE username = ?', [activeCost, chatterName]);
+            await db.run(
+              "UPDATE users SET points = points - ? WHERE username = ?",
+              [activeCost, chatterName],
+            );
           }
 
           const disabledRaw = globalConfig[`disabled_playsound_${filename}`];
-          if (disabledRaw === 'true' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw))) {
+          if (
+            disabledRaw === "true" ||
+            (!isNaN(parseInt(disabledRaw)) &&
+              Date.now() < parseInt(disabledRaw))
+          ) {
             console.log(`[PLAYSOUND] Sound '${filename}' is disabled.`);
             if (activeCost > 0 && !isBroadcaster) {
-              await db.run('UPDATE users SET points = points + ? WHERE username = ?', [activeCost, chatterName]);
+              await db.run(
+                "UPDATE users SET points = points + ? WHERE username = ?",
+                [activeCost, chatterName],
+              );
             }
             return false;
           }
 
-          const oggPath = path.join(getSoundsDir(), filename + '.ogg');
-          const mp3Path = path.join(getSoundsDir(), filename + '.mp3');
-          
+          const oggPath = path.join(getSoundsDir(), filename + ".ogg");
+          const mp3Path = path.join(getSoundsDir(), filename + ".mp3");
+
           if (fs.existsSync(oggPath) || fs.existsSync(mp3Path)) {
-            const customVolumeRaw = globalConfig[`volume_playsound_${filename}`];
-            const individualVolume = customVolumeRaw !== undefined && customVolumeRaw !== '' ? parseFloat(customVolumeRaw) : 1.0;
+            const customVolumeRaw =
+              globalConfig[`volume_playsound_${filename}`];
+            const individualVolume =
+              customVolumeRaw !== undefined && customVolumeRaw !== ""
+                ? parseFloat(customVolumeRaw)
+                : 1.0;
             const masterVolumeRaw = globalConfig[`master_volume_playsound`];
-            const masterVolume = masterVolumeRaw !== undefined && masterVolumeRaw !== '' ? parseFloat(masterVolumeRaw) : 1.0;
+            const masterVolume =
+              masterVolumeRaw !== undefined && masterVolumeRaw !== ""
+                ? parseFloat(masterVolumeRaw)
+                : 1.0;
             const volume = individualVolume * masterVolume;
-            
+
             if (fs.existsSync(oggPath)) {
-              broadcastAudio(filename + '.ogg', volume);
+              broadcastAudio(filename + ".ogg", volume);
               playsoundCooldowns.set(filename, Date.now());
-              console.log(`[PLAYSOUND] ${chatterName} played audio: ${filename}.ogg (-${activeCost} point(s)) at ${volume}x volume`);
+              console.log(
+                `[PLAYSOUND] ${chatterName} played audio: ${filename}.ogg (-${activeCost} point(s)) at ${volume}x volume`,
+              );
             } else {
-              broadcastAudio(filename + '.mp3', volume);
+              broadcastAudio(filename + ".mp3", volume);
               playsoundCooldowns.set(filename, Date.now());
-              console.log(`[PLAYSOUND] ${chatterName} played audio: ${filename}.mp3 (-${activeCost} point(s)) at ${volume}x volume`);
+              console.log(
+                `[PLAYSOUND] ${chatterName} played audio: ${filename}.mp3 (-${activeCost} point(s)) at ${volume}x volume`,
+              );
             }
-            
+
             try {
-              const meta = await db.get('SELECT submitter, submission_id FROM playsounds_metadata WHERE name = ?', [filename]);
+              const meta = await db.get(
+                "SELECT submitter, submission_id FROM playsounds_metadata WHERE name = ?",
+                [filename],
+              );
               if (meta && meta.submitter && meta.submission_id) {
-                const authorRewardRaw = globalConfig['reward_playsound_submitter'];
-                const authorReward = authorRewardRaw !== undefined ? parseInt(authorRewardRaw, 10) : 50; 
+                const authorRewardRaw =
+                  globalConfig["reward_playsound_submitter"];
+                const authorReward =
+                  authorRewardRaw !== undefined
+                    ? parseInt(authorRewardRaw, 10)
+                    : 50;
                 if (authorReward > 0) {
-                  await db.run('UPDATE users SET points = points + ? WHERE username = ?', [authorReward, meta.submitter]);
-                  await db.run('UPDATE user_submissions SET points_earned = points_earned + ? WHERE id = ?', [authorReward, meta.submission_id]);
-                  console.log(`[PLAYSOUND] Awarded ${authorReward} points to submitter ${meta.submitter}`);
+                  await db.run(
+                    "UPDATE users SET points = points + ? WHERE username = ?",
+                    [authorReward, meta.submitter],
+                  );
+                  await db.run(
+                    "UPDATE user_submissions SET points_earned = points_earned + ? WHERE id = ?",
+                    [authorReward, meta.submission_id],
+                  );
+                  console.log(
+                    `[PLAYSOUND] Awarded ${authorReward} points to submitter ${meta.submitter}`,
+                  );
                 }
               }
             } catch (err) {}
           } else {
             console.log(`[PLAYSOUND] Audio not found for: ${filename}`);
             if (activeCost > 0 && !isBroadcaster) {
-              await db.run('UPDATE users SET points = points + ? WHERE username = ?', [activeCost, chatterName]);
+              await db.run(
+                "UPDATE users SET points = points + ? WHERE username = ?",
+                [activeCost, chatterName],
+              );
             }
             return false;
           }
         } else {
-          const dynamicCostRaw = globalConfig['cmd_!playsound_cost'];
-          const activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
-          await sendChatMessage(`Usage: !playsound <soundname>  cost: ${activeCost} points`);
+          const dynamicCostRaw = globalConfig["cmd_!playsound_cost"];
+          const activeCost =
+            dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
+          await sendChatMessage(
+            `Usage: !playsound <soundname>  cost: ${activeCost} points`,
+          );
           return false;
         }
-      }
+      },
     },
-    '!deleteplaysound': {
+    "!deleteplaysound": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to delete playsounds!`, chatterName);
+          //  await sendChatMessage(`${chatterName} you do not have permission to delete playsounds!`, chatterName);
           return;
         }
 
         if (args.length < 1) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !deleteplaysound <soundname>`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !deleteplaysound <soundname>`,
+            chatterName,
+          );
           return;
         }
 
-        const filename = args.join('').replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase();
+        const filename = args
+          .join("")
+          .replace(/[^a-zA-Z0-9_-]/g, "")
+          .toLowerCase();
         if (!filename) {
-          await sendChatMessage(`${chatterName} invalid sound name!`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid sound name!`,
+            chatterName,
+          );
           return;
         }
 
-        const oggPath = path.join(getSoundsDir(), filename + '.ogg');
-        const mp3Path = path.join(getSoundsDir(), filename + '.mp3');
-        
+        const oggPath = path.join(getSoundsDir(), filename + ".ogg");
+        const mp3Path = path.join(getSoundsDir(), filename + ".mp3");
+
         let deleted = false;
-        if (fs.existsSync(oggPath)) { fs.unlinkSync(oggPath); deleted = true; }
-        if (fs.existsSync(mp3Path)) { fs.unlinkSync(mp3Path); deleted = true; }
+        if (fs.existsSync(oggPath)) {
+          fs.unlinkSync(oggPath);
+          deleted = true;
+        }
+        if (fs.existsSync(mp3Path)) {
+          fs.unlinkSync(mp3Path);
+          deleted = true;
+        }
 
         if (deleted) {
           try {
-            await db.run('DELETE FROM playsounds_metadata WHERE name = ?', [filename]);
-          } catch(e) {
-            console.error('Failed to delete playsound metadata', e);
+            await db.run("DELETE FROM playsounds_metadata WHERE name = ?", [
+              filename,
+            ]);
+          } catch (e) {
+            console.error("Failed to delete playsound metadata", e);
           }
           await sendChatMessage(`Successfully deleted playsound: ${filename}`);
         } else {
-          await sendChatMessage(`${chatterName} could not find a playsound named: ${filename}`, chatterName);
+          await sendChatMessage(
+            `${chatterName} could not find a playsound named: ${filename}`,
+            chatterName,
+          );
         }
-      }
+      },
     },
-    '!refreshemotes': {
+    "!refreshemotes": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (hasPermission) {
           if (Date.now() - channelState.lastRefreshTime > REFRESH_COOLDOWN_MS) {
             channelState.lastRefreshTime = Date.now();
-            console.log(`* [COMMAND] ${chatterName} triggered !refreshemotes. Reloading all emotes...`);
+            console.log(
+              `* [COMMAND] ${chatterName} triggered !refreshemotes. Reloading all emotes...`,
+            );
             await loadThirdPartyEmotes(getCurrentBroadcasterId());
           } else {
-            console.log(`\n* [COMMAND] ${chatterName} triggered !refreshemotes, but it is currently on cooldown.`);
+            console.log(
+              `\n* [COMMAND] ${chatterName} triggered !refreshemotes, but it is currently on cooldown.`,
+            );
           }
         }
-      }
+      },
     },
-    '!emotesize': {
+    "!emotesize": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (hasPermission || chatterName === TARGET_CHANNEL) {
@@ -2760,29 +3733,46 @@ async function start() {
           if (newSize && !isNaN(Number(newSize))) {
             channelState.currentEmoteSizePx = Number(newSize);
             console.log(`\n${chatterName} set emote size to ${newSize}.`);
-            await sendChatMessage(`${chatterName} set emote size to ${newSize}.`, chatterName);
+            await sendChatMessage(
+              `${chatterName} set emote size to ${newSize}.`,
+              chatterName,
+            );
           } else {
-            console.log(`\n${chatterName} invalid value: ${newSize}. ex. !emotesize 150`);
+            console.log(
+              `\n${chatterName} invalid value: ${newSize}. ex. !emotesize 150`,
+            );
             await sendChatMessage(`Invalid value. Ex: !emotesize 150`);
           }
         }
-      }
+      },
     },
-    '!givepoints': {
+    "!givepoints": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid command! Try !givepoints 50 username or !givepoints 50 username1 username2`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid command! Try !givepoints 50 username or !givepoints 50 username1 username2`,
+            chatterName,
+          );
           return;
         }
 
         const amountInput = args[0].toLowerCase();
-        const targetUsers = args.slice(1).map(u => u.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()).filter(u => u.length > 0);
+        const targetUsers = args
+          .slice(1)
+          .map((u) => u.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase())
+          .filter((u) => u.length > 0);
 
         for (const target of targetUsers) {
-          const tUser = await db.get('SELECT points FROM users WHERE username = ?', target);
+          const tUser = await db.get(
+            "SELECT points FROM users WHERE username = ?",
+            target,
+          );
           if (!tUser) {
-            await sendChatMessage(`${target} has not typed yet in this chat!`, target);
+            await sendChatMessage(
+              `${target} has not typed yet in this chat!`,
+              target,
+            );
             return;
           }
         }
@@ -2793,16 +3783,22 @@ async function start() {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
 
         if (!isMod) {
-          const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+          const user = await db.get(
+            "SELECT points FROM users WHERE username = ?",
+            chatterName,
+          );
           if (!user || user.points <= 0) {
-            await sendChatMessage(`${chatterName} you don't have any points!`, chatterName);
+            await sendChatMessage(
+              `${chatterName} you don't have any points!`,
+              chatterName,
+            );
             return;
           }
 
-          if (amountInput === 'all') {
+          if (amountInput === "all") {
             totalAmountToDeduct = user.points;
-          } else if (amountInput.endsWith('%')) {
-            const percent = parseFloat(amountInput.replace('%', ''));
+          } else if (amountInput.endsWith("%")) {
+            const percent = parseFloat(amountInput.replace("%", ""));
             if (!isNaN(percent) && percent > 0 && percent <= 100) {
               totalAmountToDeduct = Math.floor(user.points * (percent / 100));
             }
@@ -2811,79 +3807,114 @@ async function start() {
           }
 
           if (isNaN(totalAmountToDeduct) || totalAmountToDeduct <= 0) {
-            await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
+            await sendChatMessage(
+              `${chatterName} invalid amount!`,
+              chatterName,
+            );
             return;
           }
           if (totalAmountToDeduct > user.points) {
-            await sendChatMessage(`${chatterName} you don't have enough points for that!`, chatterName);
+            await sendChatMessage(
+              `${chatterName} you don't have enough points for that!`,
+              chatterName,
+            );
             return;
           }
 
           amountPerUser = Math.floor(totalAmountToDeduct / targetUsers.length);
           if (amountPerUser <= 0) {
-            await sendChatMessage(`${chatterName} the amount is too small to split!`, chatterName);
+            await sendChatMessage(
+              `${chatterName} the amount is too small to split!`,
+              chatterName,
+            );
             return;
           }
-          
-          const actualDeduction = amountPerUser * targetUsers.length;
-          await db.run('UPDATE users SET points = points - ? WHERE username = ?', [actualDeduction, chatterName]);
 
+          const actualDeduction = amountPerUser * targetUsers.length;
+          await db.run(
+            "UPDATE users SET points = points - ? WHERE username = ?",
+            [actualDeduction, chatterName],
+          );
         } else {
-          if (amountInput === 'all' || amountInput.endsWith('%')) {
-            const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+          if (amountInput === "all" || amountInput.endsWith("%")) {
+            const user = await db.get(
+              "SELECT points FROM users WHERE username = ?",
+              chatterName,
+            );
             const userPoints = user ? user.points : 0;
             if (userPoints <= 0) {
-              await sendChatMessage(`${chatterName} you don't have any points!`, chatterName);
+              await sendChatMessage(
+                `${chatterName} you don't have any points!`,
+                chatterName,
+              );
               return;
             }
-            if (amountInput === 'all') {
+            if (amountInput === "all") {
               totalAmountToDeduct = userPoints;
             } else {
-              const percent = parseFloat(amountInput.replace('%', ''));
+              const percent = parseFloat(amountInput.replace("%", ""));
               if (!isNaN(percent) && percent > 0 && percent <= 100) {
                 totalAmountToDeduct = Math.floor(userPoints * (percent / 100));
               } else {
                 totalAmountToDeduct = 0;
               }
             }
-            // For mods, we'll actually deduct it from them if they use 'all' or '%', 
+            // For mods, we'll actually deduct it from them if they use 'all' or '%',
             // so they can play fairly with their own points when they choose to!
-            await db.run('UPDATE users SET points = points - ? WHERE username = ?', [totalAmountToDeduct, chatterName]);
+            await db.run(
+              "UPDATE users SET points = points - ? WHERE username = ?",
+              [totalAmountToDeduct, chatterName],
+            );
           } else {
             totalAmountToDeduct = parseAmount(amountInput);
           }
 
           if (isNaN(totalAmountToDeduct) || totalAmountToDeduct <= 0) {
-            await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
+            await sendChatMessage(
+              `${chatterName} invalid amount!`,
+              chatterName,
+            );
             return;
           }
-          amountPerUser = totalAmountToDeduct; 
+          amountPerUser = totalAmountToDeduct;
         }
 
         for (const target of targetUsers) {
-          await db.run('UPDATE users SET points = points + ? WHERE username = ?', [amountPerUser, target]);
+          await db.run(
+            "UPDATE users SET points = points + ? WHERE username = ?",
+            [amountPerUser, target],
+          );
         }
 
-        await sendChatMessage(`${chatterName} gave ${amountPerUser} points to: ${targetUsers.join(', ')}`, chatterName);
-      }
+        await sendChatMessage(
+          `${chatterName} gave ${amountPerUser} points to: ${targetUsers.join(", ")}`,
+          chatterName,
+        );
+      },
     },
-    '!removepoints': {
+    "!removepoints": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`@${chatterName}, you do not have permission to remove points!`, chatterName);
+          //  await sendChatMessage(`@${chatterName}, you do not have permission to remove points!`, chatterName);
           return;
         }
 
         if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid command! Try !removepoints 50 username`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid command! Try !removepoints 50 username`,
+            chatterName,
+          );
           return;
         }
 
         const amountInput = args[0].toLowerCase();
-        const targetUsers = args.slice(1).map(u => u.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase()).filter(u => u.length > 0);
-        
+        const targetUsers = args
+          .slice(1)
+          .map((u) => u.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase())
+          .filter((u) => u.length > 0);
+
         const amountToDeduct = parseAmount(amountInput);
         if (isNaN(amountToDeduct) || amountToDeduct <= 0) {
           await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
@@ -2891,177 +3922,267 @@ async function start() {
         }
 
         for (const target of targetUsers) {
-          const tUser = await db.get('SELECT points FROM users WHERE username = ?', target);
+          const tUser = await db.get(
+            "SELECT points FROM users WHERE username = ?",
+            target,
+          );
           if (!tUser) {
-            await sendChatMessage(`${target} has not typed yet in this chat!`, target);
+            await sendChatMessage(
+              `${target} has not typed yet in this chat!`,
+              target,
+            );
             return;
           }
         }
 
         for (const target of targetUsers) {
-          const tUser = await db.get('SELECT points FROM users WHERE username = ?', target);
+          const tUser = await db.get(
+            "SELECT points FROM users WHERE username = ?",
+            target,
+          );
           if (tUser) {
             // Prevent going below 0 points
             const newPoints = Math.max(0, tUser.points - amountToDeduct);
-            await db.run('UPDATE users SET points = ? WHERE username = ?', [newPoints, target]);
+            await db.run("UPDATE users SET points = ? WHERE username = ?", [
+              newPoints,
+              target,
+            ]);
           }
         }
 
-        await sendChatMessage(`${chatterName} removed ${amountToDeduct} points from: ${targetUsers.join(', ')}`, chatterName);
-      }
+        await sendChatMessage(
+          `${chatterName} removed ${amountToDeduct} points from: ${targetUsers.join(", ")}`,
+          chatterName,
+        );
+      },
     },
-    '!masspointsadd': {
+    "!masspointsadd": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-       
-        if(  hasPermission || chatterName === TARGET_CHANNEL  ) {
+        if (hasPermission || chatterName === TARGET_CHANNEL) {
           if (args.length < 1) {
-            await sendChatMessage(`${chatterName} invalid command! Try !masspointsadd 1000 10m`, chatterName);
+            await sendChatMessage(
+              `${chatterName} invalid command! Try !masspointsadd 1000 10m`,
+              chatterName,
+            );
             return;
           }
-  
+
           const amount = parseAmount(args[0]);
           if (isNaN(amount) || amount <= 0) {
-            await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
+            await sendChatMessage(
+              `${chatterName} invalid amount!`,
+              chatterName,
+            );
             return;
           }
-  
-          const timeStr = args[1] ? args[1].toLowerCase() : '5m';
+
+          const timeStr = args[1] ? args[1].toLowerCase() : "5m";
           const durationMs = parseTime(timeStr);
           const threshold = Date.now() - durationMs;
-          const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
-  
+          const ignoredBotsStr = ignoredBots.map((b) => `'${b}'`).join(",");
+
           await adjustRecentChannelUserPoints(amount, threshold);
-          await sendChatMessage(`${chatterName} mass added ${amount} points to everyone who chatted in the last ${timeStr}!`, chatterName);
-        
+          await sendChatMessage(
+            `${chatterName} mass added ${amount} points to everyone who chatted in the last ${timeStr}!`,
+            chatterName,
+          );
         } else {
-        //  await sendChatMessage(`${chatterName} you do not have permission to mass add points!`, chatterName);
+          //  await sendChatMessage(`${chatterName} you do not have permission to mass add points!`, chatterName);
           return;
         }
-
-
-      }
+      },
     },
-    '!masspointssub': {
+    "!masspointssub": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-       
+        if (hasPermission || chatterName === TARGET_CHANNEL) {
+          if (args.length < 1) {
+            await sendChatMessage(
+              `${chatterName} invalid command! Try !masspointssub 1000 10m`,
+              chatterName,
+            );
+            return;
+          }
 
-        if (  hasPermission || chatterName === TARGET_CHANNEL) { 
+          const amount = parseAmount(args[0]);
+          if (isNaN(amount) || amount <= 0) {
+            await sendChatMessage(
+              `${chatterName} invalid amount!`,
+              chatterName,
+            );
+            return;
+          }
 
-          
-                  if (args.length < 1) {
-                    await sendChatMessage(`${chatterName} invalid command! Try !masspointssub 1000 10m`, chatterName);
-                    return;
-                  }
-          
-                  const amount = parseAmount(args[0]);
-                  if (isNaN(amount) || amount <= 0) {
-                    await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
-                    return;
-                  }
-          
-                  const timeStr = args[1] ? args[1].toLowerCase() : '5m';
-                  const durationMs = parseTime(timeStr);
-                  const threshold = Date.now() - durationMs;
-                  const ignoredBotsStr = ignoredBots.map(b => `'${b}'`).join(',');
-          
-                  await adjustRecentChannelUserPoints(-amount, threshold);
-                  await sendChatMessage(`${chatterName} mass removed ${amount} points from everyone who chatted in the last ${timeStr}!`, chatterName);
+          const timeStr = args[1] ? args[1].toLowerCase() : "5m";
+          const durationMs = parseTime(timeStr);
+          const threshold = Date.now() - durationMs;
+          const ignoredBotsStr = ignoredBots.map((b) => `'${b}'`).join(",");
+
+          await adjustRecentChannelUserPoints(-amount, threshold);
+          await sendChatMessage(
+            `${chatterName} mass removed ${amount} points from everyone who chatted in the last ${timeStr}!`,
+            chatterName,
+          );
         } else {
-          
-         //  await sendChatMessage(`${chatterName} you do not have permission to mass sub points!`, chatterName);
-           return;
-      
+          //  await sendChatMessage(`${chatterName} you do not have permission to mass sub points!`, chatterName);
+          return;
         }
-      }
+      },
     },
-    '!emoteduration': {
+    "!emoteduration": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (hasPermission || chatterName === TARGET_CHANNEL) {
           const newDuration = args[0];
           if (newDuration && !isNaN(Number(newDuration))) {
             channelState.currentEmoteDurationMs = Number(newDuration) * 1000;
-            console.log(`\n${chatterName} set emote duration to ${newDuration} seconds.`);
-            await sendChatMessage(`${chatterName} set emote duration to ${newDuration} seconds.`, chatterName);
+            console.log(
+              `\n${chatterName} set emote duration to ${newDuration} seconds.`,
+            );
+            await sendChatMessage(
+              `${chatterName} set emote duration to ${newDuration} seconds.`,
+              chatterName,
+            );
           } else {
-            console.log(`\n${chatterName} invalid value: ${newDuration}. ex. !emoteduration 10`);
+            console.log(
+              `\n${chatterName} invalid value: ${newDuration}. ex. !emoteduration 10`,
+            );
             await sendChatMessage(`Invalid value. Ex: !emotesduration 10`);
           }
         }
-      }
+      },
     },
-    '!disablemodifier': {
+    "!disablemodifier": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (!hasPermission) return;
         if (args.length === 0) {
-          await sendChatMessage(`Usage: !disablemodifier <modifier>. Available: wide, cursed, flipx, flipy, bounce, leave, arrive, jam, rainbow, hyper`, chatterName);
+          await sendChatMessage(
+            `Usage: !disablemodifier <modifier>. Available: wide, cursed, flipx, flipy, bounce, leave, arrive, jam, rainbow, hyper`,
+            chatterName,
+          );
           return;
         }
         const mod = args[0].toLowerCase();
-        const validModifiers = ['wide', 'cursed', 'flipx', 'flipy', 'bounce', 'leave', 'arrive', 'jam', 'rainbow', 'hyper'];
+        const validModifiers = [
+          "wide",
+          "cursed",
+          "flipx",
+          "flipy",
+          "bounce",
+          "leave",
+          "arrive",
+          "jam",
+          "rainbow",
+          "hyper",
+        ];
         if (!validModifiers.includes(mod)) {
-          await sendChatMessage(`Invalid modifier! Valid modifiers: ${validModifiers.join(', ')}`, chatterName);
+          await sendChatMessage(
+            `Invalid modifier! Valid modifiers: ${validModifiers.join(", ")}`,
+            chatterName,
+          );
           return;
         }
-        await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [`disabled_mod_${mod}`, 'true', 'true']);
-        globalConfig[`disabled_mod_${mod}`] = 'true';
-        await sendChatMessage(`Modifier '${mod}' has been disabled!`, chatterName);
-      }
+        await db.run(
+          "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+          [`disabled_mod_${mod}`, "true", "true"],
+        );
+        globalConfig[`disabled_mod_${mod}`] = "true";
+        await sendChatMessage(
+          `Modifier '${mod}' has been disabled!`,
+          chatterName,
+        );
+      },
     },
-    '!enablemodifier': {
+    "!enablemodifier": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (!hasPermission) return;
         if (args.length === 0) {
-          await sendChatMessage(`Usage: !enablemodifier <modifier>. Available: wide, cursed, flipx, flipy, bounce, leave, arrive, jam, rainbow, hyper`, chatterName);
+          await sendChatMessage(
+            `Usage: !enablemodifier <modifier>. Available: wide, cursed, flipx, flipy, bounce, leave, arrive, jam, rainbow, hyper`,
+            chatterName,
+          );
           return;
         }
         const mod = args[0].toLowerCase();
-        const validModifiers = ['wide', 'cursed', 'flipx', 'flipy', 'bounce', 'leave', 'arrive', 'jam', 'rainbow', 'hyper'];
+        const validModifiers = [
+          "wide",
+          "cursed",
+          "flipx",
+          "flipy",
+          "bounce",
+          "leave",
+          "arrive",
+          "jam",
+          "rainbow",
+          "hyper",
+        ];
         if (!validModifiers.includes(mod)) {
-          await sendChatMessage(`Invalid modifier! Valid modifiers: ${validModifiers.join(', ')}`, chatterName);
+          await sendChatMessage(
+            `Invalid modifier! Valid modifiers: ${validModifiers.join(", ")}`,
+            chatterName,
+          );
           return;
         }
-        await db.run('DELETE FROM app_config WHERE key = ?', [`disabled_mod_${mod}`]);
+        await db.run("DELETE FROM app_config WHERE key = ?", [
+          `disabled_mod_${mod}`,
+        ]);
         delete globalConfig[`disabled_mod_${mod}`];
-        await sendChatMessage(`Modifier '${mod}' has been enabled!`, chatterName);
-      }
+        await sendChatMessage(
+          `Modifier '${mod}' has been enabled!`,
+          chatterName,
+        );
+      },
     },
-    '!duel': {
+    "!duel": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !duel <@user> <amount>`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !duel <@user> <amount>`,
+            chatterName,
+          );
           return false;
         }
 
-        const target = args[0].replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
+        const target = args[0].replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
         if (!target) {
-          await sendChatMessage(`${chatterName} invalid user provided!`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid user provided!`,
+            chatterName,
+          );
           return false;
         }
 
         if (target === chatterName) {
-          await sendChatMessage(`${chatterName} you cannot duel yourself! Pepeg `, chatterName);
+          await sendChatMessage(
+            `${chatterName} you cannot duel yourself! Pepeg `,
+            chatterName,
+          );
           return false;
         }
 
         const amountInput = args[1].toLowerCase();
         let betAmount = 0;
 
-        const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+        const user = await db.get(
+          "SELECT points FROM users WHERE username = ?",
+          chatterName,
+        );
         if (!user || user.points <= 0) {
-          await sendChatMessage(`${chatterName} you don't have enough points to duel! BrokeBoy `, chatterName);
+          await sendChatMessage(
+            `${chatterName} you don't have enough points to duel! BrokeBoy `,
+            chatterName,
+          );
           return false;
         }
 
-        if (amountInput === 'all') {
+        if (amountInput === "all") {
           betAmount = user.points;
-        } else if (amountInput.endsWith('%')) {
-          const percent = parseFloat(amountInput.replace('%', ''));
+        } else if (amountInput.endsWith("%")) {
+          const percent = parseFloat(amountInput.replace("%", ""));
           if (!isNaN(percent) && percent > 0 && percent <= 100) {
             betAmount = Math.floor(user.points * (percent / 100));
           }
@@ -3074,91 +4195,145 @@ async function start() {
           return false;
         }
         if (betAmount > user.points) {
-          await sendChatMessage(`${chatterName} you don't have enough points for that!`, chatterName);
+          await sendChatMessage(
+            `${chatterName} you don't have enough points for that!`,
+            chatterName,
+          );
           return false;
         }
 
-        const knifeMod = await db.get('SELECT * FROM user_modifiers WHERE username = ? AND modifier = ?', [chatterName, 'auto_duel']);
+        const knifeMod = await db.get(
+          "SELECT * FROM user_modifiers WHERE username = ? AND modifier = ?",
+          [chatterName, "auto_duel"],
+        );
         if (knifeMod && knifeMod.value > 0) {
-          const targetUserObj = await db.get('SELECT points FROM users WHERE username = ?', target);
+          const targetUserObj = await db.get(
+            "SELECT points FROM users WHERE username = ?",
+            target,
+          );
           if (!targetUserObj || targetUserObj.points <= 0) {
-            await sendChatMessage(`${chatterName} you tried to assassinate ${target}, but they have no points! BrokeBoy  `, chatterName);
+            await sendChatMessage(
+              `${chatterName} you tried to assassinate ${target}, but they have no points! BrokeBoy  `,
+              chatterName,
+            );
             return false;
           }
-          
+
           let actualBet = betAmount;
           if (actualBet > 2500) actualBet = 2500;
-          if (actualBet > targetUserObj.points) actualBet = targetUserObj.points;
-          
-          await db.run('UPDATE user_modifiers SET value = value - 1 WHERE username = ? AND modifier = ?', [chatterName, 'auto_duel']);
-          await db.run('UPDATE users SET points = points - ? WHERE username = ?', [actualBet, chatterName]);
-          await db.run('UPDATE users SET points = points - ? WHERE username = ?', [actualBet, target]);
+          if (actualBet > targetUserObj.points)
+            actualBet = targetUserObj.points;
+
+          await db.run(
+            "UPDATE user_modifiers SET value = value - 1 WHERE username = ? AND modifier = ?",
+            [chatterName, "auto_duel"],
+          );
+          await db.run(
+            "UPDATE users SET points = points - ? WHERE username = ?",
+            [actualBet, chatterName],
+          );
+          await db.run(
+            "UPDATE users SET points = points - ? WHERE username = ?",
+            [actualBet, target],
+          );
 
           const challengerWins = Math.random() < 0.5;
           const winner = challengerWins ? chatterName : target;
           const loser = challengerWins ? target : chatterName;
-          
+
           let taxAmount = Math.floor(actualBet * getDuelTax());
-          const evaders = await getActiveEffects(winner, 'tax_evader');
+          const evaders = await getActiveEffects(winner, "tax_evader");
           if (evaders.length > 0) {
-             if (evaders[0].uses_left > 1) {
-                await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [evaders[0].id]);
-             } else {
-                await db.run('DELETE FROM active_effects WHERE id = ?', [evaders[0].id]);
-             }
-             taxAmount = 0;
+            if (evaders[0].uses_left > 1) {
+              await db.run(
+                "UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?",
+                [evaders[0].id],
+              );
+            } else {
+              await db.run("DELETE FROM active_effects WHERE id = ?", [
+                evaders[0].id,
+              ]);
+            }
+            taxAmount = 0;
           }
           const finalProfit = actualBet - taxAmount;
           const reward = actualBet + finalProfit;
 
-          await db.run('UPDATE users SET points = points + ? WHERE username = ?', [reward, winner]);
+          await db.run(
+            "UPDATE users SET points = points + ? WHERE username = ?",
+            [reward, winner],
+          );
           await distributeRobinHoodTax(taxAmount);
 
-          await updateUserStat(winner, 'duels_played', 1);
-          await updateUserStat(loser, 'duels_played', 1);
-          await updateUserStat(winner, 'duels_won', 1);
-          await updateUserStat(loser, 'duels_lost', 1);
-          await updateUserStat(winner, 'duels_points_won', actualBet);
-          await updateUserStat(loser, 'duels_points_lost', actualBet);
+          await updateUserStat(winner, "duels_played", 1);
+          await updateUserStat(loser, "duels_played", 1);
+          await updateUserStat(winner, "duels_won", 1);
+          await updateUserStat(loser, "duels_lost", 1);
+          await updateUserStat(winner, "duels_points_won", actualBet);
+          await updateUserStat(loser, "duels_points_lost", actualBet);
 
-          await sendChatMessage(`🔪 ${chatterName} used a knife to force a duel on ${target}! ${winner} won ${finalProfit} points!`, chatterName);
+          await sendChatMessage(
+            `🔪 ${chatterName} used a knife to force a duel on ${target}! ${winner} won ${finalProfit} points!`,
+            chatterName,
+          );
           return;
         }
 
         if (activeDuels.has(target)) {
-          await sendChatMessage(`${chatterName} ${target} already has a pending duel!`, chatterName);
+          await sendChatMessage(
+            `${chatterName} ${target} already has a pending duel!`,
+            chatterName,
+          );
           return false;
         }
 
-        const mirrorShields = await getActiveEffects(target, 'mirror_shield');
+        const mirrorShields = await getActiveEffects(target, "mirror_shield");
         if (mirrorShields.length > 0) {
           const mShield = mirrorShields[0];
-          await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [mShield.id]);
-          
-          const lossAmount = betAmount * mShield.effect_value;
-          await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE username = ?', [lossAmount, chatterName]);
-          await db.run('UPDATE users SET points = points + ? WHERE username = ?', [lossAmount, target]);
-          
-          await updateUserStat(chatterName, 'duels_played', 1);
-          await updateUserStat(target, 'duels_played', 1);
-          await updateUserStat(chatterName, 'duels_lost', 1);
-          await updateUserStat(target, 'duels_won', 1);
-          await updateUserStat(chatterName, 'duels_points_lost', lossAmount);
-          await updateUserStat(target, 'duels_points_won', lossAmount);
+          await db.run(
+            "UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?",
+            [mShield.id],
+          );
 
-          await sendChatMessage(` SirShield ${target}'s MIRROR SHIELD reflected ${chatterName}'s duel! ${chatterName} lost ${lossAmount} points!`, chatterName);
+          const lossAmount = betAmount * mShield.effect_value;
+          await db.run(
+            "UPDATE users SET points = MAX(0, points - ?) WHERE username = ?",
+            [lossAmount, chatterName],
+          );
+          await db.run(
+            "UPDATE users SET points = points + ? WHERE username = ?",
+            [lossAmount, target],
+          );
+
+          await updateUserStat(chatterName, "duels_played", 1);
+          await updateUserStat(target, "duels_played", 1);
+          await updateUserStat(chatterName, "duels_lost", 1);
+          await updateUserStat(target, "duels_won", 1);
+          await updateUserStat(chatterName, "duels_points_lost", lossAmount);
+          await updateUserStat(target, "duels_points_won", lossAmount);
+
+          await sendChatMessage(
+            ` SirShield ${target}'s MIRROR SHIELD reflected ${chatterName}'s duel! ${chatterName} lost ${lossAmount} points!`,
+            chatterName,
+          );
           return;
         }
 
         // Deduct points into escrow
-        await db.run('UPDATE users SET points = points - ? WHERE username = ?', [betAmount, chatterName]);
+        await db.run(
+          "UPDATE users SET points = points - ? WHERE username = ?",
+          [betAmount, chatterName],
+        );
 
         const timeoutId = setTimeout(async () => {
           if (activeDuels.has(target)) {
             const duel = activeDuels.get(target);
             if (duel.challenger === chatterName) {
               // Refund
-              await db.run('UPDATE users SET points = points + ? WHERE username = ?', [betAmount, chatterName]);
+              await db.run(
+                "UPDATE users SET points = points + ? WHERE username = ?",
+                [betAmount, chatterName],
+              );
               activeDuels.delete(target);
             }
           }
@@ -3168,17 +4343,20 @@ async function start() {
           challenger: chatterName,
           target: target,
           amount: betAmount,
-          timeoutId: timeoutId
+          timeoutId: timeoutId,
         });
 
-        await sendChatMessage(` StevenFight ${chatterName} challenged ${target} for ${betAmount} pts! Type !acceptduel in 60s!`, chatterName);
-      }
+        await sendChatMessage(
+          ` StevenFight ${chatterName} challenged ${target} for ${betAmount} pts! Type !acceptduel in 60s!`,
+          chatterName,
+        );
+      },
     },
-    '!acceptduel': {
+    "!acceptduel": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (!activeDuels.has(chatterName)) {
-        //  await sendChatMessage(`${chatterName} you have no pending duel requests!`, chatterName);
+          //  await sendChatMessage(`${chatterName} you have no pending duel requests!`, chatterName);
           return false;
         }
 
@@ -3186,11 +4364,18 @@ async function start() {
         clearTimeout(duel.timeoutId);
         activeDuels.delete(chatterName);
 
-        const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+        const user = await db.get(
+          "SELECT points FROM users WHERE username = ?",
+          chatterName,
+        );
         if (!user || user.points < duel.amount) {
-   
-          await db.run('UPDATE users SET points = points + ? WHERE username = ?', [duel.amount, duel.challenger]);
-          const msg = duelBrokeMessages[Math.floor(Math.random() * duelBrokeMessages.length)]
+          await db.run(
+            "UPDATE users SET points = points + ? WHERE username = ?",
+            [duel.amount, duel.challenger],
+          );
+          const msg = duelBrokeMessages[
+            Math.floor(Math.random() * duelBrokeMessages.length)
+          ]
             .replace(/{target}/g, `${chatterName}`)
             .replace(/{challenger}/g, `${duel.challenger}`)
             .replace(/{amount}/g, duel.amount);
@@ -3198,65 +4383,84 @@ async function start() {
           return false;
         }
 
-  
-        await db.run('UPDATE users SET points = points - ? WHERE username = ?', [duel.amount, chatterName]);
+        await db.run(
+          "UPDATE users SET points = points - ? WHERE username = ?",
+          [duel.amount, chatterName],
+        );
 
         const challengerWins = Math.random() < 0.5;
         const winner = challengerWins ? duel.challenger : chatterName;
         const loser = challengerWins ? chatterName : duel.challenger;
-        
+
         let profit = duel.amount;
         let loserPenalty = duel.amount;
 
-
-        const winBoosts = await getActiveEffects(winner, 'duel_win_boost');
+        const winBoosts = await getActiveEffects(winner, "duel_win_boost");
         if (winBoosts.length > 0) {
-           await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [winBoosts[0].id]);
-           profit = Math.floor(profit * (1 + winBoosts[0].effect_value));
+          await db.run(
+            "UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?",
+            [winBoosts[0].id],
+          );
+          profit = Math.floor(profit * (1 + winBoosts[0].effect_value));
         }
 
- 
-        const shields = await getActiveEffects(loser, 'duel_shield');
+        const shields = await getActiveEffects(loser, "duel_shield");
         if (shields.length > 0) {
-           await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [shields[0].id]);
-           const refund = Math.floor(loserPenalty * shields[0].effect_value);
-           await db.run('UPDATE users SET points = points + ? WHERE username = ?', [refund, loser]);
-           loserPenalty -= refund;
+          await db.run(
+            "UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?",
+            [shields[0].id],
+          );
+          const refund = Math.floor(loserPenalty * shields[0].effect_value);
+          await db.run(
+            "UPDATE users SET points = points + ? WHERE username = ?",
+            [refund, loser],
+          );
+          loserPenalty -= refund;
         }
 
         let taxAmount = Math.floor(profit * getDuelTax());
-        const evaders = await getActiveEffects(winner, 'tax_evader');
+        const evaders = await getActiveEffects(winner, "tax_evader");
         if (evaders.length > 0) {
-           if (evaders[0].uses_left > 1) {
-              await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [evaders[0].id]);
-           } else {
-              await db.run('DELETE FROM active_effects WHERE id = ?', [evaders[0].id]);
-           }
-           taxAmount = 0;
+          if (evaders[0].uses_left > 1) {
+            await db.run(
+              "UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?",
+              [evaders[0].id],
+            );
+          } else {
+            await db.run("DELETE FROM active_effects WHERE id = ?", [
+              evaders[0].id,
+            ]);
+          }
+          taxAmount = 0;
         }
         const finalProfit = profit - taxAmount;
-        
-        await db.run('UPDATE users SET points = points + ? WHERE username = ?', [duel.amount + finalProfit, winner]); // refund original bet + profit
+
+        await db.run(
+          "UPDATE users SET points = points + ? WHERE username = ?",
+          [duel.amount + finalProfit, winner],
+        ); // refund original bet + profit
         await distributeRobinHoodTax(taxAmount);
-        
+
         const reward = duel.amount + finalProfit; // used for stats and messages
 
-        await updateUserStat(winner, 'duels_played', 1);
-        await updateUserStat(loser, 'duels_played', 1);
-        await updateUserStat(winner, 'duels_won', 1);
-        await updateUserStat(loser, 'duels_lost', 1);
-        await updateUserStat(winner, 'duels_points_won', reward - duel.amount); // Net win
-        await updateUserStat(loser, 'duels_points_lost', loserPenalty);
+        await updateUserStat(winner, "duels_played", 1);
+        await updateUserStat(loser, "duels_played", 1);
+        await updateUserStat(winner, "duels_won", 1);
+        await updateUserStat(loser, "duels_lost", 1);
+        await updateUserStat(winner, "duels_points_won", reward - duel.amount); // Net win
+        await updateUserStat(loser, "duels_points_lost", loserPenalty);
 
-        const msg = duelWinMessages[Math.floor(Math.random() * duelWinMessages.length)]
+        const msg = duelWinMessages[
+          Math.floor(Math.random() * duelWinMessages.length)
+        ]
           .replace(/{winner}/g, `${winner}`)
           .replace(/{loser}/g, `${loser}`)
           .replace(/{amount}/g, finalProfit);
-        
+
         await sendChatMessage(msg);
-      }
+      },
     },
-    '!declineduel': {
+    "!declineduel": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (!activeDuels.has(chatterName)) {
@@ -3268,84 +4472,134 @@ async function start() {
         clearTimeout(duel.timeoutId);
         activeDuels.delete(chatterName);
 
+        await db.run(
+          "UPDATE users SET points = points + ? WHERE username = ?",
+          [duel.amount, duel.challenger],
+        );
 
-        await db.run('UPDATE users SET points = points + ? WHERE username = ?', [duel.amount, duel.challenger]);
-        
-        await sendChatMessage(`${chatterName} has declined the duel from ${duel.challenger}! Points refunded.`, chatterName);
-      }
+        await sendChatMessage(
+          `${chatterName} has declined the duel from ${duel.challenger}! Points refunded.`,
+          chatterName,
+        );
+      },
     },
-    '!dueltax': {
+    "!dueltax": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) return;
 
         if (args.length === 0) {
-          await sendChatMessage(`Current duel tax is ${getDuelTax() * 100}%.`, chatterName);
+          await sendChatMessage(
+            `Current duel tax is ${getDuelTax() * 100}%.`,
+            chatterName,
+          );
           return;
         }
 
-        let newTaxStr = args[0].replace('%', '');
+        let newTaxStr = args[0].replace("%", "");
         let newTax = parseFloat(newTaxStr);
         if (!isNaN(newTax) && newTax >= 0 && newTax <= 100) {
-          globalConfig['duel_tax'] = (newTax / 100).toString();
+          globalConfig["duel_tax"] = (newTax / 100).toString();
           broadcastConfig(globalConfig);
-     
-          db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', ['duel_tax', globalConfig['duel_tax'], globalConfig['duel_tax']]);
-          await sendChatMessage(`Duel tax is now set to ${newTax}%.`, chatterName);
+
+          db.run(
+            "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            ["duel_tax", globalConfig["duel_tax"], globalConfig["duel_tax"]],
+          );
+          await sendChatMessage(
+            `Duel tax is now set to ${newTax}%.`,
+            chatterName,
+          );
         } else {
-          await sendChatMessage(`Invalid tax amount. Use a percentage from 0 to 100.`, chatterName);
+          await sendChatMessage(
+            `Invalid tax amount. Use a percentage from 0 to 100.`,
+            chatterName,
+          );
         }
-      }
+      },
     },
-    '!setfishtime': {
+    "!setfishtime": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) return;
 
         if (args.length < 2) {
-          const onlineTime = parseFloat(globalConfig['cmd_!fish_time_online'] !== undefined ? globalConfig['cmd_!fish_time_online'] : '5');
-          const offlineTime = parseFloat(globalConfig['cmd_!fish_time_offline'] !== undefined ? globalConfig['cmd_!fish_time_offline'] : '15');
-          await sendChatMessage(`Usage: !setfishtime <online/offline> <minutes>. Current times - Online: ${onlineTime}m, Offline: ${offlineTime}m.`, chatterName);
+          const onlineTime = parseFloat(
+            globalConfig["cmd_!fish_time_online"] !== undefined
+              ? globalConfig["cmd_!fish_time_online"]
+              : "5",
+          );
+          const offlineTime = parseFloat(
+            globalConfig["cmd_!fish_time_offline"] !== undefined
+              ? globalConfig["cmd_!fish_time_offline"]
+              : "15",
+          );
+          await sendChatMessage(
+            `Usage: !setfishtime <online/offline> <minutes>. Current times - Online: ${onlineTime}m, Offline: ${offlineTime}m.`,
+            chatterName,
+          );
           return;
         }
 
         const mode = args[0].toLowerCase();
-        if (mode !== 'online' && mode !== 'offline') {
-           await sendChatMessage(`Usage: !setfishtime <online/offline> <minutes>. Invalid mode.`, chatterName);
-           return;
+        if (mode !== "online" && mode !== "offline") {
+          await sendChatMessage(
+            `Usage: !setfishtime <online/offline> <minutes>. Invalid mode.`,
+            chatterName,
+          );
+          return;
         }
 
         let newTime = parseFloat(args[1]);
         if (!isNaN(newTime) && newTime > 0) {
-          const configKey = mode === 'online' ? 'cmd_!fish_time_online' : 'cmd_!fish_time_offline';
-          await db.run('INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, newTime.toString(), newTime.toString()]);
+          const configKey =
+            mode === "online"
+              ? "cmd_!fish_time_online"
+              : "cmd_!fish_time_offline";
+          await db.run(
+            "INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            [configKey, newTime.toString(), newTime.toString()],
+          );
           globalConfig[configKey] = newTime.toString();
           broadcastConfig(globalConfig);
-          await sendChatMessage(`Fishing time (${mode}) is now set to ${newTime} minutes.`, chatterName);
+          await sendChatMessage(
+            `Fishing time (${mode}) is now set to ${newTime} minutes.`,
+            chatterName,
+          );
         } else {
-          await sendChatMessage(`Invalid time amount. Use a number greater than 0.`, chatterName);
+          await sendChatMessage(
+            `Invalid time amount. Use a number greater than 0.`,
+            chatterName,
+          );
         }
-      }
+      },
     },
-    '!gamble': {
-      cost: 0, 
+    "!gamble": {
+      cost: 0,
       manualCost: true,
       execute: async (args, chatterName, event, hasPermission) => {
-        const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+        const user = await db.get(
+          "SELECT points FROM users WHERE username = ?",
+          chatterName,
+        );
         if (!user || user.points <= 0) {
-          await sendWhisper(chatterName, "You don't have any points to gamble! BrokeBoy", true);
+          await sendWhisper(
+            chatterName,
+            "You don't have any points to gamble! BrokeBoy",
+            true,
+          );
           return false;
         }
 
-        let amountInput = args[0] ? args[0].toLowerCase() : '';
+        let amountInput = args[0] ? args[0].toLowerCase() : "";
         let betAmount = 0;
 
-        if (amountInput === 'all') {
+        if (amountInput === "all") {
           betAmount = user.points;
-        } else if (amountInput.endsWith('%')) {
-          const percent = parseFloat(amountInput.replace('%', ''));
+        } else if (amountInput.endsWith("%")) {
+          const percent = parseFloat(amountInput.replace("%", ""));
           if (!isNaN(percent) && percent > 0 && percent <= 100) {
             betAmount = Math.floor(user.points * (percent / 100));
           }
@@ -3358,96 +4612,155 @@ async function start() {
           return false;
         }
         if (betAmount > user.points) {
-          await sendWhisper(chatterName, "You don't have enough points for that amount!", true);
+          await sendWhisper(
+            chatterName,
+            "You don't have enough points for that amount!",
+            true,
+          );
           return false;
         }
 
         let isWin = Math.random() < 0.5;
 
         // Apply loaded dice
-        const guaranteedWins = await getActiveEffects(chatterName, 'gamble_guaranteed_win');
+        const guaranteedWins = await getActiveEffects(
+          chatterName,
+          "gamble_guaranteed_win",
+        );
         if (guaranteedWins.length > 0) {
-           let maxLimit = Infinity;
-           for (const config of Object.values(ITEMS_REGISTRY)) {
-               if (config.effectType === 'gamble_guaranteed_win' && config.maxGambleLimit) {
-                   maxLimit = config.maxGambleLimit;
-                   break;
-               }
-           }
-           if (betAmount > maxLimit) {
-               await sendWhisper(chatterName, `Your loaded dice only guarantees bets up to ${maxLimit}! Try a lower amount. docRant`, true);
-               return;
-           }
+          let maxLimit = Infinity;
+          for (const config of Object.values(ITEMS_REGISTRY)) {
+            if (
+              config.effectType === "gamble_guaranteed_win" &&
+              config.maxGambleLimit
+            ) {
+              maxLimit = config.maxGambleLimit;
+              break;
+            }
+          }
+          if (betAmount > maxLimit) {
+            await sendWhisper(
+              chatterName,
+              `Your loaded dice only guarantees bets up to ${maxLimit}! Try a lower amount. docRant`,
+              true,
+            );
+            return;
+          }
 
-           await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [guaranteedWins[0].id]);
-           isWin = true;
+          await db.run(
+            "UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?",
+            [guaranteedWins[0].id],
+          );
+          isWin = true;
         }
 
         if (isWin) {
           let winAmount = betAmount;
-          
+
           // Apply Midas Touch multiplier
-          const multipliers = await getActiveEffects(chatterName, 'gamble_multiplier');
+          const multipliers = await getActiveEffects(
+            chatterName,
+            "gamble_multiplier",
+          );
           if (multipliers.length > 0) {
-             await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [multipliers[0].id]);
-             winAmount = Math.floor(betAmount * (multipliers[0].effect_value - 1)); 
+            await db.run(
+              "UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?",
+              [multipliers[0].id],
+            );
+            winAmount = Math.floor(
+              betAmount * (multipliers[0].effect_value - 1),
+            );
           }
-          
-          const addedAmount = await addPointsWithBonus(chatterName, winAmount, false, 'gamble');
-          const updatedUser = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+
+          const addedAmount = await addPointsWithBonus(
+            chatterName,
+            winAmount,
+            false,
+            "gamble",
+          );
+          const updatedUser = await db.get(
+            "SELECT points FROM users WHERE username = ?",
+            chatterName,
+          );
           const newPoints = updatedUser.points;
 
-          await updateUserStat(chatterName, 'gamble_played', 1);
-          await updateUserStat(chatterName, 'gamble_won', 1);
-          await updateUserStat(chatterName, 'gamble_points_won', addedAmount);
-          
+          await updateUserStat(chatterName, "gamble_played", 1);
+          await updateUserStat(chatterName, "gamble_won", 1);
+          await updateUserStat(chatterName, "gamble_points_won", addedAmount);
+
           if (multipliers.length > 0) {
-            await sendWhisper(chatterName, `✨ MIDAS TOUCH! You won ${addedAmount + betAmount} points! You now have ${newPoints} points.`, true);
+            await sendWhisper(
+              chatterName,
+              `✨ MIDAS TOUCH! You won ${addedAmount + betAmount} points! You now have ${newPoints} points.`,
+              true,
+            );
           } else {
-            await sendWhisper(chatterName, `You won ${addedAmount} points! You now have ${newPoints} points. EZ`, true);
+            await sendWhisper(
+              chatterName,
+              `You won ${addedAmount} points! You now have ${newPoints} points. EZ`,
+              true,
+            );
           }
         } else {
-          const shields = await getActiveEffects(chatterName, 'gamble_shield');
+          const shields = await getActiveEffects(chatterName, "gamble_shield");
           let actualLoss = betAmount;
-          let shieldedMsg = '';
-          
+          let shieldedMsg = "";
+
           if (shields.length > 0) {
-             const shield = shields[0];
-             const refund = Math.floor(betAmount * shield.effect_value);
-             actualLoss = betAmount - refund;
-             if (shield.uses_left > 1) {
-                await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [shield.id]);
-             } else {
-                await db.run('DELETE FROM active_effects WHERE id = ?', [shield.id]);
-             }
-             shieldedMsg = `  SirShield (Your shield refunded ${refund} points!)`;
+            const shield = shields[0];
+            const refund = Math.floor(betAmount * shield.effect_value);
+            actualLoss = betAmount - refund;
+            if (shield.uses_left > 1) {
+              await db.run(
+                "UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?",
+                [shield.id],
+              );
+            } else {
+              await db.run("DELETE FROM active_effects WHERE id = ?", [
+                shield.id,
+              ]);
+            }
+            shieldedMsg = `  SirShield (Your shield refunded ${refund} points!)`;
           }
 
-          await db.run('UPDATE users SET points = points - ? WHERE username = ?', [actualLoss, chatterName]);
+          await db.run(
+            "UPDATE users SET points = points - ? WHERE username = ?",
+            [actualLoss, chatterName],
+          );
           const newPoints = user.points - actualLoss;
-          await updateUserStat(chatterName, 'gamble_played', 1);
-          await updateUserStat(chatterName, 'gamble_lost', 1);
-          await updateUserStat(chatterName, 'gamble_points_lost', actualLoss);
-          await sendWhisper(chatterName, `You lost ${actualLoss} points ${shieldedMsg} You now have ${newPoints} points. LMAO`, true);
+          await updateUserStat(chatterName, "gamble_played", 1);
+          await updateUserStat(chatterName, "gamble_lost", 1);
+          await updateUserStat(chatterName, "gamble_points_lost", actualLoss);
+          await sendWhisper(
+            chatterName,
+            `You lost ${actualLoss} points ${shieldedMsg} You now have ${newPoints} points. LMAO`,
+            true,
+          );
         }
-      }
+      },
     },
-    '!chatwar': {
+    "!chatwar": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to start chat wars!`, chatterName);
+          //  await sendChatMessage(`${chatterName} you do not have permission to start chat wars!`, chatterName);
           return;
         }
 
         if (activeChatWar) {
-          await sendChatMessage(`${chatterName} a chat war is already active!`, chatterName);
+          await sendChatMessage(
+            `${chatterName} a chat war is already active!`,
+            chatterName,
+          );
           return;
         }
 
         if (args.length < 4) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !chatwar <emote1> <emote2> <cost> <time> (ex: !chatwar CoolCat OhMyDog 100 1m)`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !chatwar <emote1> <emote2> <cost> <time> (ex: !chatwar CoolCat OhMyDog 100 1m)`,
+            chatterName,
+          );
           return;
         }
 
@@ -3455,31 +4768,41 @@ async function start() {
         const emote2 = args[1];
         const cost = parseInt(args[2], 10);
         const durationStr = args[3];
-        
+
         if (isNaN(cost) || cost < 0) {
-           await sendChatMessage(`${chatterName} invalid cost!`, chatterName);
-           return;
+          await sendChatMessage(`${chatterName} invalid cost!`, chatterName);
+          return;
         }
 
         const durationMs = parseFlexibleTime(durationStr);
         if (isNaN(durationMs) || durationMs <= 0) {
-           await sendChatMessage(`${chatterName} invalid time format! Use 10s, 1m, 1h.`, chatterName);
-           return;
+          await sendChatMessage(
+            `${chatterName} invalid time format! Use 10s, 1m, 1h.`,
+            chatterName,
+          );
+          return;
         }
 
         const getEmoteUrl = (emoteName) => {
-           if (thirdPartyEmotes.has(emoteName)) return thirdPartyEmotes.get(emoteName).url;
-           const frag = event.message.fragments.find(f => f.type === 'emote' && f.text.trim() === emoteName);
-           if (frag) return `https://static-cdn.jtvnw.net/emoticons/v2/${frag.emote.id}/default/dark/3.0`;
-           return null;
+          if (thirdPartyEmotes.has(emoteName))
+            return thirdPartyEmotes.get(emoteName).url;
+          const frag = event.message.fragments.find(
+            (f) => f.type === "emote" && f.text.trim() === emoteName,
+          );
+          if (frag)
+            return `https://static-cdn.jtvnw.net/emoticons/v2/${frag.emote.id}/default/dark/3.0`;
+          return null;
         };
 
         const emoteUrl1 = getEmoteUrl(emote1);
         const emoteUrl2 = getEmoteUrl(emote2);
 
         if (!emoteUrl1 || !emoteUrl2) {
-           await sendChatMessage(`${chatterName} one or both of those are not valid emotes! Please use actual Twitch or 3rd party emotes.`, chatterName);
-           return;
+          await sendChatMessage(
+            `${chatterName} one or both of those are not valid emotes! Please use actual Twitch or 3rd party emotes.`,
+            chatterName,
+          );
+          return;
         }
 
         activeChatWar = {
@@ -3495,112 +4818,134 @@ async function start() {
           durationMs,
           endTime: Date.now() + durationMs,
           timeoutId: null,
-          reminderTimeouts: []
+          reminderTimeouts: [],
         };
 
         broadcastChatWarState(activeChatWar);
 
         activeChatWar.timeoutId = setTimeout(async () => {
           if (activeChatWar) {
-             const war = activeChatWar;
-             activeChatWar = null;
+            const war = activeChatWar;
+            activeChatWar = null;
 
-             let winningEmote = null;
-             let losingEmote = null;
-             let winningScore = 0;
-             let losingScore = 0;
-             let winningEmoteUrl = null;
+            let winningEmote = null;
+            let losingEmote = null;
+            let winningScore = 0;
+            let losingScore = 0;
+            let winningEmoteUrl = null;
 
-             if (war.score1 > war.score2) {
-               winningEmote = war.emote1; losingEmote = war.emote2;
-               winningScore = war.score1; losingScore = war.score2;
-               winningEmoteUrl = war.emoteUrl1;
-             } else if (war.score2 > war.score1) {
-               winningEmote = war.emote2; losingEmote = war.emote1;
-               winningScore = war.score2; losingScore = war.score1;
-               winningEmoteUrl = war.emoteUrl2;
-             }
+            if (war.score1 > war.score2) {
+              winningEmote = war.emote1;
+              losingEmote = war.emote2;
+              winningScore = war.score1;
+              losingScore = war.score2;
+              winningEmoteUrl = war.emoteUrl1;
+            } else if (war.score2 > war.score1) {
+              winningEmote = war.emote2;
+              losingEmote = war.emote1;
+              winningScore = war.score2;
+              losingScore = war.score1;
+              winningEmoteUrl = war.emoteUrl2;
+            }
 
-             if (!winningEmote) {
-               await sendChatMessage(`CHAT WAR OVER: It's a tie between ${war.emote1} and ${war.emote2} Refunding all points.`);
-               for (const [user, data] of Object.entries(war.userVotes)) {
-                  await db.run('UPDATE users SET points = points + ? WHERE username = ?', [data.spent, user]);
-               }
-               clearChatWarState();
-               return;
-             }
+            if (!winningEmote) {
+              await sendChatMessage(
+                `CHAT WAR OVER: It's a tie between ${war.emote1} and ${war.emote2} Refunding all points.`,
+              );
+              for (const [user, data] of Object.entries(war.userVotes)) {
+                await db.run(
+                  "UPDATE users SET points = points + ? WHERE username = ?",
+                  [data.spent, user],
+                );
+              }
+              clearChatWarState();
+              return;
+            }
 
-             clearChatWarState({
-               emote: winningEmote,
-               url: winningEmoteUrl,
-               score: winningScore * war.cost
-             });
+            clearChatWarState({
+              emote: winningEmote,
+              url: winningEmoteUrl,
+              score: winningScore * war.cost,
+            });
 
-             const winningPool = winningScore * war.cost;
-const totalPool = war.totalPool;
+            const winningPool = winningScore * war.cost;
+            const totalPool = war.totalPool;
 
-let winnersCount = 0;
-const winners = [];
-const losers = [];
+            let winnersCount = 0;
+            const winners = [];
+            const losers = [];
 
-for (const [user, data] of Object.entries(war.userVotes)) {
-  await updateUserStat(user, 'chatwar_spent', data.spent);
-  if (data.choice === winningEmote) {
-    const payout = Math.floor((data.spent / winningPool) * totalPool);
-    const profit = payout - data.spent;
+            for (const [user, data] of Object.entries(war.userVotes)) {
+              await updateUserStat(user, "chatwar_spent", data.spent);
+              if (data.choice === winningEmote) {
+                const payout = Math.floor(
+                  (data.spent / winningPool) * totalPool,
+                );
+                const profit = payout - data.spent;
 
-    await db.run('UPDATE users SET points = points + ? WHERE username = ?', [data.spent, user]);
-    let finalProfit = profit;
-    if (profit > 0) {
-      finalProfit = await addPointsWithBonus(user, profit, false, 'gamble');
-    } else if (profit < 0) {
-      await db.run('UPDATE users SET points = MAX(0, points + ?) WHERE username = ?', [profit, user]);
-    }
+                await db.run(
+                  "UPDATE users SET points = points + ? WHERE username = ?",
+                  [data.spent, user],
+                );
+                let finalProfit = profit;
+                if (profit > 0) {
+                  finalProfit = await addPointsWithBonus(
+                    user,
+                    profit,
+                    false,
+                    "gamble",
+                  );
+                } else if (profit < 0) {
+                  await db.run(
+                    "UPDATE users SET points = MAX(0, points + ?) WHERE username = ?",
+                    [profit, user],
+                  );
+                }
 
-    winnersCount++;
-    winners.push({ user, won: profit });
-  } else {
-    losers.push({ user, lost: data.spent });
-    await updateUserStat(user, 'chatwar_lost', data.spent);
-  }
-}
+                winnersCount++;
+                winners.push({ user, won: profit });
+              } else {
+                losers.push({ user, lost: data.spent });
+                await updateUserStat(user, "chatwar_lost", data.spent);
+              }
+            }
 
-        await updateEmoteStat(winningEmote, true);
-        await updateEmoteStat(losingEmote, false);
+            await updateEmoteStat(winningEmote, true);
+            await updateEmoteStat(losingEmote, false);
 
-        winners.sort((a, b) => b.won - a.won);
-        losers.sort((a, b) => b.lost - a.lost);
+            winners.sort((a, b) => b.won - a.won);
+            losers.sort((a, b) => b.lost - a.lost);
 
-        const messages = [
-          `CHAT WAR OVER: ${winningEmote} destroyed ${losingEmote} ${winnersCount} warriors share the spoils!`
-        ];
+            const messages = [
+              `CHAT WAR OVER: ${winningEmote} destroyed ${losingEmote} ${winnersCount} warriors share the spoils!`,
+            ];
 
-        if (winners.length > 0) {
-          const topWinners = winners
-            .slice(0, 3)
-            .map(w => `${w.user} (+${w.won})`)
-            .join(', ');
+            if (winners.length > 0) {
+              const topWinners = winners
+                .slice(0, 3)
+                .map((w) => `${w.user} (+${w.won})`)
+                .join(", ");
 
-          messages.push(`🏆 MVP Warriors: ${topWinners}`);
-        }
+              messages.push(`🏆 MVP Warriors: ${topWinners}`);
+            }
 
-        if (losers.length > 0) {
-          const topLosers = losers
-            .slice(0, 3)
-            .map(l => `${l.user} (-${l.lost})`)
-            .join(', ');
+            if (losers.length > 0) {
+              const topLosers = losers
+                .slice(0, 3)
+                .map((l) => `${l.user} (-${l.lost})`)
+                .join(", ");
 
-          messages.push(`💀 Fallen Warriors: ${topLosers}`);
-        }
+              messages.push(`💀 Fallen Warriors: ${topLosers}`);
+            }
 
-        await sendChatMessage(messages.join(' | '));
+            await sendChatMessage(messages.join(" | "));
           }
         }, durationMs);
 
         const reminders = [
           { time: 300000, msg: "5 minutes" },
           { time: 60000, msg: "1 minute" },
-          { time: 10000, msg: "10 seconds" }
+          { time: 10000, msg: "10 seconds" },
         ];
 
         for (const r of reminders) {
@@ -3608,17 +4953,21 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             const delay = durationMs - r.time;
             const tid = setTimeout(async () => {
               if (activeChatWar) {
-                await sendChatMessage(`Reminder: Chat War ( ${emote1} vs ${emote2} ) closes in ${r.msg}! Spam your emote to fight! (Cost: ${cost} pts per vote)`);
+                await sendChatMessage(
+                  `Reminder: Chat War ( ${emote1} vs ${emote2} ) closes in ${r.msg}! Spam your emote to fight! (Cost: ${cost} pts per vote)`,
+                );
               }
             }, delay);
             activeChatWar.reminderTimeouts.push(tid);
           }
         }
 
-        await sendChatMessage(`⚔️ CHAT WAR STARTED: ${emote1} vs ${emote2}! Type your emote to fight! Each vote costs ${cost} points. War ends in ${durationStr}.`);
-      }
+        await sendChatMessage(
+          `⚔️ CHAT WAR STARTED: ${emote1} vs ${emote2}! Type your emote to fight! Each vote costs ${cost} points. War ends in ${durationStr}.`,
+        );
+      },
     },
-    '!shoot': {
+    "!shoot": {
       cost: 0,
       manualCost: true,
       execute: async (args, chatterName, event, hasPermission) => {
@@ -3627,26 +4976,45 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           return false;
         }
 
-        const target = args[0].replace('@', '').toLowerCase();
+        const target = args[0].replace("@", "").toLowerCase();
 
         if (target === chatterName.toLowerCase()) {
           // await sendChatMessage(`${chatterName} you cannot shoot yourself!`);
-           return false;
+          return false;
         }
 
-        if (target === TARGET_CHANNEL.toLowerCase() || target === BOT_USERNAME.toLowerCase() || ignoredBots.includes(target)) {
+        if (
+          target === TARGET_CHANNEL.toLowerCase() ||
+          target === BOT_USERNAME.toLowerCase() ||
+          ignoredBots.includes(target)
+        ) {
           // await sendChatMessage(`${chatterName} you cannot shoot the broadcaster, bots, or staff!`);
-           return false;
+          return false;
         }
 
-        const cost = parseInt(globalConfig['cmd_!shoot_cost'] !== undefined ? globalConfig['cmd_!shoot_cost'] : '1000', 10);
-        let durationMs = parseInt(globalConfig['cmd_!shoot_duration'] !== undefined ? globalConfig['cmd_!shoot_duration'] : '60000', 10);
+        const cost = parseInt(
+          globalConfig["cmd_!shoot_cost"] !== undefined
+            ? globalConfig["cmd_!shoot_cost"]
+            : "1000",
+          10,
+        );
+        let durationMs = parseInt(
+          globalConfig["cmd_!shoot_duration"] !== undefined
+            ? globalConfig["cmd_!shoot_duration"]
+            : "60000",
+          10,
+        );
         const duration = Math.floor(durationMs / 1000);
 
         if (cost > 0) {
-          const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+          const user = await db.get(
+            "SELECT points FROM users WHERE username = ?",
+            chatterName,
+          );
           if (!user || user.points < cost) {
-            await sendChatMessage(`${chatterName} you need ${cost} points to use !shoot! BrokeBoy `);
+            await sendChatMessage(
+              `${chatterName} you need ${cost} points to use !shoot! BrokeBoy `,
+            );
             return false;
           }
         }
@@ -3654,241 +5022,379 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         try {
           const targetId = await getTwitchUserId(target);
           if (!targetId) {
-            await sendChatMessage(`${chatterName} could not find Twitch user ${target}!`);
+            await sendChatMessage(
+              `${chatterName} could not find Twitch user ${target}!`,
+            );
             return false;
           }
 
           // Fetch current timeout_until
-          await db.run('INSERT OR IGNORE INTO users (username) VALUES (?)', target);
-          const userObj = await db.get('SELECT timeout_until FROM users WHERE username = ?', target);
-          const currentTimeoutUntil = userObj && userObj.timeout_until ? userObj.timeout_until : 0;
-          
+          await db.run(
+            "INSERT OR IGNORE INTO users (username) VALUES (?)",
+            target,
+          );
+          const userObj = await db.get(
+            "SELECT timeout_until FROM users WHERE username = ?",
+            target,
+          );
+          const currentTimeoutUntil =
+            userObj && userObj.timeout_until ? userObj.timeout_until : 0;
+
           const now = Date.now();
           let newTimeoutUntil = 0;
-          
+
           if (currentTimeoutUntil > now) {
             newTimeoutUntil = currentTimeoutUntil + durationMs;
           } else {
             newTimeoutUntil = now + durationMs;
           }
-          
-          const totalDurationSeconds = Math.ceil((newTimeoutUntil - now) / 1000);
 
-          const success = await timeoutTwitchUser(targetId, totalDurationSeconds, `Shot by ${chatterName} using points FatAim `);
+          const totalDurationSeconds = Math.ceil(
+            (newTimeoutUntil - now) / 1000,
+          );
+
+          const success = await timeoutTwitchUser(
+            targetId,
+            totalDurationSeconds,
+            `Shot by ${chatterName} using points FatAim `,
+          );
           if (success) {
-            await db.run('UPDATE users SET timeout_until = ? WHERE username = ?', [newTimeoutUntil, target]);
+            await db.run(
+              "UPDATE users SET timeout_until = ? WHERE username = ?",
+              [newTimeoutUntil, target],
+            );
             if (cost > 0) {
-              await db.run('UPDATE users SET points = points - ? WHERE username = ?', [cost, chatterName]);
+              await db.run(
+                "UPDATE users SET points = points - ? WHERE username = ?",
+                [cost, chatterName],
+              );
             }
-            await sendChatMessage(` ${target} is now timed out for ${totalDurationSeconds} seconds FatAim `);
+            await sendChatMessage(
+              ` ${target} is now timed out for ${totalDurationSeconds} seconds FatAim `,
+            );
           } else {
-            
-            console.log(`[SHOOT] ${chatterName} failed to shoot ${target}. (Target is likely a mod/VIP, or missing scopes)`);
+            console.log(
+              `[SHOOT] ${chatterName} failed to shoot ${target}. (Target is likely a mod/VIP, or missing scopes)`,
+            );
           }
         } catch (e) {
-          console.error('Error shooting user:', e);
-          await sendChatMessage(`${chatterName} failed to shoot ${target}. Check bot console.`);
+          console.error("Error shooting user:", e);
+          await sendChatMessage(
+            `${chatterName} failed to shoot ${target}. Check bot console.`,
+          );
         }
-      }
+      },
     },
-    '!chatwarcancel': {
+    "!chatwarcancel": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to cancel chat war!`, chatterName);
+          //  await sendChatMessage(`${chatterName} you do not have permission to cancel chat war!`, chatterName);
           return;
         }
 
         if (!activeChatWar) {
-         // await sendChatMessage(`${chatterName} there is no active chat war!`, chatterName);
+          // await sendChatMessage(`${chatterName} there is no active chat war!`, chatterName);
           return;
         }
 
         if (activeChatWar.timeoutId) clearTimeout(activeChatWar.timeoutId);
-        if (activeChatWar.reminderTimeouts) activeChatWar.reminderTimeouts.forEach(clearTimeout);
+        if (activeChatWar.reminderTimeouts)
+          activeChatWar.reminderTimeouts.forEach(clearTimeout);
 
         let refunded = 0;
         for (const [user, data] of Object.entries(activeChatWar.userVotes)) {
-          await db.run('UPDATE users SET points = points + ? WHERE username = ?', [data.spent, user]);
+          await db.run(
+            "UPDATE users SET points = points + ? WHERE username = ?",
+            [data.spent, user],
+          );
           refunded += data.spent;
         }
 
         activeChatWar = null;
         clearChatWarState();
-        await sendChatMessage(`CHAT WAR CANCELLED: All points (${refunded} total) have been refunded!`);
-      }
+        await sendChatMessage(
+          `CHAT WAR CANCELLED: All points (${refunded} total) have been refunded!`,
+        );
+      },
     },
-    '!fish': {
+    "!fish": {
       cost: 0,
       manualCost: true,
       execute: async (args, chatterName, event, hasPermission) => {
-        const pending = await db.get('SELECT * FROM pending_fish WHERE username = ?', chatterName);
+        const pending = await db.get(
+          "SELECT * FROM pending_fish WHERE username = ?",
+          chatterName,
+        );
         if (pending) {
-          const timeLeft = Math.max(0, Math.ceil((pending.catch_time - Date.now()) / 1000));
+          const timeLeft = Math.max(
+            0,
+            Math.ceil((pending.catch_time - Date.now()) / 1000),
+          );
           if (timeLeft > 0) {
-           // await sendWhisper(chatterName, `You are already fishing! Wait ${timeLeft} more seconds.`, true);
+            // await sendWhisper(chatterName, `You are already fishing! Wait ${timeLeft} more seconds.`, true);
             return false;
           }
         }
 
         let isFree = false;
-        const ticket = await db.get('SELECT * FROM user_modifiers WHERE username = ? AND modifier = ?', [chatterName, 'free_fish']);
+        const ticket = await db.get(
+          "SELECT * FROM user_modifiers WHERE username = ? AND modifier = ?",
+          [chatterName, "free_fish"],
+        );
         if (ticket && ticket.value > 0) {
           isFree = true;
-          await db.run('UPDATE user_modifiers SET value = value - 1 WHERE username = ? AND modifier = ?', [chatterName, 'free_fish']);
+          await db.run(
+            "UPDATE user_modifiers SET value = value - 1 WHERE username = ? AND modifier = ?",
+            [chatterName, "free_fish"],
+          );
         } else {
-          const fishCost = parseInt(globalConfig['cmd_!fish_cost'] !== undefined ? globalConfig['cmd_!fish_cost'] : '2000', 10);
+          const fishCost = parseInt(
+            globalConfig["cmd_!fish_cost"] !== undefined
+              ? globalConfig["cmd_!fish_cost"]
+              : "2000",
+            10,
+          );
           if (fishCost > 0) {
-            const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+            const user = await db.get(
+              "SELECT points FROM users WHERE username = ?",
+              chatterName,
+            );
             if (!user || user.points < fishCost) {
-              await sendWhisper(chatterName, `You need ${fishCost} points to fish! (Or use a fishing ticket)`, true);
+              await sendWhisper(
+                chatterName,
+                `You need ${fishCost} points to fish! (Or use a fishing ticket)`,
+                true,
+              );
               return false;
             }
-            await db.run('UPDATE users SET points = points - ? WHERE username = ?', [fishCost, chatterName]);
+            await db.run(
+              "UPDATE users SET points = points - ? WHERE username = ?",
+              [fishCost, chatterName],
+            );
           }
         }
 
-        const reductions = await getActiveEffects(chatterName, 'fishing_time_reduction');
+        const reductions = await getActiveEffects(
+          chatterName,
+          "fishing_time_reduction",
+        );
         let multiplier = 1.0;
         for (const r of reductions) {
-          multiplier *= (1 - r.effect_value);
+          multiplier *= 1 - r.effect_value;
         }
-        
+
         const isLive = await isStreamerLive();
         let baseTimeMinutes;
         if (isLive) {
-            baseTimeMinutes = parseFloat(globalConfig['cmd_!fish_time_online'] !== undefined ? globalConfig['cmd_!fish_time_online'] : '5');
+          baseTimeMinutes = parseFloat(
+            globalConfig["cmd_!fish_time_online"] !== undefined
+              ? globalConfig["cmd_!fish_time_online"]
+              : "5",
+          );
         } else {
-            baseTimeMinutes = parseFloat(globalConfig['cmd_!fish_time_offline'] !== undefined ? globalConfig['cmd_!fish_time_offline'] : '15');
+          baseTimeMinutes = parseFloat(
+            globalConfig["cmd_!fish_time_offline"] !== undefined
+              ? globalConfig["cmd_!fish_time_offline"]
+              : "15",
+          );
         }
         const finalTimeMinutes = baseTimeMinutes * multiplier;
         const finalTimeMs = Math.floor(finalTimeMinutes * 60 * 1000);
 
         const catchTime = Date.now() + finalTimeMs;
-        
+
         // Handle target debuffs and instant catches
         let extraTimeMs = 0;
-        const delayedFish = await db.get('SELECT * FROM user_modifiers WHERE username = ? AND modifier = ?', [chatterName, 'delayed_fish']);
+        const delayedFish = await db.get(
+          "SELECT * FROM user_modifiers WHERE username = ? AND modifier = ?",
+          [chatterName, "delayed_fish"],
+        );
         if (delayedFish && delayedFish.value > 0) {
-           extraTimeMs = delayedFish.value;
-           await db.run('DELETE FROM user_modifiers WHERE username = ? AND modifier = ?', [chatterName, 'delayed_fish']);
+          extraTimeMs = delayedFish.value;
+          await db.run(
+            "DELETE FROM user_modifiers WHERE username = ? AND modifier = ?",
+            [chatterName, "delayed_fish"],
+          );
         }
 
-        const instantCatch = await db.get('SELECT * FROM active_effects WHERE target_user = ? AND effect_type = ? AND uses_left > 0', [chatterName, 'instant_catch']);
+        const instantCatch = await db.get(
+          "SELECT * FROM active_effects WHERE target_user = ? AND effect_type = ? AND uses_left > 0",
+          [chatterName, "instant_catch"],
+        );
         let finalCatchTime = Date.now() + finalTimeMs + extraTimeMs;
         let usedInstant = false;
-        
+
         if (instantCatch) {
-           finalCatchTime = 0;
-           usedInstant = true;
-           if (instantCatch.uses_left > 1) {
-              await db.run('UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?', [instantCatch.id]);
-           } else {
-              await db.run('DELETE FROM active_effects WHERE id = ?', [instantCatch.id]);
-           }
+          finalCatchTime = 0;
+          usedInstant = true;
+          if (instantCatch.uses_left > 1) {
+            await db.run(
+              "UPDATE active_effects SET uses_left = uses_left - 1 WHERE id = ?",
+              [instantCatch.id],
+            );
+          } else {
+            await db.run("DELETE FROM active_effects WHERE id = ?", [
+              instantCatch.id,
+            ]);
+          }
         }
 
-        await db.run('INSERT INTO pending_fish (username, catch_time, is_free) VALUES (?, ?, ?) ON CONFLICT(username) DO UPDATE SET catch_time = ?, is_free = ?', [chatterName, finalCatchTime, isFree ? 1 : 0, finalCatchTime, isFree ? 1 : 0]);
-        
+        await db.run(
+          "INSERT INTO pending_fish (username, catch_time, is_free) VALUES (?, ?, ?) ON CONFLICT(username) DO UPDATE SET catch_time = ?, is_free = ?",
+          [
+            chatterName,
+            finalCatchTime,
+            isFree ? 1 : 0,
+            finalCatchTime,
+            isFree ? 1 : 0,
+          ],
+        );
+
         if (usedInstant) {
-           await sendWhisper(chatterName, `🎣 You cast your line and immediately felt a tug! (Instant Catch used!)`, true);
+          await sendWhisper(
+            chatterName,
+            `🎣 You cast your line and immediately felt a tug! (Instant Catch used!)`,
+            true,
+          );
         } else {
-           const totalMinutes = Math.ceil((finalTimeMs + extraTimeMs) / 60000);
-           let msg = `🎣 You cast your line! Wait ${totalMinutes} minutes to see what bites...`;
-           if (extraTimeMs > 0) msg += " (Your rod felt cursed, taking longer!)";
-           await sendWhisper(chatterName, msg, true);
+          const totalMinutes = Math.ceil((finalTimeMs + extraTimeMs) / 60000);
+          let msg = `🎣 You cast your line! Wait ${totalMinutes} minutes to see what bites...`;
+          if (extraTimeMs > 0) msg += " (Your rod felt cursed, taking longer!)";
+          await sendWhisper(chatterName, msg, true);
         }
-      }
+      },
     },
-    '!inventory': {
+    "!inventory": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const items = await db.all('SELECT * FROM user_inventory WHERE username = ? AND quantity > 0', chatterName);
+        const items = await db.all(
+          "SELECT * FROM user_inventory WHERE username = ? AND quantity > 0",
+          chatterName,
+        );
         if (items.length === 0) {
           await sendWhisper(chatterName, `your inventory is empty!`, true);
           return false;
         }
-        
-        const rarityOrder = { 'Legendary': 1, 'Rare': 2, 'Uncommon': 3, 'Common': 4 };
+
+        const rarityOrder = { Legendary: 1, Rare: 2, Uncommon: 3, Common: 4 };
         items.sort((a, b) => {
-          let rarityA = 4, rarityB = 4;
+          let rarityA = 4,
+            rarityB = 4;
           for (const [r, list] of Object.entries(FISHING_ITEMS)) {
-            if (list.some(i => i.name === a.item_name)) rarityA = rarityOrder[list[0].rarity];
-            if (list.some(i => i.name === b.item_name)) rarityB = rarityOrder[list[0].rarity];
+            if (list.some((i) => i.name === a.item_name))
+              rarityA = rarityOrder[list[0].rarity];
+            if (list.some((i) => i.name === b.item_name))
+              rarityB = rarityOrder[list[0].rarity];
           }
           if (rarityA !== rarityB) return rarityA - rarityB;
           return a.item_name.localeCompare(b.item_name);
         });
 
-        const displayItems = items.slice(0, 3).map(i => ` ${i.item_name} (${i.quantity}x)`);
-        let msg = `inv: ${displayItems.join(', ')}`;
+        const displayItems = items
+          .slice(0, 3)
+          .map((i) => ` ${i.item_name} (${i.quantity}x)`);
+        let msg = `inv: ${displayItems.join(", ")}`;
         if (items.length > 3) {
           msg += ` !site for more details.`;
         }
         await sendWhisper(chatterName, msg, true);
-      }
+      },
     },
-    '!buffs': {
+    "!buffs": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         // Query active effects that haven't expired
         const now = Date.now();
-        await db.run('DELETE FROM active_effects WHERE expires_at IS NOT NULL AND expires_at < ?', [now]);
-        await db.run('DELETE FROM active_effects WHERE uses_left IS NOT NULL AND uses_left <= 0');
+        await db.run(
+          "DELETE FROM active_effects WHERE expires_at IS NOT NULL AND expires_at < ?",
+          [now],
+        );
+        await db.run(
+          "DELETE FROM active_effects WHERE uses_left IS NOT NULL AND uses_left <= 0",
+        );
 
-        const effects = await db.all('SELECT * FROM active_effects WHERE target_user = ?', chatterName);
-        const globalEffects = await db.all('SELECT * FROM active_effects WHERE target_user = "GLOBAL"');
-        const modifiers = await db.all('SELECT * FROM user_modifiers WHERE username = ? AND value > 0', chatterName);
+        const effects = await db.all(
+          "SELECT * FROM active_effects WHERE target_user = ?",
+          chatterName,
+        );
+        const globalEffects = await db.all(
+          'SELECT * FROM active_effects WHERE target_user = "GLOBAL"',
+        );
+        const modifiers = await db.all(
+          "SELECT * FROM user_modifiers WHERE username = ? AND value > 0",
+          chatterName,
+        );
 
-        const userRow = await db.get('SELECT xp FROM users WHERE username = ?', chatterName);
+        const userRow = await db.get(
+          "SELECT xp FROM users WHERE username = ?",
+          chatterName,
+        );
         const lvl = userRow ? getLvl(userRow.xp) : 1;
-        const lvlPtBonusRate = lvl * (globalConfig['lvl_bonus_rate'] || 0.001);
+        const lvlPtBonusRate = lvl * (globalConfig["lvl_bonus_rate"] || 0.001);
 
-        const personalBoosts = effects.filter(e => e.effect_type === 'personal_point_boost');
-        const globalBoosts = globalEffects.filter(e => e.effect_type === 'global_point_boost');
-        const globalDebuffs = globalEffects.filter(e => e.effect_type === 'global_point_debuff');
+        const personalBoosts = effects.filter(
+          (e) => e.effect_type === "personal_point_boost",
+        );
+        const globalBoosts = globalEffects.filter(
+          (e) => e.effect_type === "global_point_boost",
+        );
+        const globalDebuffs = globalEffects.filter(
+          (e) => e.effect_type === "global_point_debuff",
+        );
 
         let multiplier = 1.0;
-        for (const b of personalBoosts) multiplier *= (1 + b.effect_value);
-        for (const b of globalBoosts) multiplier *= (1 + b.effect_value);
+        for (const b of personalBoosts) multiplier *= 1 + b.effect_value;
+        for (const b of globalBoosts) multiplier *= 1 + b.effect_value;
         for (const b of globalDebuffs) {
-           if (b.caster !== chatterName) {
-             multiplier *= (1 - b.effect_value);
-           }
+          if (b.caster !== chatterName) {
+            multiplier *= 1 - b.effect_value;
+          }
         }
-        
+
         const totalBonusRate = lvlPtBonusRate + (multiplier - 1);
         const ptGainPct = (totalBonusRate * 100).toFixed(1);
-        const ptGainStr = totalBonusRate > 0 ? `+${ptGainPct}%` : `${ptGainPct}%`;
+        const ptGainStr =
+          totalBonusRate > 0 ? `+${ptGainPct}%` : `${ptGainPct}%`;
 
-        if (effects.length === 0 && globalEffects.length === 0 && modifiers.length === 0 && totalBonusRate === 0) {
-          await sendChatMessage(`${chatterName} you have no active buffs or effects!`, chatterName);
+        if (
+          effects.length === 0 &&
+          globalEffects.length === 0 &&
+          modifiers.length === 0 &&
+          totalBonusRate === 0
+        ) {
+          await sendChatMessage(
+            `${chatterName} you have no active buffs or effects!`,
+            chatterName,
+          );
           return;
         }
 
-        await sendChatMessage(`@${chatterName} Point Gain Bonus: ${ptGainStr}  !site for more details.`);
-      }
+        await sendChatMessage(
+          `@${chatterName} Point Gain Bonus: ${ptGainStr}  !site for more details.`,
+        );
+      },
     },
 
-    '!clearoverlay': {
+    "!clearoverlay": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to clear the overlay!`, chatterName);
+          //  await sendChatMessage(`${chatterName} you do not have permission to clear the overlay!`, chatterName);
           return;
         }
 
         let cleared = false;
-        
-        if (activeBets.has('default')) {
-          const bet = activeBets.get('default');
+
+        if (activeBets.has("default")) {
+          const bet = activeBets.get("default");
           bet.isHidden = true;
           clearBetState(null);
           cleared = true;
         }
-        
+
         if (activeChatWar) {
           activeChatWar.isHidden = true;
           clearChatWarState(null);
@@ -3898,39 +5404,51 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         clearEmotes();
 
         if (cleared) {
-          await sendChatMessage(`Overlay cleared by ${chatterName}! (Bets and Chatwars will still continue in the background)`, chatterName);
+          await sendChatMessage(
+            `Overlay cleared by ${chatterName}! (Bets and Chatwars will still continue in the background)`,
+            chatterName,
+          );
         } else {
           await sendChatMessage(`Overlay emotes cleared!`);
         }
-      }
+      },
     },
-    '!betstart': {
+    "!betstart": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL || lidl_mods.includes(chatterName.toLowerCase());
         if (!isMod) {
-         // await sendChatMessage(`${chatterName} you do not have permission to start bets!`, chatterName);
+          // await sendChatMessage(`${chatterName} you do not have permission to start bets!`, chatterName);
           return;
         }
 
-        if (activeBets.has('default')) {
-          await sendChatMessage(`${chatterName} there is already an active or unresolved bet! Use !betstop or !betcancel first.`, chatterName);
+        if (activeBets.has("default")) {
+          await sendChatMessage(
+            `${chatterName} there is already an active or unresolved bet! Use !betstop or !betcancel first.`,
+            chatterName,
+          );
           return;
         }
 
-        const rawArgs = args.join(' ');
-        
+        const rawArgs = args.join(" ");
+
         let description, choicesRaw, durationStr;
         const match = rawArgs.match(/"([^"]+)"\s+"([^"]+)"(?:\s+(\w+))?/);
-        
+
         if (match) {
           description = match[1];
-          choicesRaw = match[2].split(',').map(c => c.trim().toLowerCase()).filter(c => c);
+          choicesRaw = match[2]
+            .split(",")
+            .map((c) => c.trim().toLowerCase())
+            .filter((c) => c);
           durationStr = match[3] || null;
         } else {
           // Fallback for unquoted format like: !betstart Will we win yes,no 1m
           if (args.length < 2) {
-            await sendChatMessage(`${chatterName} invalid format! Use: !betstart "Will we win?" "yes,no" 5m`, chatterName);
+            await sendChatMessage(
+              `${chatterName} invalid format! Use: !betstart "Will we win?" "yes,no" 5m`,
+              chatterName,
+            );
             return;
           }
 
@@ -3938,27 +5456,39 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           const secondLastArg = args[args.length - 2];
           const isDuration = /^\d+[smh]$/i.test(lastArg);
 
-          if (isDuration && secondLastArg && secondLastArg.includes(',')) {
+          if (isDuration && secondLastArg && secondLastArg.includes(",")) {
             durationStr = lastArg;
-            choicesRaw = secondLastArg.split(',').map(c => c.trim().toLowerCase()).filter(c => c);
-            description = args.slice(0, args.length - 2).join(' ');
-          } else if (lastArg.includes(',')) {
+            choicesRaw = secondLastArg
+              .split(",")
+              .map((c) => c.trim().toLowerCase())
+              .filter((c) => c);
+            description = args.slice(0, args.length - 2).join(" ");
+          } else if (lastArg.includes(",")) {
             durationStr = null;
-            choicesRaw = lastArg.split(',').map(c => c.trim().toLowerCase()).filter(c => c);
-            description = args.slice(0, args.length - 1).join(' ');
+            choicesRaw = lastArg
+              .split(",")
+              .map((c) => c.trim().toLowerCase())
+              .filter((c) => c);
+            description = args.slice(0, args.length - 1).join(" ");
           } else {
-            await sendChatMessage(`${chatterName} invalid format! Make sure choices are separated by a comma (ex: yes,no). Example: !betstart test yes,no 1m`, chatterName);
+            await sendChatMessage(
+              `${chatterName} invalid format! Make sure choices are separated by a comma (ex: yes,no). Example: !betstart test yes,no 1m`,
+              chatterName,
+            );
             return;
           }
         }
 
         if (choicesRaw.length < 2) {
-          await sendChatMessage(`${chatterName} you need at least 2 choices separated by commas!`, chatterName);
+          await sendChatMessage(
+            `${chatterName} you need at least 2 choices separated by commas!`,
+            chatterName,
+          );
           return;
         }
 
         const betData = {
-          id: 'default',
+          id: "default",
           description,
           choices: choicesRaw,
           isOpen: true,
@@ -3966,49 +5496,52 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           pools: {},
           userBets: {},
           timeoutId: null,
-          reminderTimeouts: []
+          reminderTimeouts: [],
         };
 
         for (const c of choicesRaw) {
           betData.pools[c] = 0;
         }
 
-        activeBets.set('default', betData);
+        activeBets.set("default", betData);
         broadcastBetState(betData);
 
-        let durationMsg = '';
+        let durationMsg = "";
         if (durationStr) {
           const durationMs = parseTime(durationStr);
           durationMsg = ` Betting closes in ${durationStr}.`;
-          
+
           betData.durationMs = durationMs;
           betData.endTime = Date.now() + durationMs;
-          
 
           broadcastBetState(betData);
-          
+
           betData.timeoutId = setTimeout(async () => {
-            const b = activeBets.get('default');
+            const b = activeBets.get("default");
             if (b && b.isOpen) {
               b.isOpen = false;
-              clearBetState(); 
-              await sendChatMessage(`Betting is now CLOSED for: "${b.description}"! Waiting for results...`);
+              clearBetState();
+              await sendChatMessage(
+                `Betting is now CLOSED for: "${b.description}"! Waiting for results...`,
+              );
             }
           }, durationMs);
 
           const reminders = [
             { time: 300000, msg: "5 minutes" },
             { time: 60000, msg: "1 minute" },
-            { time: 10000, msg: "10 seconds" }
+            { time: 10000, msg: "10 seconds" },
           ];
 
           for (const r of reminders) {
             if (durationMs > r.time) {
               const delay = durationMs - r.time;
               const tid = setTimeout(async () => {
-                const b = activeBets.get('default');
+                const b = activeBets.get("default");
                 if (b && b.isOpen) {
-                  await sendChatMessage(`Reminder: Betting for "${b.description}" closes in ${r.msg}!`);
+                  await sendChatMessage(
+                    `Reminder: Betting for "${b.description}" closes in ${r.msg}!`,
+                  );
                 }
               }, delay);
               betData.reminderTimeouts.push(tid);
@@ -4016,32 +5549,40 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           }
         }
 
-        await sendChatMessage(`BET STARTED: "${description}" - Choices: [${choicesRaw.join(' / ')}] Type "!bet <choice> <amount>" to play!${durationMsg}`);
-      }
+        await sendChatMessage(
+          `BET STARTED: "${description}" - Choices: [${choicesRaw.join(" / ")}] Type "!bet <choice> <amount>" to play!${durationMsg}`,
+        );
+      },
     },
-    '!betstop': {
+    "!betstop": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL || lidl_mods.includes(chatterName.toLowerCase());
         if (!isMod) {
-         //  await sendChatMessage(`${chatterName} you do not have permission to stop bets!`, chatterName);
+          //  await sendChatMessage(`${chatterName} you do not have permission to stop bets!`, chatterName);
           return;
         }
 
-        const bet = activeBets.get('default');
+        const bet = activeBets.get("default");
         if (!bet) {
-        //  await sendChatMessage(`${chatterName} there is no active bet!`, chatterName);
+          //  await sendChatMessage(`${chatterName} there is no active bet!`, chatterName);
           return;
         }
 
         if (args.length < 1) {
-          await sendChatMessage(`${chatterName} please specify the winning choice! Example: !betstop yes`, chatterName);
+          await sendChatMessage(
+            `${chatterName} please specify the winning choice! Example: !betstop yes`,
+            chatterName,
+          );
           return;
         }
 
         const winningChoice = args[0].toLowerCase();
         if (!bet.choices.includes(winningChoice)) {
-          await sendChatMessage(`${chatterName} invalid choice! Valid choices are: ${bet.choices.join(', ')}`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid choice! Valid choices are: ${bet.choices.join(", ")}`,
+            chatterName,
+          );
           return;
         }
 
@@ -4054,94 +5595,104 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
         if (winningPool === 0) {
           for (const [user, userBet] of Object.entries(bet.userBets)) {
-             await updateUserStat(user, 'bets_played', 1);
-             await updateUserStat(user, 'bets_points_bet', userBet.amount);
-             await updateUserStat(user, 'bets_lost', 1);
-             await updateUserStat(user, 'bets_points_lost', userBet.amount);
+            await updateUserStat(user, "bets_played", 1);
+            await updateUserStat(user, "bets_points_bet", userBet.amount);
+            await updateUserStat(user, "bets_lost", 1);
+            await updateUserStat(user, "bets_points_lost", userBet.amount);
           }
-          await sendChatMessage(`BET RESOLVED: "${bet.description}" won by ${winningChoice}. Nobody voted for the winner! House takes the pool (${totalPool} pts)`);
-          activeBets.delete('default');
+          await sendChatMessage(
+            `BET RESOLVED: "${bet.description}" won by ${winningChoice}. Nobody voted for the winner! House takes the pool (${totalPool} pts)`,
+          );
+          activeBets.delete("default");
           clearBetState(null);
         } else {
           let winnersCount = 0;
           const winners = [];
           const losers = [];
-          
+
           for (const [user, userBet] of Object.entries(bet.userBets)) {
-            await updateUserStat(user, 'bets_played', 1);
-            await updateUserStat(user, 'bets_points_bet', userBet.amount);
+            await updateUserStat(user, "bets_played", 1);
+            await updateUserStat(user, "bets_points_bet", userBet.amount);
 
             if (userBet.choice === winningChoice) {
-              const payout = Math.floor((userBet.amount / winningPool) * totalPool);
+              const payout = Math.floor(
+                (userBet.amount / winningPool) * totalPool,
+              );
               const profit = payout - userBet.amount;
-              await db.run('UPDATE users SET points = points + ? WHERE username = ?', [payout, user]);
-              
-              await updateUserStat(user, 'bets_won', 1);
-              await updateUserStat(user, 'bets_points_won', profit);
+              await db.run(
+                "UPDATE users SET points = points + ? WHERE username = ?",
+                [payout, user],
+              );
+
+              await updateUserStat(user, "bets_won", 1);
+              await updateUserStat(user, "bets_points_won", profit);
 
               winnersCount++;
               winners.push({ user, amount: userBet.amount, won: profit });
             } else {
-              await updateUserStat(user, 'bets_lost', 1);
-              await updateUserStat(user, 'bets_points_lost', userBet.amount);
-              
-              losers.push({ user, amount: userBet.amount, lost: userBet.amount });
+              await updateUserStat(user, "bets_lost", 1);
+              await updateUserStat(user, "bets_points_lost", userBet.amount);
+
+              losers.push({
+                user,
+                amount: userBet.amount,
+                lost: userBet.amount,
+              });
             }
           }
-          
+
           winners.sort((a, b) => b.won - a.won);
           losers.sort((a, b) => b.lost - a.lost);
 
-         const messages = [
-          `BET RESOLVED: "${bet.description}" won by ${winningChoice}! ${winnersCount} winners share the ${totalPool} point pool!`
-        ];
+          const messages = [
+            `BET RESOLVED: "${bet.description}" won by ${winningChoice}! ${winnersCount} winners share the ${totalPool} point pool!`,
+          ];
 
-        if (winners.length > 0) {
-          const topWinners = winners
-            .slice(0, 3)
-            .map(w => `${w.user} (+${w.won})`)
-            .join(', ');
+          if (winners.length > 0) {
+            const topWinners = winners
+              .slice(0, 3)
+              .map((w) => `${w.user} (+${w.won})`)
+              .join(", ");
 
-          messages.push(`🏆 Top Winners: ${topWinners}`);
-        }
+            messages.push(`🏆 Top Winners: ${topWinners}`);
+          }
 
-        if (losers.length > 0) {
-          const topLosers = losers
-            .slice(0, 3)
-            .map(l => `${l.user} (-${l.lost})`)
-            .join(', ');
+          if (losers.length > 0) {
+            const topLosers = losers
+              .slice(0, 3)
+              .map((l) => `${l.user} (-${l.lost})`)
+              .join(", ");
 
-          messages.push(`💀 Top Losers: ${topLosers}`);
-        }
+            messages.push(`💀 Top Losers: ${topLosers}`);
+          }
 
-        await sendChatMessage(messages.join(' | '));
-          
+          await sendChatMessage(messages.join(" | "));
+
           const resultData = {
             winners: winners.slice(0, 20),
             losers: losers.slice(0, 20),
             winningChoice: winningChoice,
             choiceA: bet.choices[0],
-            choiceB: bet.choices[1]
+            choiceB: bet.choices[1],
           };
-          
-          activeBets.delete('default');
+
+          activeBets.delete("default");
           clearBetState(resultData);
         }
-
-      }
+      },
     },
-    '!betcancel': {
+    "!betcancel": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL || lidl_mods.includes(chatterName.toLowerCase());
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to cancel bets!`, chatterName);
+          //  await sendChatMessage(`${chatterName} you do not have permission to cancel bets!`, chatterName);
           return;
         }
 
-        const bet = activeBets.get('default');
+        const bet = activeBets.get("default");
         if (!bet) {
-         // await sendChatMessage(`${chatterName} there is no active bet!`, chatterName);
+          // await sendChatMessage(`${chatterName} there is no active bet!`, chatterName);
           return;
         }
 
@@ -4151,57 +5702,80 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
         let refunded = 0;
         for (const [user, userBet] of Object.entries(bet.userBets)) {
-          await db.run('UPDATE users SET points = points + ? WHERE username = ?', [userBet.amount, user]);
+          await db.run(
+            "UPDATE users SET points = points + ? WHERE username = ?",
+            [userBet.amount, user],
+          );
           refunded += userBet.amount;
         }
 
-        await sendChatMessage(`BET CANCELLED: All points (${refunded} total) have been refunded!`);
-        activeBets.delete('default');
+        await sendChatMessage(
+          `BET CANCELLED: All points (${refunded} total) have been refunded!`,
+        );
+        activeBets.delete("default");
         clearBetState();
-      }
+      },
     },
-    '!bet': {
+    "!bet": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const bet = activeBets.get('default');
+        const bet = activeBets.get("default");
         if (!bet) {
-       //   await sendChatMessage(`${chatterName} there is no active bet right now!`, chatterName);
+          //   await sendChatMessage(`${chatterName} there is no active bet right now!`, chatterName);
           return false;
         }
         if (!bet.isOpen) {
-          await sendChatMessage(`${chatterName} betting is closed for the current bet!`, chatterName);
+          await sendChatMessage(
+            `${chatterName} betting is closed for the current bet!`,
+            chatterName,
+          );
           return false;
         }
 
         if (bet.userBets[chatterName]) {
-          await sendChatMessage(`${chatterName} you have already bet ${bet.userBets[chatterName].amount} on [${bet.userBets[chatterName].choice}]!`, chatterName);
+          await sendChatMessage(
+            `${chatterName} you have already bet ${bet.userBets[chatterName].amount} on [${bet.userBets[chatterName].choice}]!`,
+            chatterName,
+          );
           return false;
         }
 
         if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !bet <choice> <amount>`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !bet <choice> <amount>`,
+            chatterName,
+          );
           return false;
         }
 
         const choice = args[0].toLowerCase();
         if (!bet.choices.includes(choice)) {
-          await sendChatMessage(`${chatterName} invalid choice! Valid choices are: ${bet.choices.join(', ')}`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid choice! Valid choices are: ${bet.choices.join(", ")}`,
+            chatterName,
+          );
           return false;
         }
 
-        const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
+        const user = await db.get(
+          "SELECT points FROM users WHERE username = ?",
+          chatterName,
+        );
         if (!user || user.points <= 0) {
-          await sendChatMessage(`${chatterName} you don't have enough points!`, chatterName);
+          await sendChatMessage(
+            `${chatterName} you don't have enough points!`,
+            chatterName,
+          );
           return false;
         }
 
         const amountInput = args[1].toLowerCase();
         let betAmount = 0;
 
-        if (amountInput === 'all') {
+        if (amountInput === "all") {
           betAmount = user.points;
-        } else if (amountInput.endsWith('%')) {
-          const percent = parseFloat(amountInput.replace('%', ''));
+        } else if (amountInput.endsWith("%")) {
+          const percent = parseFloat(amountInput.replace("%", ""));
           if (!isNaN(percent) && percent > 0 && percent <= 100) {
             betAmount = Math.floor(user.points * (percent / 100));
           }
@@ -4214,394 +5788,542 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           return false;
         }
         if (betAmount > user.points) {
-          await sendChatMessage(`${chatterName} you don't have enough points for that!`, chatterName);
+          await sendChatMessage(
+            `${chatterName} you don't have enough points for that!`,
+            chatterName,
+          );
           return false;
         }
 
-        await db.run('UPDATE users SET points = points - ? WHERE username = ?', [betAmount, chatterName]);
-        
+        await db.run(
+          "UPDATE users SET points = points - ? WHERE username = ?",
+          [betAmount, chatterName],
+        );
+
         bet.userBets[chatterName] = { choice, amount: betAmount };
         bet.pools[choice] += betAmount;
         bet.totalPool += betAmount;
 
         broadcastBetState(bet);
-        await sendChatMessage(`${chatterName} bet ${betAmount} on ${choice}!`, chatterName);
-      }
+        await sendChatMessage(
+          `${chatterName} bet ${betAmount} on ${choice}!`,
+          chatterName,
+        );
+      },
     },
-    '!betstatus': {
+    "!betstatus": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const bet = activeBets.get('default');
+        const bet = activeBets.get("default");
         if (!bet) {
-       //   await sendChatMessage(`There is no active bet right now!`);
+          //   await sendChatMessage(`There is no active bet right now!`);
           return false;
         }
 
-        const ratioTexts = bet.choices.map(choice => {
+        const ratioTexts = bet.choices.map((choice) => {
           const pool = bet.pools[choice];
           const odds = pool > 0 ? (bet.totalPool / pool).toFixed(2) : 0;
           return `${choice}: ${odds}x`;
         });
 
-        await sendChatMessage(`ACTIVE BET: "${bet.description}" | ${ratioTexts.join(' | ')}`);
-      }
+        await sendChatMessage(
+          `ACTIVE BET: "${bet.description}" | ${ratioTexts.join(" | ")}`,
+        );
+      },
     },
-    '!editcommand': {
+    "!editcommand": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to edit commands!`, chatterName);
+          //  await sendChatMessage(`${chatterName} you do not have permission to edit commands!`, chatterName);
           return;
         }
 
         if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !editcommand <command> <setting> [value]`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !editcommand <command> <setting> [value]`,
+            chatterName,
+          );
           return;
         }
 
         const targetCmd = args[0].toLowerCase();
         const setting = args[1].toLowerCase();
-        const value = args.length > 2 ? args[2] : '';
+        const value = args.length > 2 ? args[2] : "";
 
-        if (args.length < 3 && !['disable', 'enable'].includes(setting)) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !editcommand <command> <setting> <value>`, chatterName);
+        if (args.length < 3 && !["disable", "enable"].includes(setting)) {
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !editcommand <command> <setting> <value>`,
+            chatterName,
+          );
           return;
         }
 
-        if (['offlineonly', 'subonly', 'disable', 'enable'].includes(setting)) {
-           if (!commandConfigSchema[targetCmd] && !customAliasesMap.has(targetCmd) && targetCmd !== '!fish') {
-              await sendChatMessage(`${chatterName} unknown command: ${targetCmd}`, chatterName);
+        if (["offlineonly", "subonly", "disable", "enable"].includes(setting)) {
+          if (
+            !commandConfigSchema[targetCmd] &&
+            !customAliasesMap.has(targetCmd) &&
+            targetCmd !== "!fish"
+          ) {
+            await sendChatMessage(
+              `${chatterName} unknown command: ${targetCmd}`,
+              chatterName,
+            );
+            return;
+          }
+
+          if (setting === "disable") {
+            const configKey = `cmd_${targetCmd}_disabled_until`;
+            await db.run(
+              "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+              [configKey, "forever", "forever"],
+            );
+            globalConfig[configKey] = "forever";
+            await sendChatMessage(
+              `Successfully disabled command ${targetCmd}!`,
+            );
+            return;
+          } else if (setting === "enable") {
+            const configKey = `cmd_${targetCmd}_disabled_until`;
+            await db.run("DELETE FROM app_config WHERE key = ?", [configKey]);
+            delete globalConfig[configKey];
+            await sendChatMessage(`Successfully enabled command ${targetCmd}!`);
+            return;
+          } else if (setting === "offlineonly" || setting === "subonly") {
+            const valLower = value.toLowerCase();
+            if (valLower !== "true" && valLower !== "false") {
+              await sendChatMessage(
+                `${chatterName} invalid value for ${setting}! Use true or false.`,
+                chatterName,
+              );
               return;
-           }
-           
-           if (setting === 'disable') {
-              const configKey = `cmd_${targetCmd}_disabled_until`;
-              await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, 'forever', 'forever']);
-              globalConfig[configKey] = 'forever';
-              await sendChatMessage(`Successfully disabled command ${targetCmd}!`);
-              return;
-           } else if (setting === 'enable') {
-              const configKey = `cmd_${targetCmd}_disabled_until`;
-              await db.run('DELETE FROM app_config WHERE key = ?', [configKey]);
-              delete globalConfig[configKey];
-              await sendChatMessage(`Successfully enabled command ${targetCmd}!`);
-              return;
-           } else if (setting === 'offlineonly' || setting === 'subonly') {
-              const valLower = value.toLowerCase();
-              if (valLower !== 'true' && valLower !== 'false') {
-                 await sendChatMessage(`${chatterName} invalid value for ${setting}! Use true or false.`, chatterName);
-                 return;
-              }
-              const configSetting = setting === 'offlineonly' ? 'offline_only' : 'sub_only';
-              const configKey = `cmd_${targetCmd}_${configSetting}`;
-              await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, valLower, valLower]);
-              globalConfig[configKey] = valLower;
-              await sendChatMessage(`Successfully set ${targetCmd} ${setting} to ${valLower}!`);
-              return;
-           }
+            }
+            const configSetting =
+              setting === "offlineonly" ? "offline_only" : "sub_only";
+            const configKey = `cmd_${targetCmd}_${configSetting}`;
+            await db.run(
+              "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+              [configKey, valLower, valLower],
+            );
+            globalConfig[configKey] = valLower;
+            await sendChatMessage(
+              `Successfully set ${targetCmd} ${setting} to ${valLower}!`,
+            );
+            return;
+          }
         }
 
         const validSettings = commandConfigSchema[targetCmd];
         if (!validSettings) {
-          if (customAliasesMap.has(targetCmd) && (setting === 'cost' || setting === 'cooldown')) {
-            if (setting === 'cost') {
+          if (
+            customAliasesMap.has(targetCmd) &&
+            (setting === "cost" || setting === "cooldown")
+          ) {
+            if (setting === "cost") {
               const costVal = parseInt(value, 10);
               if (isNaN(costVal) || costVal < 0) {
-                await sendChatMessage(`${chatterName} invalid cost! It must be a number >= 0.`, chatterName);
+                await sendChatMessage(
+                  `${chatterName} invalid cost! It must be a number >= 0.`,
+                  chatterName,
+                );
                 return;
               }
-              await db.run('UPDATE custom_aliases SET cost = ? WHERE command = ?', [costVal, targetCmd]);
+              await db.run(
+                "UPDATE custom_aliases SET cost = ? WHERE command = ?",
+                [costVal, targetCmd],
+              );
               const alias = customAliasesMap.get(targetCmd);
               alias.cost = costVal;
-              await sendChatMessage(`Successfully updated custom command ${targetCmd} cost to ${costVal}!`);
+              await sendChatMessage(
+                `Successfully updated custom command ${targetCmd} cost to ${costVal}!`,
+              );
               return;
-            } else if (setting === 'cooldown') {
+            } else if (setting === "cooldown") {
               const cdVal = parseFlexibleTime(value);
               if (isNaN(cdVal) || cdVal < 0) {
-                await sendChatMessage(`${chatterName} invalid cooldown time! Use ms (1000), or 10s, 5m, 1h.`, chatterName);
+                await sendChatMessage(
+                  `${chatterName} invalid cooldown time! Use ms (1000), or 10s, 5m, 1h.`,
+                  chatterName,
+                );
                 return;
               }
               const configKey = `cmd_${targetCmd}_cooldown`;
-              await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, cdVal, cdVal]);
+              await db.run(
+                "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+                [configKey, cdVal, cdVal],
+              );
               globalConfig[configKey] = cdVal;
-              await sendChatMessage(`Successfully updated custom command ${targetCmd} cooldown to ${cdVal} ms!`);
+              await sendChatMessage(
+                `Successfully updated custom command ${targetCmd} cooldown to ${cdVal} ms!`,
+              );
               return;
             }
           }
-          await sendChatMessage(`${chatterName} unknown command: ${targetCmd}`, chatterName);
+          await sendChatMessage(
+            `${chatterName} unknown command: ${targetCmd}`,
+            chatterName,
+          );
           return;
         }
 
         if (!validSettings.includes(setting)) {
-          await sendChatMessage(`${chatterName} invalid setting! ${targetCmd} only supports changing: ${validSettings.join(', ')}`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid setting! ${targetCmd} only supports changing: ${validSettings.join(", ")}`,
+            chatterName,
+          );
           return;
         }
 
         let finalValue = value;
-        if (setting === 'cooldown' || setting === 'duration') {
+        if (setting === "cooldown" || setting === "duration") {
           const parsedTime = parseFlexibleTime(value);
           if (isNaN(parsedTime) || parsedTime < 0) {
-            await sendChatMessage(`${chatterName} invalid ${setting} time! Use ms (1000), or 10s, 5m, 1h.`, chatterName);
+            await sendChatMessage(
+              `${chatterName} invalid ${setting} time! Use ms (1000), or 10s, 5m, 1h.`,
+              chatterName,
+            );
             return;
           }
           finalValue = parsedTime.toString();
         }
 
         const configKey = `cmd_${targetCmd}_${setting}`;
-        
-        await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, finalValue, finalValue]);
-        
+
+        await db.run(
+          "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+          [configKey, finalValue, finalValue],
+        );
+
         globalConfig[configKey] = finalValue;
 
-        if (targetCmd === '!showemote' && (setting === 'duration' || setting === 'size')) {
+        if (
+          targetCmd === "!showemote" &&
+          (setting === "duration" || setting === "size")
+        ) {
           broadcastConfig(globalConfig);
         }
 
-        await sendChatMessage(`Successfully updated ${targetCmd} ${setting} to ${finalValue}!`);
-      }
+        await sendChatMessage(
+          `Successfully updated ${targetCmd} ${setting} to ${finalValue}!`,
+        );
+      },
     },
-    '!editplaysound': {
+    "!editplaysound": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) return;
 
         if (args.length < 3) {
-          await sendChatMessage(`Usage: !editplaysound <playsound_name> cost/cooldown <value|default>`);
+          await sendChatMessage(
+            `Usage: !editplaysound <playsound_name> cost/cooldown <value|default>`,
+          );
           return;
         }
 
-        const psName = args[0].toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '');
+        const psName = args[0].toLowerCase().replace(/[^a-zA-Z0-9_-]/g, "");
         const setting = args[1].toLowerCase();
         let value = args[2].toLowerCase();
 
-        if (setting !== 'cost' && setting !== 'cooldown') {
+        if (setting !== "cost" && setting !== "cooldown") {
           await sendChatMessage(`Invalid setting. Use 'cost' or 'cooldown'`);
           return;
         }
 
-        if (value === 'default' || value === 'clear' || value === 'none') {
-          value = '';
+        if (value === "default" || value === "clear" || value === "none") {
+          value = "";
         } else {
-          if (setting === 'cooldown') {
+          if (setting === "cooldown") {
             const parsedTime = parseFlexibleTime(value);
             if (isNaN(parsedTime) || parsedTime < 0) {
-              await sendChatMessage(`Invalid cooldown time! Use ms (1000), or 10s, 5m, 1h.`);
+              await sendChatMessage(
+                `Invalid cooldown time! Use ms (1000), or 10s, 5m, 1h.`,
+              );
               return;
             }
             value = parsedTime.toString();
           } else {
             value = parseInt(value, 10);
             if (isNaN(value) || value < 0) {
-              await sendChatMessage(`Value must be a valid number or 'default'`);
+              await sendChatMessage(
+                `Value must be a valid number or 'default'`,
+              );
               return;
             }
             value = value.toString();
           }
         }
 
-        const configKey = setting === 'cost' ? `cost_playsound_${psName}` : `cooldown_playsound_${psName}`;
-        
-        await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, value, value]);
+        const configKey =
+          setting === "cost"
+            ? `cost_playsound_${psName}`
+            : `cooldown_playsound_${psName}`;
+
+        await db.run(
+          "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+          [configKey, value, value],
+        );
         globalConfig[configKey] = value;
 
-        if (value === '') {
-          await sendChatMessage(`Playsound '${psName}' ${setting} has been reset to default.`);
+        if (value === "") {
+          await sendChatMessage(
+            `Playsound '${psName}' ${setting} has been reset to default.`,
+          );
         } else {
-          await sendChatMessage(`Playsound '${psName}' ${setting} updated to ${value}.`);
+          await sendChatMessage(
+            `Playsound '${psName}' ${setting} updated to ${value}.`,
+          );
         }
-      }
+      },
     },
-    '!addcommand': {
+    "!addcommand": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to add commands!`, chatterName);
+          //  await sendChatMessage(`${chatterName} you do not have permission to add commands!`, chatterName);
           return;
         }
 
         if (args.length < 3) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !addcommand <!command> <cost> <action>`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !addcommand <!command> <cost> <action>`,
+            chatterName,
+          );
           return;
         }
 
         const cmdName = args[0].toLowerCase();
-        if (!cmdName.startsWith('!')) {
-          await sendChatMessage(`${chatterName} the command must start with a ! (e.g. !mycmd)`, chatterName);
+        if (!cmdName.startsWith("!")) {
+          await sendChatMessage(
+            `${chatterName} the command must start with a ! (e.g. !mycmd)`,
+            chatterName,
+          );
           return;
         }
-        
-        if (customCommands[cmdName] || cmdName === '!showemote') {
-          await sendChatMessage(`${chatterName} you cannot overwrite a built-in command!`, chatterName);
+
+        if (customCommands[cmdName] || cmdName === "!showemote") {
+          await sendChatMessage(
+            `${chatterName} you cannot overwrite a built-in command!`,
+            chatterName,
+          );
           return;
         }
 
         const cost = parseInt(args[1], 10);
         if (isNaN(cost) || cost < 0) {
-          await sendChatMessage(`${chatterName} invalid cost! It must be a number >= 0.`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid cost! It must be a number >= 0.`,
+            chatterName,
+          );
           return;
         }
 
-        const action = args.slice(2).join(' ');
-        
-        await db.run('INSERT INTO custom_aliases (command, cost, action) VALUES (?, ?, ?) ON CONFLICT(command) DO UPDATE SET cost = ?, action = ?', [cmdName, cost, action, cost, action]);
-        
+        const action = args.slice(2).join(" ");
+
+        await db.run(
+          "INSERT INTO custom_aliases (command, cost, action) VALUES (?, ?, ?) ON CONFLICT(command) DO UPDATE SET cost = ?, action = ?",
+          [cmdName, cost, action, cost, action],
+        );
+
         customAliasesMap.set(cmdName, { cost, action });
         await sendChatMessage(`Successfully added ${cmdName} (cost: ${cost})!`);
-      }
+      },
     },
-    '!removecommand': {
+    "!removecommand": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to delete commands!`, chatterName);
+          //  await sendChatMessage(`${chatterName} you do not have permission to delete commands!`, chatterName);
           return;
         }
 
         if (args.length < 1) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !removecommand <!command>`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !removecommand <!command>`,
+            chatterName,
+          );
           return;
         }
 
         const cmdName = args[0].toLowerCase();
         if (!customAliasesMap.has(cmdName)) {
-          await sendChatMessage(`${chatterName} command ${cmdName} does not exist!`, chatterName);
+          await sendChatMessage(
+            `${chatterName} command ${cmdName} does not exist!`,
+            chatterName,
+          );
           return;
         }
 
-        await db.run('DELETE FROM custom_aliases WHERE command = ?', cmdName);
+        await db.run("DELETE FROM custom_aliases WHERE command = ?", cmdName);
         customAliasesMap.delete(cmdName);
         await sendChatMessage(`Successfully deleted ${cmdName}!`);
-      }
+      },
     },
-    '!commandlist': {
+    "!commandlist": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const builtIn = Object.keys(customCommands);
-        if (!builtIn.includes('!showemote')) builtIn.push('!showemote');
+        if (!builtIn.includes("!showemote")) builtIn.push("!showemote");
         const custom = Array.from(customAliasesMap.keys());
-        
+
         const allCommands = [...builtIn, ...custom].sort();
-        await sendChatMessage(`Commands: ${allCommands.join(', ')}`);
-      }
+        await sendChatMessage(`Commands: ${allCommands.join(", ")}`);
+      },
     },
-    '!disable': {
+    "!disable": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to disable commands!`, chatterName);
+          //  await sendChatMessage(`${chatterName} you do not have permission to disable commands!`, chatterName);
           return;
         }
 
         if (args.length < 1) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !disable <!command> [time]`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !disable <!command> [time]`,
+            chatterName,
+          );
           return;
         }
 
         const cmdName = args[0].toLowerCase();
-        if (!cmdName.startsWith('!')) {
-          await sendChatMessage(`${chatterName} the command must start with a ! (e.g. !mycmd)`, chatterName);
+        if (!cmdName.startsWith("!")) {
+          await sendChatMessage(
+            `${chatterName} the command must start with a ! (e.g. !mycmd)`,
+            chatterName,
+          );
           return;
         }
-        
-        if (cmdName === '!enable' || cmdName === '!disable') {
-          await sendChatMessage(`${chatterName} you cannot disable ${cmdName}!`, chatterName);
+
+        if (cmdName === "!enable" || cmdName === "!disable") {
+          await sendChatMessage(
+            `${chatterName} you cannot disable ${cmdName}!`,
+            chatterName,
+          );
           return;
         }
-        
-        let disabledValue = 'forever';
+
+        let disabledValue = "forever";
         if (args.length > 1) {
           const parsedTime = parseFlexibleTime(args[1]);
           if (isNaN(parsedTime) || parsedTime <= 0) {
-            await sendChatMessage(`${chatterName} invalid time format! Use ms (10000), or 10s, 10m, 10h.`, chatterName);
+            await sendChatMessage(
+              `${chatterName} invalid time format! Use ms (10000), or 10s, 10m, 10h.`,
+              chatterName,
+            );
             return;
           }
           disabledValue = (Date.now() + parsedTime).toString();
         }
 
         const configKey = `cmd_${cmdName}_disabled_until`;
-        await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, disabledValue, disabledValue]);
+        await db.run(
+          "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+          [configKey, disabledValue, disabledValue],
+        );
         globalConfig[configKey] = disabledValue;
 
-        const timeMsg = disabledValue === 'forever' ? 'forever' : `for ${args[1]}`;
+        const timeMsg =
+          disabledValue === "forever" ? "forever" : `for ${args[1]}`;
         await sendChatMessage(`Successfully disabled ${cmdName} ${timeMsg}!`);
-      }
+      },
     },
-    '!enable': {
+    "!enable": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to enable commands!`, chatterName);
+          //  await sendChatMessage(`${chatterName} you do not have permission to enable commands!`, chatterName);
           return;
         }
 
         if (args.length < 1) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !enable <!command>`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !enable <!command>`,
+            chatterName,
+          );
           return;
         }
 
         const cmdName = args[0].toLowerCase();
-        if (!cmdName.startsWith('!')) {
-          await sendChatMessage(`${chatterName} the command must start with a ! (e.g. !mycmd)`, chatterName);
+        if (!cmdName.startsWith("!")) {
+          await sendChatMessage(
+            `${chatterName} the command must start with a ! (e.g. !mycmd)`,
+            chatterName,
+          );
           return;
         }
-        
+
         const configKey = `cmd_${cmdName}_disabled_until`;
-        await db.run('DELETE FROM app_config WHERE key = ?', configKey);
+        await db.run("DELETE FROM app_config WHERE key = ?", configKey);
         delete globalConfig[configKey];
-        
+
         await sendChatMessage(`Successfully enabled ${cmdName}!`);
-      }
+      },
     },
-    '!subonly': {
-      cost: 0,
-      execute: async (args, chatterName, event, hasPermission) => {
-        const isMod = hasPermission || chatterName === TARGET_CHANNEL ;
-        if (!isMod) {
-          return;
-        }
-
-        if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !subonly <!command> <true/false>`, chatterName);
-          return;
-        }
-
-        const cmdName = args[0].toLowerCase();
-        if (!cmdName.startsWith('!')) {
-          await sendChatMessage(`${chatterName} the command must start with a ! (e.g. !mycmd)`, chatterName);
-          return;
-        }
-        
-        const isSubOnly = args[1].toLowerCase() === 'true';
-        const configKey = `cmd_${cmdName}_sub_only`;
-        
-        if (isSubOnly) {
-          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [configKey, 'true', 'true']);
-          globalConfig[configKey] = 'true';
-          await sendChatMessage(`Successfully made ${cmdName} subscriber-only!`);
-        } else {
-          await db.run('DELETE FROM app_config WHERE key = ?', configKey);
-          delete globalConfig[configKey];
-          await sendChatMessage(`Successfully removed subscriber-only restriction from ${cmdName}!`);
-        }
-      }
-    },
-    '!editrewards': {
+    "!subonly": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to edit rewards!`, chatterName);
           return;
         }
 
         if (args.length < 2) {
-          await sendChatMessage(`Usage: !editrewards <type> <val1> [val2]. Types: sub, bits, giftsub, watchstreak, raffle, multiraffle, chat`);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !subonly <!command> <true/false>`,
+            chatterName,
+          );
+          return;
+        }
+
+        const cmdName = args[0].toLowerCase();
+        if (!cmdName.startsWith("!")) {
+          await sendChatMessage(
+            `${chatterName} the command must start with a ! (e.g. !mycmd)`,
+            chatterName,
+          );
+          return;
+        }
+
+        const isSubOnly = args[1].toLowerCase() === "true";
+        const configKey = `cmd_${cmdName}_sub_only`;
+
+        if (isSubOnly) {
+          await db.run(
+            "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            [configKey, "true", "true"],
+          );
+          globalConfig[configKey] = "true";
+          await sendChatMessage(
+            `Successfully made ${cmdName} subscriber-only!`,
+          );
+        } else {
+          await db.run("DELETE FROM app_config WHERE key = ?", configKey);
+          delete globalConfig[configKey];
+          await sendChatMessage(
+            `Successfully removed subscriber-only restriction from ${cmdName}!`,
+          );
+        }
+      },
+    },
+    "!editrewards": {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+        if (!isMod) {
+          //  await sendChatMessage(`${chatterName} you do not have permission to edit rewards!`, chatterName);
+          return;
+        }
+
+        if (args.length < 2) {
+          await sendChatMessage(
+            `Usage: !editrewards <type> <val1> [val2]. Types: sub, bits, giftsub, watchstreak, raffle, multiraffle, chat`,
+          );
           return;
         }
 
@@ -4614,14 +6336,19 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           return;
         }
 
-        if (type === 'sub' || type === 'bits') {
+        if (type === "sub" || type === "bits") {
           const key = `reward_${type}`;
-          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [key, val1, val1]);
+          await db.run(
+            "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            [key, val1, val1],
+          );
           globalConfig[key] = val1.toString();
           await sendChatMessage(`Reward for ${type} updated to ${val1}.`);
-        } else if (type === 'giftsub' || type === 'watchstreak') {
+        } else if (type === "giftsub" || type === "watchstreak") {
           if (args.length < 4) {
-            await sendChatMessage(`Usage for ${type}: !editrewards ${type} <base_reward> <scaling> <cap>`);
+            await sendChatMessage(
+              `Usage for ${type}: !editrewards ${type} <base_reward> <scaling> <cap>`,
+            );
             return;
           }
           const val3 = parseInt(args[3], 10);
@@ -4633,30 +6360,53 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           const keyScaling = `reward_${type}_scaling`;
           const keyCap = `reward_${type}_cap`;
 
-          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [keyBase, val1, val1]);
-          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [keyScaling, val2, val2]);
-          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [keyCap, val3, val3]);
-          
+          await db.run(
+            "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            [keyBase, val1, val1],
+          );
+          await db.run(
+            "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            [keyScaling, val2, val2],
+          );
+          await db.run(
+            "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            [keyCap, val3, val3],
+          );
+
           globalConfig[keyBase] = val1.toString();
           globalConfig[keyScaling] = val2.toString();
           globalConfig[keyCap] = val3.toString();
-          
-          await sendChatMessage(`Reward for ${type} updated! Base: ${val1} | Scaling: ${val2} | Cap: ${val3}`);
-        } else if (type === 'raffle' || type === 'multiraffle') {
+
+          await sendChatMessage(
+            `Reward for ${type} updated! Base: ${val1} | Scaling: ${val2} | Cap: ${val3}`,
+          );
+        } else if (type === "raffle" || type === "multiraffle") {
           if (val2 === null || isNaN(val2)) {
-            await sendChatMessage(`Usage for ${type}: !editrewards ${type} <min> <max>`);
+            await sendChatMessage(
+              `Usage for ${type}: !editrewards ${type} <min> <max>`,
+            );
             return;
           }
           const keyMin = `reward_${type}_min`;
           const keyMax = `reward_${type}_max`;
-          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [keyMin, val1, val1]);
-          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', [keyMax, val2, val2]);
+          await db.run(
+            "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            [keyMin, val1, val1],
+          );
+          await db.run(
+            "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            [keyMax, val2, val2],
+          );
           globalConfig[keyMin] = val1.toString();
           globalConfig[keyMax] = val2.toString();
-          await sendChatMessage(`Reward range for ${type} updated to ${val1} - ${val2}.`);
-        } else if (type === 'chat') {
+          await sendChatMessage(
+            `Reward range for ${type} updated to ${val1} - ${val2}.`,
+          );
+        } else if (type === "chat") {
           if (val2 === null || isNaN(val2) || args.length < 4) {
-            await sendChatMessage(`Usage for chat: !editrewards chat <nonsub_points> <sub_points> <cooldown_minutes>`);
+            await sendChatMessage(
+              `Usage for chat: !editrewards chat <nonsub_points> <sub_points> <cooldown_minutes>`,
+            );
             return;
           }
           const val3 = parseInt(args[3], 10);
@@ -4664,58 +6414,80 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             await sendChatMessage(`Invalid cooldown value: ${args[3]}`);
             return;
           }
-          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', ['reward_chat_nonsub', val1, val1]);
-          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', ['reward_chat_sub', val2, val2]);
-          await db.run('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?', ['reward_chat_cooldown', val3, val3]);
-          globalConfig['reward_chat_nonsub'] = val1.toString();
-          globalConfig['reward_chat_sub'] = val2.toString();
-          globalConfig['reward_chat_cooldown'] = val3.toString();
-          await sendChatMessage(`Chat rewards updated! Non-subs: ${val1} pts | Subs: ${val2} pts | Cooldown: ${val3} mins.`);
+          await db.run(
+            "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            ["reward_chat_nonsub", val1, val1],
+          );
+          await db.run(
+            "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            ["reward_chat_sub", val2, val2],
+          );
+          await db.run(
+            "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            ["reward_chat_cooldown", val3, val3],
+          );
+          globalConfig["reward_chat_nonsub"] = val1.toString();
+          globalConfig["reward_chat_sub"] = val2.toString();
+          globalConfig["reward_chat_cooldown"] = val3.toString();
+          await sendChatMessage(
+            `Chat rewards updated! Non-subs: ${val1} pts | Subs: ${val2} pts | Cooldown: ${val3} mins.`,
+          );
         } else {
-          await sendChatMessage(`Unknown reward type: ${type}. Valid types: sub, bits, giftsub, watchstreak, raffle, multiraffle, chat`);
+          await sendChatMessage(
+            `Unknown reward type: ${type}. Valid types: sub, bits, giftsub, watchstreak, raffle, multiraffle, chat`,
+          );
         }
-      }
+      },
     },
-    '!giveitem': {
+    "!giveitem": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) return;
 
         if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !giveitem <username> <item name> [amount]`);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !giveitem <username> <item name> [amount]`,
+          );
           return;
         }
 
-        const targetUser = args[0].replace(/@/g, '').toLowerCase();
-        
+        const targetUser = args[0].replace(/@/g, "").toLowerCase();
+
         let amount = 1;
         let lastArg = args[args.length - 1];
         if (!isNaN(parseInt(lastArg, 10)) && parseInt(lastArg, 10) > 0) {
-           amount = parseInt(lastArg, 10);
-           args.pop(); // remove amount from args
+          amount = parseInt(lastArg, 10);
+          args.pop(); // remove amount from args
         }
-        
-        const searchName = args.slice(1).join(' ').toLowerCase();
-        
+
+        const searchName = args.slice(1).join(" ").toLowerCase();
+
         let itemName = null;
         for (const key of Object.keys(ITEMS_REGISTRY)) {
-           if (key.toLowerCase() === searchName) {
-              itemName = key;
-              break;
-           }
+          if (key.toLowerCase() === searchName) {
+            itemName = key;
+            break;
+          }
         }
 
         if (!itemName) {
-           await sendChatMessage(`Item "${searchName}" does not exist in the database!`);
-           return;
+          await sendChatMessage(
+            `Item "${searchName}" does not exist in the database!`,
+          );
+          return;
         }
 
-        await db.run('INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, ?) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + ?', [targetUser, itemName, amount, amount]);
-        await sendChatMessage(`Given ${amount}x ${itemName} to ${targetUser} !`);
-      }
+        await db.run(
+          "INSERT INTO user_inventory (username, item_name, quantity) VALUES (?, ?, ?) ON CONFLICT(username, item_name) DO UPDATE SET quantity = quantity + ?",
+          [targetUser, itemName, amount, amount],
+        );
+        await sendChatMessage(
+          `Given ${amount}x ${itemName} to ${targetUser} !`,
+        );
+      },
     },
-    '!reloaditems': {
+    "!reloaditems": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
@@ -4723,19 +6495,27 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
         try {
           await loadItemsConfig();
-          await sendChatMessage(`Items have been reloaded successfully from the database!`);
+          await sendChatMessage(
+            `Items have been reloaded successfully from the database!`,
+          );
         } catch (e) {
           console.error(e);
           await sendChatMessage(`Failed to reload items: ${e.message}`);
         }
-      }
+      },
     },
-    '!raffle': {
+    "!raffle": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        let user = await db.get('SELECT points, xp FROM users WHERE username = ?', chatterName);
+        let user = await db.get(
+          "SELECT points, xp FROM users WHERE username = ?",
+          chatterName,
+        );
         if (!user) {
-          await db.run('INSERT OR IGNORE INTO users (username, points, xp) VALUES (?, 0, 0)', [chatterName]);
+          await db.run(
+            "INSERT OR IGNORE INTO users (username, points, xp) VALUES (?, 0, 0)",
+            [chatterName],
+          );
           user = { points: 0, xp: 0 };
         }
 
@@ -4745,12 +6525,18 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         }
 
         if (activeRaffle) {
-          await sendChatMessage(`${chatterName} there is already an active raffle!`, chatterName);
+          await sendChatMessage(
+            `${chatterName} there is already an active raffle!`,
+            chatterName,
+          );
           return;
         }
 
         if (args.length < 2) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !raffle <amount> <time>`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !raffle <amount> <time>`,
+            chatterName,
+          );
           return;
         }
 
@@ -4767,15 +6553,17 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         }
 
         activeRaffle = {
-          type: 'single',
+          type: "single",
           amount,
           durationStr: args[1],
           endTime: Date.now() + durationMs,
           users: new Set(),
-          timeoutId: null
+          timeoutId: null,
         };
 
-        await sendChatMessage(`🎉 A RAFFLE for ${amount} points has started! Type !join to enter. You have ${args[1]}!`);
+        await sendChatMessage(
+          `🎉 A RAFFLE for ${amount} points has started! Type !join to enter. You have ${args[1]}!`,
+        );
 
         activeRaffle.timeoutId = setTimeout(async () => {
           if (!activeRaffle) return;
@@ -4787,7 +6575,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             return;
           }
 
-          const { expanded, guaranteed } = await buildRaffleParticipants(r.users);
+          const { expanded, guaranteed } = await buildRaffleParticipants(
+            r.users,
+          );
           const uniqueParticipants = Array.from(r.users);
 
           let winner;
@@ -4797,30 +6587,43 @@ for (const [user, data] of Object.entries(war.userVotes)) {
             winner = expanded[Math.floor(Math.random() * expanded.length)];
           }
 
-          const finalAdded = await addPointsWithBonus(winner, r.amount, false, 'engagement');
+          const finalAdded = await addPointsWithBonus(
+            winner,
+            r.amount,
+            false,
+            "engagement",
+          );
 
           await updateRaffleStats(uniqueParticipants, [winner], finalAdded);
 
-          await sendChatMessage(`🎉 The raffle has ended! Congratulations ${winner} you won ${finalAdded} points!`);
+          await sendChatMessage(
+            `🎉 The raffle has ended! Congratulations ${winner} you won ${finalAdded} points!`,
+          );
         }, durationMs);
-      }
+      },
     },
-    '!multiraffle': {
+    "!multiraffle": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
-        //  await sendChatMessage(`${chatterName} you do not have permission to start raffles!`, chatterName);
+          //  await sendChatMessage(`${chatterName} you do not have permission to start raffles!`, chatterName);
           return;
         }
 
         if (activeRaffle) {
-          await sendChatMessage(`${chatterName} there is already an active raffle!`, chatterName);
+          await sendChatMessage(
+            `${chatterName} there is already an active raffle!`,
+            chatterName,
+          );
           return;
         }
 
         if (args.length < 3) {
-          await sendChatMessage(`${chatterName} invalid format! Use: !multiraffle <amount> <time> <winners>`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid format! Use: !multiraffle <amount> <time> <winners>`,
+            chatterName,
+          );
           return;
         }
 
@@ -4838,21 +6641,26 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
         const numWinners = parseInt(args[2], 10);
         if (isNaN(numWinners) || numWinners <= 0) {
-          await sendChatMessage(`${chatterName} invalid number of winners!`, chatterName);
+          await sendChatMessage(
+            `${chatterName} invalid number of winners!`,
+            chatterName,
+          );
           return;
         }
 
         activeRaffle = {
-          type: 'multi',
+          type: "multi",
           amount,
           numWinners,
           durationStr: args[1],
           endTime: Date.now() + durationMs,
           users: new Set(),
-          timeoutId: null
+          timeoutId: null,
         };
 
-        await sendChatMessage(`🎉 A MULTI-RAFFLE for ${amount} points (split among ${numWinners} winners) has started! Type !join to enter. You have ${args[1]}!`);
+        await sendChatMessage(
+          `🎉 A MULTI-RAFFLE for ${amount} points (split among ${numWinners} winners) has started! Type !join to enter. You have ${args[1]}!`,
+        );
 
         activeRaffle.timeoutId = setTimeout(async () => {
           if (!activeRaffle) return;
@@ -4860,15 +6668,19 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           activeRaffle = null;
 
           if (r.users.size === 0) {
-            await sendChatMessage(`The multi-raffle has ended, but nobody joined!`);
+            await sendChatMessage(
+              `The multi-raffle has ended, but nobody joined!`,
+            );
             return;
           }
 
-          const { expanded, guaranteed } = await buildRaffleParticipants(r.users);
+          const { expanded, guaranteed } = await buildRaffleParticipants(
+            r.users,
+          );
           const uniqueParticipants = Array.from(r.users);
-          
+
           let allWinners = [];
-          
+
           // 1. Pick guaranteed winners first
           for (let i = guaranteed.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -4896,47 +6708,61 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           const splitAmount = Math.floor(r.amount / actualWinnersCount);
 
           for (const w of allWinners) {
-            await addPointsWithBonus(w, splitAmount, false, 'engagement');
+            await addPointsWithBonus(w, splitAmount, false, "engagement");
           }
 
           await updateRaffleStats(uniqueParticipants, allWinners, splitAmount);
 
           const displayWinners = allWinners.slice(0, 5);
-          let winnersText = displayWinners.map(w => `${w}`).join(', ');
+          let winnersText = displayWinners.map((w) => `${w}`).join(", ");
           if (actualWinnersCount > 5) {
             winnersText += ` and ${actualWinnersCount - 5} others`;
           }
 
-          await sendChatMessage(`🎉 The multi-raffle has ended! Congratulations to our ${actualWinnersCount} winners: ${winnersText}. You each won ${splitAmount} base points (plus your personal bonuses)!`);
+          await sendChatMessage(
+            `🎉 The multi-raffle has ended! Congratulations to our ${actualWinnersCount} winners: ${winnersText}. You each won ${splitAmount} base points (plus your personal bonuses)!`,
+          );
         }, durationMs);
-      }
+      },
     },
-    '!join': {
+    "!join": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
         if (!activeRaffle) {
           return;
         }
-        
+
         if (activeRaffle.users.has(chatterName)) {
           return;
         }
 
         activeRaffle.users.add(chatterName);
-      }
-    }
+      },
+    },
   };
 
   async function getTwitchUserId(username) {
     try {
-      let res = await fetch(`https://api.twitch.tv/helix/users?login=${username}`, {
-        headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
-      });
+      let res = await fetch(
+        `https://api.twitch.tv/helix/users?login=${username}`,
+        {
+          headers: {
+            Authorization: `Bearer ${USER_ACCESS_TOKEN}`,
+            "Client-Id": CLIENT_ID,
+          },
+        },
+      );
       if (res.status === 401) {
         USER_ACCESS_TOKEN = await getValidAccessToken();
-        res = await fetch(`https://api.twitch.tv/helix/users?login=${username}`, {
-          headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
-        });
+        res = await fetch(
+          `https://api.twitch.tv/helix/users?login=${username}`,
+          {
+            headers: {
+              Authorization: `Bearer ${USER_ACCESS_TOKEN}`,
+              "Client-Id": CLIENT_ID,
+            },
+          },
+        );
       }
       const data = await res.json();
       if (data && data.data && data.data.length > 0) {
@@ -4944,55 +6770,61 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       }
       return null;
     } catch (e) {
-      console.error('Error fetching twitch user ID:', e);
+      console.error("Error fetching twitch user ID:", e);
       return null;
     }
   }
 
-  async function timeoutTwitchUser(targetUserId, durationSeconds, reason = '') {
+  async function timeoutTwitchUser(targetUserId, durationSeconds, reason = "") {
     try {
-      let res = await fetch(`https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${getCurrentBroadcasterId()}&moderator_id=${YOUR_USER_ID}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${USER_ACCESS_TOKEN}`,
-          'Client-Id': CLIENT_ID,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          data: {
-            user_id: targetUserId,
-            duration: durationSeconds,
-            reason: reason
-          }
-        })
-      });
-
-      if (res.status === 401) {
-        USER_ACCESS_TOKEN = await getValidAccessToken();
-        res = await fetch(`https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${getCurrentBroadcasterId()}&moderator_id=${YOUR_USER_ID}`, {
-          method: 'POST',
+      let res = await fetch(
+        `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${getCurrentBroadcasterId()}&moderator_id=${YOUR_USER_ID}`,
+        {
+          method: "POST",
           headers: {
-            'Authorization': `Bearer ${USER_ACCESS_TOKEN}`,
-            'Client-Id': CLIENT_ID,
-            'Content-Type': 'application/json'
+            Authorization: `Bearer ${USER_ACCESS_TOKEN}`,
+            "Client-Id": CLIENT_ID,
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             data: {
               user_id: targetUserId,
               duration: durationSeconds,
-              reason: reason
-            }
-          })
-        });
+              reason: reason,
+            },
+          }),
+        },
+      );
+
+      if (res.status === 401) {
+        USER_ACCESS_TOKEN = await getValidAccessToken();
+        res = await fetch(
+          `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${getCurrentBroadcasterId()}&moderator_id=${YOUR_USER_ID}`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${USER_ACCESS_TOKEN}`,
+              "Client-Id": CLIENT_ID,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              data: {
+                user_id: targetUserId,
+                duration: durationSeconds,
+                reason: reason,
+              },
+            }),
+          },
+        );
       }
 
       const data = await res.json().catch(() => ({}));
       if (res.ok) return true;
-      
-      console.error('Failed to timeout user via Helix API:', data);
+
+      console.error("Failed to timeout user via Helix API:", data);
       return false;
     } catch (e) {
-      console.error('Error sending timeout request:', e);
+      console.error("Error sending timeout request:", e);
       return false;
     }
   }
@@ -5002,16 +6834,30 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       return channelState.isStreamLiveCached;
     }
     try {
-      let res = await fetch(`https://api.twitch.tv/helix/streams?user_id=${getCurrentBroadcasterId()}`, {
-        headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
-      });
-      
+      let res = await fetch(
+        `https://api.twitch.tv/helix/streams?user_id=${getCurrentBroadcasterId()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${USER_ACCESS_TOKEN}`,
+            "Client-Id": CLIENT_ID,
+          },
+        },
+      );
+
       if (res.status === 401) {
-        console.log('* Twitch token expired during runtime. Attempting to refresh...');
+        console.log(
+          "* Twitch token expired during runtime. Attempting to refresh...",
+        );
         USER_ACCESS_TOKEN = await getValidAccessToken();
-        res = await fetch(`https://api.twitch.tv/helix/streams?user_id=${getCurrentBroadcasterId()}`, {
-          headers: { 'Authorization': `Bearer ${USER_ACCESS_TOKEN}`, 'Client-Id': CLIENT_ID }
-        });
+        res = await fetch(
+          `https://api.twitch.tv/helix/streams?user_id=${getCurrentBroadcasterId()}`,
+          {
+            headers: {
+              Authorization: `Bearer ${USER_ACCESS_TOKEN}`,
+              "Client-Id": CLIENT_ID,
+            },
+          },
+        );
       }
 
       const data = await res.json();
@@ -5026,10 +6872,10 @@ for (const [user, data] of Object.entries(war.userVotes)) {
           }
         }
       } else {
-        console.error('! Twitch API Error during isStreamerLive:', data);
+        console.error("! Twitch API Error during isStreamerLive:", data);
       }
     } catch (e) {
-      console.error('! Failed to check stream status:', e);
+      console.error("! Failed to check stream status:", e);
     }
     return channelState.isStreamLiveCached;
   }
@@ -5041,33 +6887,42 @@ for (const [user, data] of Object.entries(war.userVotes)) {
   function connect7TV(broadcasterId) {
     const runtime = getChannelRuntime();
     if (!channelState.sevenTvEmoteSetId) return;
-    const sTvWs = new WebSocket('wss://events.7tv.io/v3');
+    const sTvWs = new WebSocket("wss://events.7tv.io/v3");
 
-    sTvWs.on('open', () => {
+    sTvWs.on("open", () => {
       runInChannel(runtime, () => {
-        console.log(`* Connected to 7TV Real-Time Updates for ${runtime.login}.`);
-        sTvWs.send(JSON.stringify({
-          op: 35,
-          d: {
-            type: "emote_set.update",
-            condition: { object_id: channelState.sevenTvEmoteSetId }
-          }
-        }));
+        console.log(
+          `* Connected to 7TV Real-Time Updates for ${runtime.login}.`,
+        );
+        sTvWs.send(
+          JSON.stringify({
+            op: 35,
+            d: {
+              type: "emote_set.update",
+              condition: { object_id: channelState.sevenTvEmoteSetId },
+            },
+          }),
+        );
       });
     });
 
-    sTvWs.on('message', (data) => {
+    sTvWs.on("message", (data) => {
       runInChannel(runtime, () => {
         const msg = JSON.parse(data);
-        if (msg.op === 0 && msg.d.type === 'emote_set.update') {
-          console.log(`\n* [7TV UPDATE DETECTED:${runtime.login}] Auto-reloading all emotes...`);
+        if (msg.op === 0 && msg.d.type === "emote_set.update") {
+          console.log(
+            `\n* [7TV UPDATE DETECTED:${runtime.login}] Auto-reloading all emotes...`,
+          );
           loadThirdPartyEmotes(broadcasterId);
         }
       });
     });
 
-    sTvWs.on('close', () => {
-      setTimeout(() => runInChannel(runtime, () => connect7TV(broadcasterId)), 5000);
+    sTvWs.on("close", () => {
+      setTimeout(
+        () => runInChannel(runtime, () => connect7TV(broadcasterId)),
+        5000,
+      );
     });
   }
 
@@ -5075,20 +6930,19 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     runInChannel(runtime, () => connect7TV(runtime.broadcasterId));
   }
 
-  
   // --- Helper Function: Simulate EventSub Emote Fragments ---
   function buildFragmentsFromIrc(text, emotesTag) {
     const fragments = [];
     if (!emotesTag) {
-      fragments.push({ type: 'text', text: text });
+      fragments.push({ type: "text", text: text });
       return fragments;
     }
 
     const emotePlacements = [];
-    emotesTag.split('/').forEach(emoteGroup => {
-      const [emoteId, positions] = emoteGroup.split(':');
-      positions.split(',').forEach(pos => {
-        const [start, end] = pos.split('-').map(Number);
+    emotesTag.split("/").forEach((emoteGroup) => {
+      const [emoteId, positions] = emoteGroup.split(":");
+      positions.split(",").forEach((pos) => {
+        const [start, end] = pos.split("-").map(Number);
         emotePlacements.push({ id: emoteId, start, end });
       });
     });
@@ -5097,21 +6951,27 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
     let currentIndex = 0;
     const chars = Array.from(text);
-    
-    emotePlacements.forEach(placement => {
+
+    emotePlacements.forEach((placement) => {
       if (placement.start > currentIndex) {
-        fragments.push({ type: 'text', text: chars.slice(currentIndex, placement.start).join('') });
+        fragments.push({
+          type: "text",
+          text: chars.slice(currentIndex, placement.start).join(""),
+        });
       }
-      fragments.push({ 
-        type: 'emote', 
-        emote: { id: placement.id }, 
-        text: chars.slice(placement.start, placement.end + 1).join('') 
+      fragments.push({
+        type: "emote",
+        emote: { id: placement.id },
+        text: chars.slice(placement.start, placement.end + 1).join(""),
       });
       currentIndex = placement.end + 1;
     });
 
     if (currentIndex < chars.length) {
-      fragments.push({ type: 'text', text: chars.slice(currentIndex).join('') });
+      fragments.push({
+        type: "text",
+        text: chars.slice(currentIndex).join(""),
+      });
     }
 
     return fragments;
@@ -5122,142 +6982,179 @@ for (const [user, data] of Object.entries(war.userVotes)) {
   async function startTriviaQuestion() {
     if (!triviaLoopActive) return;
     if (activeTrivia) return;
-    
+
     try {
-        const row = await db.get('SELECT * FROM trivia_questions ORDER BY RANDOM() LIMIT 1');
-        if (!row) {
-           await sendChatMessage(`No trivia questions are available.`);
-           triviaLoopActive = false;
-           return;
-        }
-        
-        const rewardRaw = globalConfig['reward_trivia'];
-        const reward = rewardRaw !== undefined ? parseInt(rewardRaw, 10) : 1000;
-        const durationRaw = globalConfig['trivia_duration'];
-        const duration = durationRaw !== undefined ? parseInt(durationRaw, 10) : 60;
-        const hintDelayRaw = globalConfig['trivia_hint_delay'];
-        const hintDelay = hintDelayRaw !== undefined ? parseInt(hintDelayRaw, 10) : 30;
-        
-        let hintTimeout = null;
-        let endTimeout = null;
+      const row = await db.get(
+        "SELECT * FROM trivia_questions ORDER BY RANDOM() LIMIT 1",
+      );
+      if (!row) {
+        await sendChatMessage(`No trivia questions are available.`);
+        triviaLoopActive = false;
+        return;
+      }
 
-        if (row.hint) {
-          hintTimeout = setTimeout(() => {
-            if (activeTrivia && activeTrivia.answer === row.answer) {
-              sendChatMessage(`${row.hint} CaitThinking `);
-            }
-          }, hintDelay * 1000);
-        }
+      const rewardRaw = globalConfig["reward_trivia"];
+      const reward = rewardRaw !== undefined ? parseInt(rewardRaw, 10) : 1000;
+      const durationRaw = globalConfig["trivia_duration"];
+      const duration =
+        durationRaw !== undefined ? parseInt(durationRaw, 10) : 60;
+      const hintDelayRaw = globalConfig["trivia_hint_delay"];
+      const hintDelay =
+        hintDelayRaw !== undefined ? parseInt(hintDelayRaw, 10) : 30;
 
-        endTimeout = setTimeout(async () => {
-           try {
-             if (activeTrivia && activeTrivia.answer === row.answer) {
-               const completedTrivia = activeTrivia;
-               activeTrivia = null;
-               
-               let submitterText = '';
-               if (completedTrivia.submitter) {
-                 const authorRewardRaw = globalConfig['reward_trivia_submitter'];
-                 const authorReward = authorRewardRaw !== undefined ? parseInt(authorRewardRaw, 10) : 50;
-                 if (authorReward > 0) {
-                   await db.run('UPDATE users SET points = points + ? WHERE username = ?', [authorReward, completedTrivia.submitter]);
-                   if (completedTrivia.submission_id) {
-                     await db.run('UPDATE user_submissions SET points_earned = points_earned + ? WHERE id = ?', [authorReward, completedTrivia.submission_id]);
-                   }
-                   submitterText = ` (${completedTrivia.submitter} gets ${authorReward} pts because no one answered!)`;
-                 }
-               }
+      let hintTimeout = null;
+      let endTimeout = null;
 
-               sendChatMessage(`Time's up! Nobody guessed the correct answer. The answer was: ${row.answer} MaxLOL ${submitterText}`);
-               
-               if (completedTrivia.attempts === 0) {
-                 consecutiveUnansweredTrivia++;
-               } else {
-                 consecutiveUnansweredTrivia = 0;
-               }
-               await sleep(2000);
-               if (consecutiveUnansweredTrivia >= 3) {
-                  sendChatMessage(`no one is here... CaitThinking  stopping trivia... `);
-                  triviaLoopActive = false;
-               }
+      if (row.hint) {
+        hintTimeout = setTimeout(() => {
+          if (activeTrivia && activeTrivia.answer === row.answer) {
+            sendChatMessage(`${row.hint} CaitThinking `);
+          }
+        }, hintDelay * 1000);
+      }
 
-               if (triviaLoopActive) {
-                  nextTriviaTimeout = setTimeout(startTriviaQuestion, 30000);
-               }
-             }
-           } catch(e) {
-             console.error("Error in trivia end timeout:", e);
-           }
-        }, duration * 1000);
-
-        activeTrivia = {
-           question: row.question,
-           answer: row.answer,
-           reward: reward,
-           hintTimeout: hintTimeout,
-           endTimeout: endTimeout,
-           submitter: row.submitter,
-           submission_id: row.submission_id,
-           attempts: 0
-        };
-        
-        let catsStr = "Uncategorized";
+      endTimeout = setTimeout(async () => {
         try {
-          if (row.categories) {
-            const parsed = JSON.parse(row.categories);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              catsStr = parsed.join(', ');
+          if (activeTrivia && activeTrivia.answer === row.answer) {
+            const completedTrivia = activeTrivia;
+            activeTrivia = null;
+
+            let submitterText = "";
+            if (completedTrivia.submitter) {
+              const authorRewardRaw = globalConfig["reward_trivia_submitter"];
+              const authorReward =
+                authorRewardRaw !== undefined
+                  ? parseInt(authorRewardRaw, 10)
+                  : 50;
+              if (authorReward > 0) {
+                await db.run(
+                  "UPDATE users SET points = points + ? WHERE username = ?",
+                  [authorReward, completedTrivia.submitter],
+                );
+                if (completedTrivia.submission_id) {
+                  await db.run(
+                    "UPDATE user_submissions SET points_earned = points_earned + ? WHERE id = ?",
+                    [authorReward, completedTrivia.submission_id],
+                  );
+                }
+                submitterText = ` (${completedTrivia.submitter} gets ${authorReward} pts because no one answered!)`;
+              }
+            }
+
+            sendChatMessage(
+              `Time's up! Nobody guessed the correct answer. The answer was: ${row.answer} MaxLOL ${submitterText}`,
+            );
+
+            if (completedTrivia.attempts === 0) {
+              consecutiveUnansweredTrivia++;
+            } else {
+              consecutiveUnansweredTrivia = 0;
+            }
+            await sleep(2000);
+            if (consecutiveUnansweredTrivia >= 3) {
+              sendChatMessage(
+                `no one is here... CaitThinking  stopping trivia... `,
+              );
+              triviaLoopActive = false;
+            }
+
+            if (triviaLoopActive) {
+              nextTriviaTimeout = setTimeout(startTriviaQuestion, 30000);
             }
           }
-        } catch(e) {}
-        
-        await sendChatMessage(`Category: ${catsStr} Question: ${row.question} (First to answer gets ${reward} points! You have ${duration} seconds)`);
-    } catch(e) {
-        console.error("Trivia start error:", e);
+        } catch (e) {
+          console.error("Error in trivia end timeout:", e);
+        }
+      }, duration * 1000);
+
+      activeTrivia = {
+        question: row.question,
+        answer: row.answer,
+        reward: reward,
+        hintTimeout: hintTimeout,
+        endTimeout: endTimeout,
+        submitter: row.submitter,
+        submission_id: row.submission_id,
+        attempts: 0,
+      };
+
+      let catsStr = "Uncategorized";
+      try {
+        if (row.categories) {
+          const parsed = JSON.parse(row.categories);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            catsStr = parsed.join(", ");
+          }
+        }
+      } catch (e) {}
+
+      await sendChatMessage(
+        `Category: ${catsStr} Question: ${row.question} (First to answer gets ${reward} points! You have ${duration} seconds)`,
+      );
+    } catch (e) {
+      console.error("Trivia start error:", e);
     }
   }
 
   async function triggerRandomRaffle(triggerName) {
     if (!areRandomSupportRafflesEnabled()) {
-      console.log(`* [RANDOM RAFFLE] Skipped ${triggerName} raffle in ${getCurrentChannelLogin()} (disabled).`);
+      console.log(
+        `* [RANDOM RAFFLE] Skipped ${triggerName} raffle in ${getCurrentChannelLogin()} (disabled).`,
+      );
       return;
     }
-    if (activeRaffle) return; 
+    if (activeRaffle) return;
 
     const isMulti = Math.random() < 0.5;
-    
-    const minPoints = parseInt(globalConfig['reward_raffle_min'] || '1500', 10);
-    const maxPoints = parseInt(globalConfig['reward_raffle_max'] || '25000', 10);
-    const amount = Math.floor(Math.random() * (maxPoints - minPoints + 1)) + minPoints;
-    
+
+    const minPoints = parseInt(globalConfig["reward_raffle_min"] || "1500", 10);
+    const maxPoints = parseInt(
+      globalConfig["reward_raffle_max"] || "25000",
+      10,
+    );
+    const amount =
+      Math.floor(Math.random() * (maxPoints - minPoints + 1)) + minPoints;
+
     const durationMinutes = 1;
     const durationMs = durationMinutes * 30000;
     const durationStr = `30 seconds`;
 
     if (isMulti) {
-      const minWinnersRaffle = parseInt(globalConfig['reward_multiraffle_min'] || '3', 10);
-      const maxWinnersRaffle = parseInt(globalConfig['reward_multiraffle_max'] || '12', 10);
-      const numWinners = Math.floor(Math.random() * (maxWinnersRaffle - minWinnersRaffle + 1)) + minWinnersRaffle;
+      const minWinnersRaffle = parseInt(
+        globalConfig["reward_multiraffle_min"] || "3",
+        10,
+      );
+      const maxWinnersRaffle = parseInt(
+        globalConfig["reward_multiraffle_max"] || "12",
+        10,
+      );
+      const numWinners =
+        Math.floor(Math.random() * (maxWinnersRaffle - minWinnersRaffle + 1)) +
+        minWinnersRaffle;
       activeRaffle = {
-        type: 'multi',
+        type: "multi",
         amount,
         numWinners,
         durationStr,
         endTime: Date.now() + durationMs,
         users: new Set(),
-        timeoutId: null
+        timeoutId: null,
       };
-      await sendChatMessage(`🎉 A random MULTI-RAFFLE was triggered by a ${triggerName}! ${amount} points will be split among ${numWinners} winners! Type !join to enter. You have ${durationStr}!`);
+      await sendChatMessage(
+        `🎉 A random MULTI-RAFFLE was triggered by a ${triggerName}! ${amount} points will be split among ${numWinners} winners! Type !join to enter. You have ${durationStr}!`,
+      );
     } else {
       activeRaffle = {
-        type: 'single',
+        type: "single",
         amount,
         durationStr,
         endTime: Date.now() + durationMs,
         users: new Set(),
-        timeoutId: null
+        timeoutId: null,
       };
-      await sendChatMessage(`🎉 A random RAFFLE was triggered by a ${triggerName}! 1 winner will get ${amount} points! Type !join to enter. You have ${durationStr}!`);
+      await sendChatMessage(
+        `🎉 A random RAFFLE was triggered by a ${triggerName}! 1 winner will get ${amount} points! Type !join to enter. You have ${durationStr}!`,
+      );
     }
 
     activeRaffle.timeoutId = setTimeout(async () => {
@@ -5266,16 +7163,18 @@ for (const [user, data] of Object.entries(war.userVotes)) {
       activeRaffle = null;
 
       if (r.users.size === 0) {
-        await sendChatMessage(`The random ${r.type === 'multi' ? 'multi-raffle' : 'raffle'} ended, but nobody joined! CaitThinking `);
+        await sendChatMessage(
+          `The random ${r.type === "multi" ? "multi-raffle" : "raffle"} ended, but nobody joined! CaitThinking `,
+        );
         return;
       }
 
       const { expanded, guaranteed } = await buildRaffleParticipants(r.users);
       const uniqueParticipants = Array.from(r.users);
-      
-      if (r.type === 'multi') {
+
+      if (r.type === "multi") {
         let allWinners = [];
-        
+
         // 1. Pick guaranteed winners first
         for (let i = guaranteed.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
@@ -5303,11 +7202,13 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         const splitAmount = Math.floor(r.amount / actualWinnersCount);
 
         for (const w of allWinners) {
-          await addPointsWithBonus(w, splitAmount, false, 'engagement');
+          await addPointsWithBonus(w, splitAmount, false, "engagement");
         }
         await updateRaffleStats(uniqueParticipants, allWinners, splitAmount);
-        const winnersText = allWinners.map(w => `${w}`).join(', ');
-        await sendChatMessage(`🎉 The random multi-raffle has ended! Congratulations to our ${actualWinnersCount} winners: ${winnersText}. You each won ${splitAmount} base points (plus your personal bonuses)!`);
+        const winnersText = allWinners.map((w) => `${w}`).join(", ");
+        await sendChatMessage(
+          `🎉 The random multi-raffle has ended! Congratulations to our ${actualWinnersCount} winners: ${winnersText}. You each won ${splitAmount} base points (plus your personal bonuses)!`,
+        );
       } else {
         let winner;
         if (guaranteed.length > 0) {
@@ -5315,10 +7216,17 @@ for (const [user, data] of Object.entries(war.userVotes)) {
         } else {
           winner = expanded[Math.floor(Math.random() * expanded.length)];
         }
-        
-        const finalAdded = await addPointsWithBonus(winner, r.amount, false, 'engagement');
+
+        const finalAdded = await addPointsWithBonus(
+          winner,
+          r.amount,
+          false,
+          "engagement",
+        );
         await updateRaffleStats(uniqueParticipants, [winner], finalAdded);
-        await sendChatMessage(`🎉 The random raffle has ended! Congratulations ${winner} you won ${finalAdded} points!`);
+        await sendChatMessage(
+          `🎉 The random raffle has ended! Congratulations ${winner} you won ${finalAdded} points!`,
+        );
       }
     }, durationMs);
   }
@@ -5327,66 +7235,76 @@ for (const [user, data] of Object.entries(war.userVotes)) {
   let eventSubSessionId = null;
 
   async function connectEventSub() {
-    const ws = new WebSocket('wss://eventsub.wss.twitch.tv/ws');
+    const ws = new WebSocket("wss://eventsub.wss.twitch.tv/ws");
 
-    ws.on('open', () => {
-      console.log('* Connected to Twitch EventSub WebSocket...');
+    ws.on("open", () => {
+      console.log("* Connected to Twitch EventSub WebSocket...");
     });
 
-    ws.on('message', async (data) => {
+    ws.on("message", async (data) => {
       const msg = JSON.parse(data.toString());
-      if (msg.metadata.message_type === 'session_welcome') {
+      if (msg.metadata.message_type === "session_welcome") {
         eventSubSessionId = msg.payload.session.id;
         console.log(`* EventSub Session Welcome. ID: \${eventSubSessionId}`);
         try {
-
-          const res = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${USER_ACCESS_TOKEN}`,
-              'Client-Id': CLIENT_ID,
-              'Content-Type': 'application/json'
+          const res = await fetch(
+            "https://api.twitch.tv/helix/eventsub/subscriptions",
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${USER_ACCESS_TOKEN}`,
+                "Client-Id": CLIENT_ID,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                type: "user.whisper.message",
+                version: "1",
+                condition: { user_id: YOUR_USER_ID },
+                transport: {
+                  method: "websocket",
+                  session_id: eventSubSessionId,
+                },
+              }),
             },
-            body: JSON.stringify({
-              type: 'user.whisper.message',
-              version: '1',
-              condition: { user_id: YOUR_USER_ID },
-              transport: {
-                method: 'websocket',
-                session_id: eventSubSessionId
-              }
-            })
-          });
+          );
           const eventData = await res.json();
           if (res.status !== 202) {
-            console.error(`! Failed to subscribe to whispers via EventSub: ${res.status}`, JSON.stringify(eventData));
+            console.error(
+              `! Failed to subscribe to whispers via EventSub: ${res.status}`,
+              JSON.stringify(eventData),
+            );
           } else {
-            console.log('* Successfully subscribed to user.whisper.message via EventSub!');
+            console.log(
+              "* Successfully subscribed to user.whisper.message via EventSub!",
+            );
           }
         } catch (err) {
-          console.error('! Error subscribing to EventSub:', err);
+          console.error("! Error subscribing to EventSub:", err);
         }
-      } else if (msg.metadata.message_type === 'notification') {
-        if (msg.metadata.subscription_type === 'user.whisper.message') {
+      } else if (msg.metadata.message_type === "notification") {
+        if (msg.metadata.subscription_type === "user.whisper.message") {
           const payload = msg.payload.event;
           const chatterName = payload.from_user_login;
-          const messageText = payload.whisper && payload.whisper.text ? payload.whisper.text : '';
-          const msgId = payload.whisper_id || 'whisper-' + Date.now();
+          const messageText =
+            payload.whisper && payload.whisper.text ? payload.whisper.text : "";
+          const msgId = payload.whisper_id || "whisper-" + Date.now();
           console.log(`[WHISPER RECEIVED] ${chatterName}: ${messageText}`);
-          
+
           if (activeWs && activeWs.readyState === 1) {
-             const mockIrcLine = `@badges=;display-name=${chatterName};emotes=;id=${msgId};user-id=${payload.from_user_id} :${chatterName}!${chatterName}@${chatterName}.tmi.twitch.tv PRIVMSG #${TARGET_CHANNEL} :${messageText}`;
-             activeWs.emit('message', Buffer.from(mockIrcLine));
+            const mockIrcLine = `@badges=;display-name=${chatterName};emotes=;id=${msgId};user-id=${payload.from_user_id} :${chatterName}!${chatterName}@${chatterName}.tmi.twitch.tv PRIVMSG #${TARGET_CHANNEL} :${messageText}`;
+            activeWs.emit("message", Buffer.from(mockIrcLine));
           }
         }
       }
     });
 
-    ws.on('close', () => {
-      console.log('* Disconnected from Twitch EventSub WebSocket. Reconnecting in 5s...');
+    ws.on("close", () => {
+      console.log(
+        "* Disconnected from Twitch EventSub WebSocket. Reconnecting in 5s...",
+      );
       setTimeout(() => connectEventSub(), 5000);
     });
-    
+
     eventSubWs = ws;
   }
 
@@ -5394,10 +7312,10 @@ for (const [user, data] of Object.entries(war.userVotes)) {
     try {
       USER_ACCESS_TOKEN = await getValidAccessToken();
     } catch (err) {
-      console.error('! Failed to refresh token before reconnecting:', err);
+      console.error("! Failed to refresh token before reconnecting:", err);
     }
 
-    const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+    const ws = new WebSocket("wss://irc-ws.chat.twitch.tv:443");
     let isReconnecting = false;
     let watchdogTimer = null;
     let hasJoinedChannels = false;
@@ -5405,876 +7323,1489 @@ for (const [user, data] of Object.entries(war.userVotes)) {
 
     function resetWatchdog() {
       if (watchdogTimer) clearTimeout(watchdogTimer);
-      watchdogTimer = setTimeout(() => {
-        console.log('! No messages from Twitch for 6 minutes. Connection is likely dead. Terminating to force reconnect...');
-        ws.terminate();
-      }, 6 * 60 * 1000);
+      watchdogTimer = setTimeout(
+        () => {
+          console.log(
+            "! No messages from Twitch for 6 minutes. Connection is likely dead. Terminating to force reconnect...",
+          );
+          ws.terminate();
+        },
+        6 * 60 * 1000,
+      );
     }
 
-    ws.on('open', () => {
+    ws.on("open", () => {
       resetWatchdog();
       isReconnecting = false;
-      console.log(`* Connected to Twitch IRC for ${channelList.map(runtime => runtime.login).join(', ')}...`);
-      
+      console.log(
+        `* Connected to Twitch IRC for ${channelList.map((runtime) => runtime.login).join(", ")}...`,
+      );
+
       // Request all capabilities
-      ws.send('CAP REQ :twitch.tv/membership twitch.tv/tags twitch.tv/commands');
+      ws.send(
+        "CAP REQ :twitch.tv/membership twitch.tv/tags twitch.tv/commands",
+      );
       ws.send(`PASS oauth:${USER_ACCESS_TOKEN}`);
       ws.send(`NICK ${BOT_USERNAME}`);
-
     });
 
-    ws.on('message', (data) => {
-      ircProcessingQueue = ircProcessingQueue.then(async () => {
-      resetWatchdog();
-      const rawMessage = data.toString().trim();
-      const lines = rawMessage.split('\r\n');
+    ws.on("message", (data) => {
+      ircProcessingQueue = ircProcessingQueue
+        .then(async () => {
+          resetWatchdog();
+          const rawMessage = data.toString().trim();
+          const lines = rawMessage.split("\r\n");
 
-      for (const line of lines) {
-        if (!line) continue;
+          for (const line of lines) {
+            if (!line) continue;
 
-        if (line.startsWith('PING')) {
-          ws.send('PONG :tmi.twitch.tv');
-          continue;
-        }
-
-        let tags = {};
-        let remaining = line;
-
-        if (remaining.startsWith('@')) {
-          const spaceIndex = remaining.indexOf(' ');
-          const tagsStr = remaining.substring(1, spaceIndex);
-          remaining = remaining.substring(spaceIndex + 1);
-
-          tagsStr.split(';').forEach(tag => {
-            const [key, value] = tag.split('=');
-            tags[key] = value;
-          });
-        }
-
-        const parts = remaining.split(' ');
-        const source = parts[0];
-        const command = parts[1];
-        const channel = parts[2];
-
-        // Join channel only after successfully authenticating
-        if ((command === '001' || command === '376') && !hasJoinedChannels) {
-          hasJoinedChannels = true;
-          for (const runtime of channelList) {
-            ws.send(`JOIN #${runtime.login}`);
-            console.log(`* Authentication successful! Joining #${runtime.login}...`);
-          }
-        }
-
-        const messageRuntime = resolveChannelRuntime((channel || '').replace(/^#/, '')) || mainChannelRuntime;
-        await runInChannel(messageRuntime, async () => {
-        if (command === 'PRIVMSG') {
-          const messageText = parts.slice(3).join(' ').substring(1);
-          const chatterName = tags['display-name'] ? tags['display-name'].toLowerCase() : source.split('!')[0].substring(1).toLowerCase();
-          const isSub = hasSubscriberChatBadge(tags);
-          const twitchUserId = tags['user-id'] || null;
-          
-          const subRewardAmt = parseInt(globalConfig['reward_chat_sub'] || '750', 10);
-          const nonsubRewardAmt = parseInt(globalConfig['reward_chat_nonsub'] || '500', 10);
-          const pointReward = isSub ? subRewardAmt : nonsubRewardAmt;
-          const useLegacyChatRewards = getPointEarningMode() === POINT_EARNING_MODE_LEGACY;
-          const bits = parseInt(tags['bits']) || 0;
-          if (bits > 0) {
-            console.log(`[BITS EVENT DETECTED] Raw tags:`, JSON.stringify(tags));
-          }
-
-          if (bits > 0 && chatterName && !ignoredBots.includes(chatterName)) {
-            const pointsPerBit = parseInt(globalConfig['reward_bits'] || '10', 10);
-            const pointsToAward = bits * pointsPerBit;
-            if (db) {
-              if (isSupportPointRewardEnabled('reward_bits_enabled')) {
-                const finalAwarded = await addPointsWithBonus(chatterName, pointsToAward, false, 'engagement');
-                console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for cheering ${bits} bits!`);
-                await sendChatMessage(`🎉 ${chatterName} cheered ${bits} bits! You received ${finalAwarded} points!`);
-              }
-              setTimeout(async () => {
-                await triggerRandomRaffle('bit cheer');
-              }, 3000);
+            if (line.startsWith("PING")) {
+              ws.send("PONG :tmi.twitch.tv");
+              continue;
             }
-          }
 
-          if (db && chatterName && !ignoredBots.includes(chatterName)) {
-            channelState.globalValidMessageCount++;
-            const now = Date.now();
-            let user = await db.get('SELECT last_message_time FROM users WHERE username = ?', chatterName);
-            const isLive = await isStreamerLive();
+            let tags = {};
+            let remaining = line;
 
-            let pending = pendingActivityUpdates.get(chatterName);
-            let lastMsgTime = pending && pending.lastMessageTime ? pending.lastMessageTime : (user ? user.last_message_time : 0);
-            
-            if (!user && !pending) {
-              pendingActivityUpdates.set(chatterName, {
-                isNew: true,
-                pointsReward: isLive && useLegacyChatRewards ? pointReward : 0,
-                lastMessageTime: now,
-                trueLastChatTime: now,
-                awardedPoints: true,
-                twitchUserId,
-                isSubscriber: isSub
+            if (remaining.startsWith("@")) {
+              const spaceIndex = remaining.indexOf(" ");
+              const tagsStr = remaining.substring(1, spaceIndex);
+              remaining = remaining.substring(spaceIndex + 1);
+
+              tagsStr.split(";").forEach((tag) => {
+                const [key, value] = tag.split("=");
+                tags[key] = value;
               });
-            } else {
-              let record = pending || { isNew: false, pointsReward: 0, awardedPoints: false, lastMessageTime: lastMsgTime };
-              record.trueLastChatTime = now;
-              record.twitchUserId = twitchUserId;
-              record.isSubscriber = isSub;
-              
-              const chatCdMins = parseInt(globalConfig['reward_chat_cooldown'] || '25', 10);
-              if (now - lastMsgTime >= chatCdMins * 60 * 1000) {
-                record.lastMessageTime = now;
-                if (isLive && useLegacyChatRewards) {
-                  record.pointsReward += pointReward;
-                  record.awardedPoints = true;
-                }
-              }
-              pendingActivityUpdates.set(chatterName, record);
             }
-          }
 
-          let event = {
-            chatter_user_login: chatterName,
-            badges: tags['badges'] ? tags['badges'].split(',').map(b => {
-              const [set_id, id] = b.split('/');
-              return { set_id, id };
-            }) : [],
-            message: {
-              text: messageText,
-              fragments: buildFragmentsFromIrc(messageText, tags['emotes'])
-            },
-            message_id: tags['id']
-          };
+            const parts = remaining.split(" ");
+            const source = parts[0];
+            const command = parts[1];
+            const channel = parts[2];
 
-          let chatText = event.message.text.trim();
+            // Join channel only after successfully authenticating
+            if (
+              (command === "001" || command === "376") &&
+              !hasJoinedChannels
+            ) {
+              hasJoinedChannels = true;
+              for (const runtime of channelList) {
+                ws.send(`JOIN #${runtime.login}`);
+                console.log(
+                  `* Authentication successful! Joining #${runtime.login}...`,
+                );
+              }
+            }
 
-          // --- COMMAND LOGIC START ---
-     
-          const isBotBadge = event.badges.some(b => b.set_id === 'bot');
-          if (isBotBadge || ignoredBots.includes(chatterName.toLowerCase()) || chatterName.toLowerCase() === BOT_USERNAME.toLowerCase()) {
-            return;
-          }
+            const messageRuntime =
+              resolveChannelRuntime((channel || "").replace(/^#/, "")) ||
+              mainChannelRuntime;
+            await runInChannel(messageRuntime, async () => {
+              if (command === "PRIVMSG") {
+                const messageText = parts.slice(3).join(" ").substring(1);
+                const chatterName = tags["display-name"]
+                  ? tags["display-name"].toLowerCase()
+                  : source.split("!")[0].substring(1).toLowerCase();
+                const isSub = hasSubscriberChatBadge(tags);
+                const twitchUserId = tags["user-id"] || null;
 
-          if (activeTrivia) {
-            activeTrivia.attempts++;
-            const getLevenshteinDistance = (a, b) => {
-              const matrix = [];
-              if (a.length === 0) return b.length;
-              if (b.length === 0) return a.length;
-              for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-              for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-              for (let i = 1; i <= b.length; i++) {
-                for (let j = 1; j <= a.length; j++) {
-                  if (b.charAt(i - 1) === a.charAt(j - 1)) {
-                    matrix[i][j] = matrix[i - 1][j - 1];
+                const subRewardAmt = parseInt(
+                  globalConfig["reward_chat_sub"] || "750",
+                  10,
+                );
+                const nonsubRewardAmt = parseInt(
+                  globalConfig["reward_chat_nonsub"] || "500",
+                  10,
+                );
+                const pointReward = isSub ? subRewardAmt : nonsubRewardAmt;
+                const useLegacyChatRewards =
+                  getPointEarningMode() === POINT_EARNING_MODE_LEGACY;
+                const bits = parseInt(tags["bits"]) || 0;
+                if (bits > 0) {
+                  console.log(
+                    `[BITS EVENT DETECTED] Raw tags:`,
+                    JSON.stringify(tags),
+                  );
+                }
+
+                if (
+                  bits > 0 &&
+                  chatterName &&
+                  !ignoredBots.includes(chatterName)
+                ) {
+                  const pointsPerBit = parseInt(
+                    globalConfig["reward_bits"] || "10",
+                    10,
+                  );
+                  const pointsToAward = bits * pointsPerBit;
+                  if (db) {
+                    if (isSupportPointRewardEnabled("reward_bits_enabled")) {
+                      const finalAwarded = await addPointsWithBonus(
+                        chatterName,
+                        pointsToAward,
+                        false,
+                        "engagement",
+                      );
+                      console.log(
+                        `* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for cheering ${bits} bits!`,
+                      );
+                      await sendChatMessage(
+                        `🎉 ${chatterName} cheered ${bits} bits! You received ${finalAwarded} points!`,
+                      );
+                    }
+                    setTimeout(async () => {
+                      await triggerRandomRaffle("bit cheer");
+                    }, 3000);
+                  }
+                }
+
+                if (db && chatterName && !ignoredBots.includes(chatterName)) {
+                  channelState.globalValidMessageCount++;
+                  const now = Date.now();
+                  let user = await db.get(
+                    "SELECT last_message_time FROM users WHERE username = ?",
+                    chatterName,
+                  );
+                  const isLive = await isStreamerLive();
+
+                  let pending = pendingActivityUpdates.get(chatterName);
+                  let lastMsgTime =
+                    pending && pending.lastMessageTime
+                      ? pending.lastMessageTime
+                      : user
+                        ? user.last_message_time
+                        : 0;
+
+                  if (!user && !pending) {
+                    pendingActivityUpdates.set(chatterName, {
+                      isNew: true,
+                      pointsReward:
+                        isLive && useLegacyChatRewards ? pointReward : 0,
+                      lastMessageTime: now,
+                      trueLastChatTime: now,
+                      awardedPoints: true,
+                      twitchUserId,
+                      isSubscriber: isSub,
+                    });
                   } else {
-                    matrix[i][j] = Math.min(
-                      matrix[i - 1][j - 1] + 1,
-                      matrix[i][j - 1] + 1,
-                      matrix[i - 1][j] + 1
+                    let record = pending || {
+                      isNew: false,
+                      pointsReward: 0,
+                      awardedPoints: false,
+                      lastMessageTime: lastMsgTime,
+                    };
+                    record.trueLastChatTime = now;
+                    record.twitchUserId = twitchUserId;
+                    record.isSubscriber = isSub;
+
+                    const chatCdMins = parseInt(
+                      globalConfig["reward_chat_cooldown"] || "25",
+                      10,
                     );
-                  }
-                }
-              }
-              return matrix[b.length][a.length];
-            };
-
-            const getSimilarityPercentage = (guess, answer) => {
-              guess = guess.toLowerCase();
-              answer = answer.toLowerCase();
-              const distance = getLevenshteinDistance(guess, answer);
-              const longestLength = Math.max(guess.length, answer.length);
-              if (longestLength === 0) return 1.0;
-              return (longestLength - distance) / longestLength;
-            };
-
-            const similarity = getSimilarityPercentage(chatText, activeTrivia.answer);
-            if (similarity >= 0.8) {
-              const completedTrivia = activeTrivia;
-              activeTrivia = null;
-              consecutiveUnansweredTrivia = 0;
-              
-              if (completedTrivia.hintTimeout) clearTimeout(completedTrivia.hintTimeout);
-              if (completedTrivia.endTimeout) clearTimeout(completedTrivia.endTimeout);
-              
-              const reward = completedTrivia.reward;
-              const a = completedTrivia.answer;
-              
-              await db.run('UPDATE users SET points = points + ? WHERE username = ?', [reward, chatterName]);
-              
-              await sendChatMessage(`Congratulations ${chatterName} ! You answered correctly and won ${reward} points! The answer was: ${a} PogChamp`);
-              
-              if (triviaLoopActive) {
-                nextTriviaTimeout = setTimeout(startTriviaQuestion, 30000);
-              }
-            }
-          }
-
-          if (activeChatWar) {
-            const words = chatText.split(' ');
-            const isVote1 = words.includes(activeChatWar.emote1);
-            const isVote2 = words.includes(activeChatWar.emote2);
-            if (isVote1 || isVote2) {
-              const choice = isVote1 ? activeChatWar.emote1 : activeChatWar.emote2;
-              const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
-              
-              if (activeChatWar && user && user.points >= activeChatWar.cost) {
-                if (!activeChatWar.userVotes[chatterName]) {
-                  activeChatWar.userVotes[chatterName] = { choice, spent: 0 };
-                }
-                   
-                if (activeChatWar.userVotes[chatterName].choice === choice) {
-                  await db.run('UPDATE users SET points = points - ? WHERE username = ?', [activeChatWar.cost, chatterName]);
-                  
-                  if (activeChatWar) {
-                    activeChatWar.userVotes[chatterName].spent += activeChatWar.cost;
-                    activeChatWar.totalPool += activeChatWar.cost;
-                    if (choice === activeChatWar.emote1) activeChatWar.score1++;
-                    else activeChatWar.score2++;
-                        
-                    broadcastChatWarState(activeChatWar);
-                  }
-                }
-              }
-            }
-          }
-
-          let args = chatText.split(' ').filter(arg => arg.trim() !== '');
-          if (args.length === 0) return;
-          let commandName = args.shift().toLowerCase();
-          
-          if (builtInAliases[commandName]) {
-            commandName = builtInAliases[commandName];
-          }
-
-          // Spam Reduction System Check
-          let isSpamBlocked = false;
-          let currentSpamTimeout = spamTimeouts.get(chatterName) || 0;
-          if (Date.now() < currentSpamTimeout) {
-            const blockedStr = globalConfig['spam_reduction_blocked_commands'] || '';
-            const blockedCmds = blockedStr.split(',').map(c => c.trim().toLowerCase()).filter(c => c !== '');
-            if (blockedCmds.length === 0 || blockedCmds.includes(commandName)) {
-              isSpamBlocked = true;
-            }
-          }
-
-          // Spam Reduction Tracking
-          const spamEnabledRaw = globalConfig['spam_reduction_enabled'] || '0';
-          const spamEnabled = spamEnabledRaw === '1' || spamEnabledRaw === 'true';
-          
-          if (spamEnabled) {
-            const isLive = await isStreamerLive();
-            const onlineEnabledRaw = globalConfig['spam_reduction_online_enabled'] || '1';
-            const onlineEnabled = onlineEnabledRaw === '1' || onlineEnabledRaw === 'true';
-            const offlineEnabledRaw = globalConfig['spam_reduction_offline_enabled'] || '1';
-            const offlineEnabled = offlineEnabledRaw === '1' || offlineEnabledRaw === 'true';
-            
-            if ((isLive && onlineEnabled) || (!isLive && offlineEnabled)) {
-              const spamCmdsStr = globalConfig['spam_reduction_commands'] || '!gamble,!roll';
-              const monitoredCmds = spamCmdsStr.split(',').map(c => c.trim().toLowerCase()).filter(c => c !== '');
-              
-              if (monitoredCmds.includes(commandName)) {
-                const now = Date.now();
-                const sameCount = parseInt(globalConfig['spam_reduction_same_count'] || '3', 10);
-                const sameWindow = parseInt(globalConfig['spam_reduction_same_window'] || '8000', 10);
-                const diffCount = parseInt(globalConfig['spam_reduction_diff_count'] || '5', 10);
-                const diffWindow = parseInt(globalConfig['spam_reduction_diff_window'] || '12000', 10);
-                
-                let history = userSpamHistory.get(chatterName) || [];
-                history.push({ cmd: commandName, time: now });
-                
-                const maxWindow = Math.max(sameWindow, diffWindow);
-                history = history.filter(h => (now - h.time) <= maxWindow);
-                userSpamHistory.set(chatterName, history);
-                
-                const sameCmdHistory = history.filter(h => h.cmd === commandName && (now - h.time) <= sameWindow);
-                const diffCmdHistory = history.filter(h => (now - h.time) <= diffWindow);
-                
-                if (sameCmdHistory.length >= sameCount || diffCmdHistory.length >= diffCount) {
-                   const penaltyPercent = parseFloat(globalConfig['spam_reduction_percent_loss']) || 15;
-                   const timeoutMs = parseInt(globalConfig['spam_reduction_timeout'] || '600000', 10);
-                   
-                   if (isSpamBlocked) {
-                      // PROGRESSIVE PUNISHMENT (Triggered inside the window)
-                      try {
-                        const user = await db.get('SELECT points FROM users WHERE username = ?', [chatterName]);
-                        let lost = 0;
-                        if (user && user.points > 0) {
-                          lost = Math.floor(user.points * (penaltyPercent / 100));
-                          await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE username = ?', [lost, chatterName]);
-                        }
-                        
-                        const newTimeout = (spamTimeouts.get(chatterName) || currentSpamTimeout) + timeoutMs;
-                        spamTimeouts.set(chatterName, newTimeout);
-                        userSpamHistory.set(chatterName, []); 
-                        
-                        const lastMsgTime = spamPunishMsgDebounce.get(chatterName) || 0;
-                        if (Date.now() - lastMsgTime > 10000) {
-                           const remainingMins = Math.ceil((newTimeout - Date.now()) / 60000);
-                           let msg = `${chatterName} `;
-                           if (lost > 0) msg += `lost ${lost.toLocaleString()} points and `;
-                           msg += `is unable to use any commands for ${remainingMins} minutes for continued spam monkaO `;
-                           sendChatMessage(msg);
-                           spamPunishMsgDebounce.set(chatterName, Date.now());
-                        }
-                      } catch (e) {
-                        console.error('Error applying progressive spam punishment:', e);
+                    if (now - lastMsgTime >= chatCdMins * 60 * 1000) {
+                      record.lastMessageTime = now;
+                      if (isLive && useLegacyChatRewards) {
+                        record.pointsReward += pointReward;
+                        record.awardedPoints = true;
                       }
-                   } else {
-                      if (!spamWarnings.has(chatterName)) {
-                         // WARNING
-                         spamWarnings.set(chatterName, now);
-                         userSpamHistory.set(chatterName, []);
-                         const timeInSeconds = timeoutMs / 1000;
-                         const timeString = timeInSeconds >= 60 ? `${Math.floor(timeInSeconds / 60)} minute${Math.floor(timeInSeconds / 60) > 1 ? 's' : ''}` : `${timeInSeconds} seconds`;
-                         await sendChatMessage(`${chatterName} stop spamming or you will lose ${penaltyPercent}% of your points and be unable to use any commands for ${timeString}`);
-                      } else {
-                        // NORMAL PUNISHMENT
-                        spamTimeouts.set(chatterName, now + timeoutMs);
-                        userSpamHistory.set(chatterName, []); 
-                        
-                        if (db) {
-                          const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
-                          if (user && user.points > 0) {
-                            const lostPoints = Math.floor(user.points * (penaltyPercent / 100));
-                            await db.run('UPDATE users SET points = MAX(0, points - ?) WHERE username = ?', [lostPoints, chatterName]);
+                    }
+                    pendingActivityUpdates.set(chatterName, record);
+                  }
+                }
+
+                let event = {
+                  chatter_user_login: chatterName,
+                  badges: tags["badges"]
+                    ? tags["badges"].split(",").map((b) => {
+                        const [set_id, id] = b.split("/");
+                        return { set_id, id };
+                      })
+                    : [],
+                  message: {
+                    text: messageText,
+                    fragments: buildFragmentsFromIrc(
+                      messageText,
+                      tags["emotes"],
+                    ),
+                  },
+                  message_id: tags["id"],
+                };
+
+                let chatText = event.message.text.trim();
+
+                // --- COMMAND LOGIC START ---
+
+                const isBotBadge = event.badges.some((b) => b.set_id === "bot");
+                if (
+                  isBotBadge ||
+                  ignoredBots.includes(chatterName.toLowerCase()) ||
+                  chatterName.toLowerCase() === BOT_USERNAME.toLowerCase()
+                ) {
+                  return;
+                }
+
+                if (activeTrivia) {
+                  activeTrivia.attempts++;
+                  const getLevenshteinDistance = (a, b) => {
+                    const matrix = [];
+                    if (a.length === 0) return b.length;
+                    if (b.length === 0) return a.length;
+                    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+                    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+                    for (let i = 1; i <= b.length; i++) {
+                      for (let j = 1; j <= a.length; j++) {
+                        if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                          matrix[i][j] = matrix[i - 1][j - 1];
+                        } else {
+                          matrix[i][j] = Math.min(
+                            matrix[i - 1][j - 1] + 1,
+                            matrix[i][j - 1] + 1,
+                            matrix[i - 1][j] + 1,
+                          );
+                        }
+                      }
+                    }
+                    return matrix[b.length][a.length];
+                  };
+
+                  const getSimilarityPercentage = (guess, answer) => {
+                    guess = guess.toLowerCase();
+                    answer = answer.toLowerCase();
+                    const distance = getLevenshteinDistance(guess, answer);
+                    const longestLength = Math.max(guess.length, answer.length);
+                    if (longestLength === 0) return 1.0;
+                    return (longestLength - distance) / longestLength;
+                  };
+
+                  const similarity = getSimilarityPercentage(
+                    chatText,
+                    activeTrivia.answer,
+                  );
+                  if (similarity >= 0.8) {
+                    const completedTrivia = activeTrivia;
+                    activeTrivia = null;
+                    consecutiveUnansweredTrivia = 0;
+
+                    if (completedTrivia.hintTimeout)
+                      clearTimeout(completedTrivia.hintTimeout);
+                    if (completedTrivia.endTimeout)
+                      clearTimeout(completedTrivia.endTimeout);
+
+                    const reward = completedTrivia.reward;
+                    const a = completedTrivia.answer;
+
+                    await db.run(
+                      "UPDATE users SET points = points + ? WHERE username = ?",
+                      [reward, chatterName],
+                    );
+
+                    await sendChatMessage(
+                      `Congratulations ${chatterName} ! You answered correctly and won ${reward} points! The answer was: ${a} PogChamp`,
+                    );
+
+                    if (triviaLoopActive) {
+                      nextTriviaTimeout = setTimeout(
+                        startTriviaQuestion,
+                        30000,
+                      );
+                    }
+                  }
+                }
+
+                if (activeChatWar) {
+                  const words = chatText.split(" ");
+                  const isVote1 = words.includes(activeChatWar.emote1);
+                  const isVote2 = words.includes(activeChatWar.emote2);
+                  if (isVote1 || isVote2) {
+                    const choice = isVote1
+                      ? activeChatWar.emote1
+                      : activeChatWar.emote2;
+                    const user = await db.get(
+                      "SELECT points FROM users WHERE username = ?",
+                      chatterName,
+                    );
+
+                    if (
+                      activeChatWar &&
+                      user &&
+                      user.points >= activeChatWar.cost
+                    ) {
+                      if (!activeChatWar.userVotes[chatterName]) {
+                        activeChatWar.userVotes[chatterName] = {
+                          choice,
+                          spent: 0,
+                        };
+                      }
+
+                      if (
+                        activeChatWar.userVotes[chatterName].choice === choice
+                      ) {
+                        await db.run(
+                          "UPDATE users SET points = points - ? WHERE username = ?",
+                          [activeChatWar.cost, chatterName],
+                        );
+
+                        if (activeChatWar) {
+                          activeChatWar.userVotes[chatterName].spent +=
+                            activeChatWar.cost;
+                          activeChatWar.totalPool += activeChatWar.cost;
+                          if (choice === activeChatWar.emote1)
+                            activeChatWar.score1++;
+                          else activeChatWar.score2++;
+
+                          broadcastChatWarState(activeChatWar);
+                        }
+                      }
+                    }
+                  }
+                }
+
+                let args = chatText
+                  .split(" ")
+                  .filter((arg) => arg.trim() !== "");
+                if (args.length === 0) return;
+                let commandName = args.shift().toLowerCase();
+
+                if (builtInAliases[commandName]) {
+                  commandName = builtInAliases[commandName];
+                }
+
+                // Spam Reduction System Check
+                let isSpamBlocked = false;
+                let currentSpamTimeout = spamTimeouts.get(chatterName) || 0;
+                if (Date.now() < currentSpamTimeout) {
+                  const blockedStr =
+                    globalConfig["spam_reduction_blocked_commands"] || "";
+                  const blockedCmds = blockedStr
+                    .split(",")
+                    .map((c) => c.trim().toLowerCase())
+                    .filter((c) => c !== "");
+                  if (
+                    blockedCmds.length === 0 ||
+                    blockedCmds.includes(commandName)
+                  ) {
+                    isSpamBlocked = true;
+                  }
+                }
+
+                // Spam Reduction Tracking
+                const spamEnabledRaw =
+                  globalConfig["spam_reduction_enabled"] || "0";
+                const spamEnabled =
+                  spamEnabledRaw === "1" || spamEnabledRaw === "true";
+
+                if (spamEnabled) {
+                  const isLive = await isStreamerLive();
+                  const onlineEnabledRaw =
+                    globalConfig["spam_reduction_online_enabled"] || "1";
+                  const onlineEnabled =
+                    onlineEnabledRaw === "1" || onlineEnabledRaw === "true";
+                  const offlineEnabledRaw =
+                    globalConfig["spam_reduction_offline_enabled"] || "1";
+                  const offlineEnabled =
+                    offlineEnabledRaw === "1" || offlineEnabledRaw === "true";
+
+                  if (
+                    (isLive && onlineEnabled) ||
+                    (!isLive && offlineEnabled)
+                  ) {
+                    const spamCmdsStr =
+                      globalConfig["spam_reduction_commands"] ||
+                      "!gamble,!roll";
+                    const monitoredCmds = spamCmdsStr
+                      .split(",")
+                      .map((c) => c.trim().toLowerCase())
+                      .filter((c) => c !== "");
+
+                    if (monitoredCmds.includes(commandName)) {
+                      const now = Date.now();
+                      const sameCount = parseInt(
+                        globalConfig["spam_reduction_same_count"] || "3",
+                        10,
+                      );
+                      const sameWindow = parseInt(
+                        globalConfig["spam_reduction_same_window"] || "8000",
+                        10,
+                      );
+                      const diffCount = parseInt(
+                        globalConfig["spam_reduction_diff_count"] || "5",
+                        10,
+                      );
+                      const diffWindow = parseInt(
+                        globalConfig["spam_reduction_diff_window"] || "12000",
+                        10,
+                      );
+
+                      let history = userSpamHistory.get(chatterName) || [];
+                      history.push({ cmd: commandName, time: now });
+
+                      const maxWindow = Math.max(sameWindow, diffWindow);
+                      history = history.filter(
+                        (h) => now - h.time <= maxWindow,
+                      );
+                      userSpamHistory.set(chatterName, history);
+
+                      const sameCmdHistory = history.filter(
+                        (h) =>
+                          h.cmd === commandName && now - h.time <= sameWindow,
+                      );
+                      const diffCmdHistory = history.filter(
+                        (h) => now - h.time <= diffWindow,
+                      );
+
+                      if (
+                        sameCmdHistory.length >= sameCount ||
+                        diffCmdHistory.length >= diffCount
+                      ) {
+                        const penaltyPercent =
+                          parseFloat(
+                            globalConfig["spam_reduction_percent_loss"],
+                          ) || 15;
+                        const timeoutMs = parseInt(
+                          globalConfig["spam_reduction_timeout"] || "600000",
+                          10,
+                        );
+
+                        if (isSpamBlocked) {
+                          // PROGRESSIVE PUNISHMENT (Triggered inside the window)
+                          try {
+                            const user = await db.get(
+                              "SELECT points FROM users WHERE username = ?",
+                              [chatterName],
+                            );
+                            let lost = 0;
+                            if (user && user.points > 0) {
+                              lost = Math.floor(
+                                user.points * (penaltyPercent / 100),
+                              );
+                              await db.run(
+                                "UPDATE users SET points = MAX(0, points - ?) WHERE username = ?",
+                                [lost, chatterName],
+                              );
+                            }
+
+                            const newTimeout =
+                              (spamTimeouts.get(chatterName) ||
+                                currentSpamTimeout) + timeoutMs;
+                            spamTimeouts.set(chatterName, newTimeout);
+                            userSpamHistory.set(chatterName, []);
+
+                            const lastMsgTime =
+                              spamPunishMsgDebounce.get(chatterName) || 0;
+                            if (Date.now() - lastMsgTime > 10000) {
+                              const remainingMins = Math.ceil(
+                                (newTimeout - Date.now()) / 60000,
+                              );
+                              let msg = `${chatterName} `;
+                              if (lost > 0)
+                                msg += `lost ${lost.toLocaleString()} points and `;
+                              msg += `is unable to use any commands for ${remainingMins} minutes for continued spam monkaO `;
+                              sendChatMessage(msg);
+                              spamPunishMsgDebounce.set(
+                                chatterName,
+                                Date.now(),
+                              );
+                            }
+                          } catch (e) {
+                            console.error(
+                              "Error applying progressive spam punishment:",
+                              e,
+                            );
+                          }
+                        } else {
+                          if (!spamWarnings.has(chatterName)) {
+                            // WARNING
+                            spamWarnings.set(chatterName, now);
+                            userSpamHistory.set(chatterName, []);
+                            const timeInSeconds = timeoutMs / 1000;
+                            const timeString =
+                              timeInSeconds >= 60
+                                ? `${Math.floor(timeInSeconds / 60)} minute${Math.floor(timeInSeconds / 60) > 1 ? "s" : ""}`
+                                : `${timeInSeconds} seconds`;
+                            await sendChatMessage(
+                              `${chatterName} stop spamming or you will lose ${penaltyPercent}% of your points and be unable to use any commands for ${timeString}`,
+                            );
+                          } else {
+                            // NORMAL PUNISHMENT
+                            spamTimeouts.set(chatterName, now + timeoutMs);
+                            userSpamHistory.set(chatterName, []);
+
+                            if (db) {
+                              const user = await db.get(
+                                "SELECT points FROM users WHERE username = ?",
+                                chatterName,
+                              );
+                              if (user && user.points > 0) {
+                                const lostPoints = Math.floor(
+                                  user.points * (penaltyPercent / 100),
+                                );
+                                await db.run(
+                                  "UPDATE users SET points = MAX(0, points - ?) WHERE username = ?",
+                                  [lostPoints, chatterName],
+                                );
+                              }
+                            }
+
+                            const timeInSeconds = timeoutMs / 1000;
+                            const timeString =
+                              timeInSeconds >= 60
+                                ? `${Math.floor(timeInSeconds / 60)} minute${Math.floor(timeInSeconds / 60) > 1 ? "s" : ""}`
+                                : `${timeInSeconds} seconds`;
+                            await sendChatMessage(
+                              ` Stop spamming ${chatterName} WeirdChamp you lost ${penaltyPercent}% of your points and cannot use commands for ${timeString}.`,
+                            );
                           }
                         }
-                        
-                        const timeInSeconds = timeoutMs / 1000;
-                        const timeString = timeInSeconds >= 60 ? `${Math.floor(timeInSeconds / 60)} minute${Math.floor(timeInSeconds / 60) > 1 ? 's' : ''}` : `${timeInSeconds} seconds`;
-                        await sendChatMessage(` Stop spamming ${chatterName} WeirdChamp you lost ${penaltyPercent}% of your points and cannot use commands for ${timeString}.`);
+                        return;
                       }
-                   }
-                   return;
+                    }
+                  }
                 }
-              }
-            }
-          }
 
-          if (isSpamBlocked) {
-             return; // Ignore command since they are blocked
-          }
-
-          // Global disable check
-          const disabledUntilRaw = globalConfig[`cmd_${commandName}_disabled_until`];
-          if (disabledUntilRaw) {
-            if (disabledUntilRaw === 'forever' || Date.now() < parseInt(disabledUntilRaw, 10)) {
-              return;
-            }
-          }
-
-          // Global sub-only check
-          const isSubOnly = globalConfig[`cmd_${commandName}_sub_only`] === 'true';
-          if (isSubOnly) {
-            const isSubOrMod = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'subscriber', 'founder'].includes(b.set_id)) || chatterName === TARGET_CHANNEL ;
-            if (!isSubOrMod) {
-              return;
-            }
-          }
-
-          // Stream status cache for this command execution
-          const isLive = await isStreamerLive();
-          const isOffline = !isLive;
-
-          // Global offline-only check
-          const isOfflineOnly = globalConfig[`cmd_${commandName}_offline_only`] === 'true';
-          if (isOfflineOnly && isLive) {
-            return;
-          }
-          if (customAliasesMap.has(commandName)) {
-            const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator'].includes(b.set_id)) ;
-            const isMod = hasPermission || chatterName === TARGET_CHANNEL;
-            const now = Date.now();
-            
-            const chatWideCdRaw = globalConfig['chat_wide_cooldown'];
-            const chatWideCd = chatWideCdRaw !== undefined ? parseInt(chatWideCdRaw, 10) : 1500;
-            if (!isMod && (now - lastChatWideCommandTime < chatWideCd)) {
-              console.log(`[RATE LIMIT] Chat-wide cooldown active. Ignoring custom command from ${chatterName}.`);
-              return;
-            }
-
-            const globalCdRaw = globalConfig['cmd_!global_cooldown'];
-            const globalCd = globalCdRaw !== undefined ? parseInt(globalCdRaw, 10) : COMMAND_COOLDOWN;
-            const lastGlobalTime = userCooldowns.get(chatterName) || 0;
-            if (!isMod && (now - lastGlobalTime < globalCd)) {
-              console.log(`[COOLDOWN] ${chatterName} is on global cooldown.`);
-              return;
-            }
-
-            const cmdCdOnlineRaw = globalConfig[`cmd_${commandName}_cooldown`];
-            const cmdCdOfflineRaw = globalConfig[`cmd_${commandName}_offline_cooldown`];
-            const cmdCdRaw = (isOffline && cmdCdOfflineRaw !== undefined && cmdCdOfflineRaw !== '') ? cmdCdOfflineRaw : cmdCdOnlineRaw;
-            const cmdCd = cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
-            if (cmdCd > 0) {
-              const lastCmdTime = commandCooldowns.get(`${chatterName}_${commandName}`) || 0;
-              if (!isMod && (now - lastCmdTime < cmdCd)) {
-                console.log(`[COOLDOWN] ${chatterName} is on command cooldown for ${commandName}.`);
-                return;
-              }
-              commandCooldowns.set(`${chatterName}_${commandName}`, now);
-            }
-
-            const globalCmdCdOnlineRaw = globalConfig[`cmd_${commandName}_global_chat_cooldown`];
-            const globalCmdCdOfflineRaw = globalConfig[`cmd_${commandName}_offline_global_chat_cooldown`];
-            const globalCmdCdRaw = (isOffline && globalCmdCdOfflineRaw !== undefined && globalCmdCdOfflineRaw !== '') ? globalCmdCdOfflineRaw : globalCmdCdOnlineRaw;
-            const globalCmdCd = globalCmdCdRaw !== undefined ? parseInt(globalCmdCdRaw, 10) : 0;
-            if (globalCmdCd > 0) {
-              const lastGlobalCmdTime = commandCooldowns.get(`GLOBAL_${commandName}`) || 0;
-              if (now - lastGlobalCmdTime < globalCmdCd) {
-                console.log(`[RATE LIMIT] ${commandName} is on global chat cooldown.`);
-                return;
-              }
-              commandCooldowns.set(`GLOBAL_${commandName}`, now);
-            }
-
-            userCooldowns.set(chatterName, now);
-            lastChatWideCommandTime = now;
-
-            const alias = customAliasesMap.get(commandName);
-            if (alias.cost > 0) {
-              const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
-              if (!user || user.points < alias.cost) {
-                console.log(`[COMMAND] ${chatterName} tried to use alias ${commandName} but lacks points.`);
-                return;
-              }
-              await db.run('UPDATE users SET points = points - ? WHERE username = ?', [alias.cost, chatterName]);
-            }
-
-            if (alias.action.startsWith('!')) {
-              chatText = alias.action;
-              args = chatText.split(' ');
-              commandName = args.shift().toLowerCase();
-              
-
-              event = {
-                ...event,
-                message: {
-                  ...event.message,
-                  text: chatText,
-                  fragments: chatText.split(' ').map(word => ({ type: 'text', text: word + ' ' }))
+                if (isSpamBlocked) {
+                  return; // Ignore command since they are blocked
                 }
-              };
 
-              // Re-check disable for the new resolved command
-              const newDisabledUntilRaw = globalConfig[`cmd_${commandName}_disabled_until`];
-              if (newDisabledUntilRaw) {
-                if (newDisabledUntilRaw === 'forever' || Date.now() < parseInt(newDisabledUntilRaw, 10)) {
-                  return;
+                // Global disable check
+                const disabledUntilRaw =
+                  globalConfig[`cmd_${commandName}_disabled_until`];
+                if (disabledUntilRaw) {
+                  if (
+                    disabledUntilRaw === "forever" ||
+                    Date.now() < parseInt(disabledUntilRaw, 10)
+                  ) {
+                    return;
+                  }
                 }
-              }
 
-              console.log(`[DEBUG] Executing alias command: ${commandName} for ${chatterName}`);
-
-              // Re-check sub-only for the new resolved command
-              const newIsSubOnly = globalConfig[`cmd_${commandName}_sub_only`] === 'true';
-              if (newIsSubOnly) {
-                const isSubOrMod = event.badges && event.badges.some(b => ['broadcaster', 'moderator', 'subscriber', 'founder'].includes(b.set_id)) || chatterName === TARGET_CHANNEL ;
-                if (!isSubOrMod) {
-                  return;
+                // Global sub-only check
+                const isSubOnly =
+                  globalConfig[`cmd_${commandName}_sub_only`] === "true";
+                if (isSubOnly) {
+                  const isSubOrMod =
+                    (event.badges &&
+                      event.badges.some((b) =>
+                        [
+                          "broadcaster",
+                          "moderator",
+                          "subscriber",
+                          "founder",
+                        ].includes(b.set_id),
+                      )) ||
+                    chatterName === TARGET_CHANNEL;
+                  if (!isSubOrMod) {
+                    return;
+                  }
                 }
-              }
 
-              // Re-check offline-only for the new resolved command
-              const newIsOfflineOnly = globalConfig[`cmd_${commandName}_offline_only`] === 'true';
-              if (newIsOfflineOnly) {
+                // Stream status cache for this command execution
                 const isLive = await isStreamerLive();
-                if (isLive) {
+                const isOffline = !isLive;
+
+                // Global offline-only check
+                const isOfflineOnly =
+                  globalConfig[`cmd_${commandName}_offline_only`] === "true";
+                if (isOfflineOnly && isLive) {
                   return;
                 }
-              }
-            } else {
-              await sendChatMessage(alias.action);
-              return;
-            }
-          }
-       
-          if (customCommands[commandName]) {
+                if (customAliasesMap.has(commandName)) {
+                  const hasPermission =
+                    event.badges &&
+                    event.badges.some((b) =>
+                      ["broadcaster", "moderator"].includes(b.set_id),
+                    );
+                  const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+                  const now = Date.now();
 
-            const command = customCommands[commandName];
-            
-            const dynamicCostRaw = globalConfig[`cmd_${commandName}_cost`];
-            const activeCost = dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : command.cost;
+                  const chatWideCdRaw = globalConfig["chat_wide_cooldown"];
+                  const chatWideCd =
+                    chatWideCdRaw !== undefined
+                      ? parseInt(chatWideCdRaw, 10)
+                      : 1500;
+                  if (!isMod && now - lastChatWideCommandTime < chatWideCd) {
+                    console.log(
+                      `[RATE LIMIT] Chat-wide cooldown active. Ignoring custom command from ${chatterName}.`,
+                    );
+                    return;
+                  }
 
-            const isBroadcaster = (event.badges && event.badges.some(b => b.set_id === 'broadcaster')) || chatterName === TARGET_CHANNEL;
+                  const globalCdRaw = globalConfig["cmd_!global_cooldown"];
+                  const globalCd =
+                    globalCdRaw !== undefined
+                      ? parseInt(globalCdRaw, 10)
+                      : COMMAND_COOLDOWN;
+                  const lastGlobalTime = userCooldowns.get(chatterName) || 0;
+                  if (!isMod && now - lastGlobalTime < globalCd) {
+                    console.log(
+                      `[COOLDOWN] ${chatterName} is on global cooldown.`,
+                    );
+                    return;
+                  }
 
-            if (activeCost > 0 && !command.manualCost && !isBroadcaster) {
-              const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
-              if (!user || user.points < activeCost) {
-                console.log(`[COMMAND] ${chatterName} tried to use ${commandName} but lacks points.`);
-                return;
-              }
-              await db.run('UPDATE users SET points = points - ? WHERE username = ?', [activeCost, chatterName]);
-            }
-
-            const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator'].includes(b.set_id)) ;
-            const isMod = hasPermission || chatterName === TARGET_CHANNEL;
-
-            const now = Date.now();
-            
-            const chatWideCdRaw = globalConfig['chat_wide_cooldown'];
-            const chatWideCd = chatWideCdRaw !== undefined ? parseInt(chatWideCdRaw, 10) : 1500;
-            
-            if (!isMod && (now - lastChatWideCommandTime < chatWideCd)) {
-              console.log(`[RATE LIMIT] Chat-wide cooldown active. Ignoring command from ${chatterName}.`);
-              return;
-            }
-
-            const globalCdRaw = globalConfig['cmd_!global_cooldown'];
-            const globalCd = globalCdRaw !== undefined ? parseInt(globalCdRaw, 10) : COMMAND_COOLDOWN;
-            const lastGlobalTime = userCooldowns.get(chatterName) || 0;
-            
-            if (!isMod && (now - lastGlobalTime < globalCd)) {
-              console.log(`[COOLDOWN] ${chatterName} is on global cooldown.`);
-              return;
-            }
-
-            const cmdCdOnlineRaw = globalConfig[`cmd_${commandName}_cooldown`];
-            const cmdCdOfflineRaw = globalConfig[`cmd_${commandName}_offline_cooldown`];
-            const cmdCdRaw = (isOffline && cmdCdOfflineRaw !== undefined && cmdCdOfflineRaw !== '') ? cmdCdOfflineRaw : cmdCdOnlineRaw;
-            const cmdCd = cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
-            
-            if (cmdCd > 0) {
-              const lastCmdTime = commandCooldowns.get(`${chatterName}_${commandName}`) || 0;
-              if (!isMod && (now - lastCmdTime < cmdCd)) {
-                console.log(`[COOLDOWN] ${chatterName} is on command cooldown for ${commandName}.`);
-                return;
-              }
-            }
-
-            const globalCmdCdOnlineRaw = globalConfig[`cmd_${commandName}_global_chat_cooldown`];
-            const globalCmdCdOfflineRaw = globalConfig[`cmd_${commandName}_offline_global_chat_cooldown`];
-            const globalCmdCdRaw = (isOffline && globalCmdCdOfflineRaw !== undefined && globalCmdCdOfflineRaw !== '') ? globalCmdCdOfflineRaw : globalCmdCdOnlineRaw;
-            const globalCmdCd = globalCmdCdRaw !== undefined ? parseInt(globalCmdCdRaw, 10) : 0;
-            
-            if (globalCmdCd > 0) {
-              const lastGlobalCmdTime = commandCooldowns.get(`GLOBAL_${commandName}`) || 0;
-              if (now - lastGlobalCmdTime < globalCmdCd) {
-                console.log(`[RATE LIMIT] ${commandName} is on global chat cooldown.`);
-                return;
-              }
-            }
-
-            const success = await command.execute(args, chatterName, event, hasPermission);
-            
-            if (success !== false) {
-              if (cmdCd > 0) commandCooldowns.set(`${chatterName}_${commandName}`, now);
-              if (globalCmdCd > 0) commandCooldowns.set(`GLOBAL_${commandName}`, now);
-              userCooldowns.set(chatterName, now);
-              lastChatWideCommandTime = now;
-            }
-
-            return;
-          }
-
-
-
-          if (chatText.toLowerCase() === '!showemote') {
-            const dynamicShowEmoteCost = parseInt(globalConfig['cmd_!showemote_cost'], 10) || 0;
-            await sendChatMessage(`Usage: !showemote <emote>  cost: ${dynamicShowEmoteCost} points (Modifiers cost extra)`);
-            return;
-          } else if (chatText.toLowerCase().startsWith('!showemote ')) {
-            // if (!await isStreamerLive()) return;
-
-            const hasPermission = event.badges && event.badges.some(b => ['broadcaster', 'moderator'].includes(b.set_id));
-            const isMod = hasPermission || chatterName === TARGET_CHANNEL;
-
-            if (!isMod) {
-              const now = Date.now();
-              
-              const chatWideCdRaw = globalConfig['chat_wide_cooldown'];
-              const chatWideCd = chatWideCdRaw !== undefined ? parseInt(chatWideCdRaw, 10) : 1500;
-              
-              if (now - lastChatWideCommandTime < chatWideCd) {
-                console.log(`[RATE LIMIT] Chat-wide cooldown active. Ignoring !showemote from ${chatterName}.`);
-                return;
-              }
-
-              const globalCdRaw = globalConfig['cmd_!global_cooldown'];
-              const globalCd = globalCdRaw !== undefined ? parseInt(globalCdRaw, 10) : COMMAND_COOLDOWN;
-              const lastGlobalTime = userCooldowns.get(chatterName) || 0;
-              
-              if (now - lastGlobalTime < globalCd) {
-                console.log(`[COOLDOWN] ${chatterName} is on global cooldown.`);
-                return;
-              }
-
-              const cmdCdOnlineRaw = globalConfig[`cmd_!showemote_cooldown`];
-              const cmdCdOfflineRaw = globalConfig[`cmd_!showemote_offline_cooldown`];
-              const cmdCdRaw = (isOffline && cmdCdOfflineRaw !== undefined && cmdCdOfflineRaw !== '') ? cmdCdOfflineRaw : cmdCdOnlineRaw;
-              const cmdCd = cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
-              
-              if (cmdCd > 0) {
-                const lastCmdTime = commandCooldowns.get(`${chatterName}_!showemote`) || 0;
-                if (now - lastCmdTime < cmdCd) {
-                  console.log(`[COOLDOWN] ${chatterName} is on command cooldown for !showemote.`);
-                  return;
-                }
-              }
-
-              const globalCmdCdOnlineRaw = globalConfig[`cmd_!showemote_global_chat_cooldown`];
-              const globalCmdCdOfflineRaw = globalConfig[`cmd_!showemote_offline_global_chat_cooldown`];
-              const globalCmdCdRaw = (isOffline && globalCmdCdOfflineRaw !== undefined && globalCmdCdOfflineRaw !== '') ? globalCmdCdOfflineRaw : globalCmdCdOnlineRaw;
-              const globalCmdCd = globalCmdCdRaw !== undefined ? parseInt(globalCmdCdRaw, 10) : 0;
-              
-              if (globalCmdCd > 0) {
-                const lastGlobalCmdTime = commandCooldowns.get(`GLOBAL_!showemote`) || 0;
-                if (now - lastGlobalCmdTime < globalCmdCd) {
-                  console.log(`[RATE LIMIT] !showemote is on global chat cooldown.`);
-                  return;
-                }
-              }
-            }
-        
-            const tokens = [];
-            let currentEmoteGroup = [];
-            const validModifiers = ['wide', 'cursed', 'flipx', 'flipy', 'bounce', 'leave', 'arrive', 'jam', 'rainbow', 'hyper'];
-
-            event.message.fragments.forEach(fragment => {
-              if (fragment.type === 'emote') {
-                const disabledRaw = globalConfig[`disabled_emote_${fragment.text}`];
-                if (disabledRaw === 'true' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw))) {
-                  console.log(`[SHOWEMOTE] Emote ${fragment.text} is disabled.`);
-                  return;
-                }
-                const twitchEmoteUrl = `https://static-cdn.jtvnw.net/emoticons/v2/${fragment.emote.id}/default/dark/3.0`;
-                const token = { type: 'emote', url: twitchEmoteUrl, isZeroWidth: false, modifiers: [], original: `Twitch Emote: ${twitchEmoteUrl}` };
-                tokens.push(token);
-                currentEmoteGroup = [token];
-              } else if (fragment.type === 'text') {
-                const words = fragment.text.split(' ');
-                words.forEach(word => {
-                  const lowerWord = word.toLowerCase();
-                  if (thirdPartyEmotes.has(word)) {
-                    const disabledRaw = globalConfig[`disabled_emote_${word}`];
-                    if (disabledRaw === 'true' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw))) {
-                      console.log(`[SHOWEMOTE] Emote ${word} is disabled.`);
+                  const cmdCdOnlineRaw =
+                    globalConfig[`cmd_${commandName}_cooldown`];
+                  const cmdCdOfflineRaw =
+                    globalConfig[`cmd_${commandName}_offline_cooldown`];
+                  const cmdCdRaw =
+                    isOffline &&
+                    cmdCdOfflineRaw !== undefined &&
+                    cmdCdOfflineRaw !== ""
+                      ? cmdCdOfflineRaw
+                      : cmdCdOnlineRaw;
+                  const cmdCd =
+                    cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
+                  if (cmdCd > 0) {
+                    const lastCmdTime =
+                      commandCooldowns.get(`${chatterName}_${commandName}`) ||
+                      0;
+                    if (!isMod && now - lastCmdTime < cmdCd) {
+                      console.log(
+                        `[COOLDOWN] ${chatterName} is on command cooldown for ${commandName}.`,
+                      );
                       return;
                     }
-                    const emoteData = thirdPartyEmotes.get(word);
-                    const token = { type: 'emote', url: emoteData.url, isZeroWidth: emoteData.isZeroWidth, isNativelyWide: emoteData.isNativelyWide || false, modifiers: [], original: `3rd-Party Emote: ${emoteData.url}` };
-                    tokens.push(token);
-                    if (emoteData.isZeroWidth) {
-                      currentEmoteGroup.push(token);
-                    } else {
-                      currentEmoteGroup = [token];
+                    commandCooldowns.set(`${chatterName}_${commandName}`, now);
+                  }
+
+                  const globalCmdCdOnlineRaw =
+                    globalConfig[`cmd_${commandName}_global_chat_cooldown`];
+                  const globalCmdCdOfflineRaw =
+                    globalConfig[
+                      `cmd_${commandName}_offline_global_chat_cooldown`
+                    ];
+                  const globalCmdCdRaw =
+                    isOffline &&
+                    globalCmdCdOfflineRaw !== undefined &&
+                    globalCmdCdOfflineRaw !== ""
+                      ? globalCmdCdOfflineRaw
+                      : globalCmdCdOnlineRaw;
+                  const globalCmdCd =
+                    globalCmdCdRaw !== undefined
+                      ? parseInt(globalCmdCdRaw, 10)
+                      : 0;
+                  if (globalCmdCd > 0) {
+                    const lastGlobalCmdTime =
+                      commandCooldowns.get(`GLOBAL_${commandName}`) || 0;
+                    if (now - lastGlobalCmdTime < globalCmdCd) {
+                      console.log(
+                        `[RATE LIMIT] ${commandName} is on global chat cooldown.`,
+                      );
+                      return;
                     }
-                  } else if (validModifiers.includes(lowerWord) && currentEmoteGroup.length > 0) {
-                    const disabledRaw = globalConfig[`disabled_mod_${lowerWord}`];
-                    if (disabledRaw === 'true' || (!isNaN(parseInt(disabledRaw)) && Date.now() < parseInt(disabledRaw))) {
-                      console.log(`[SHOWEMOTE] Modifier ${lowerWord} is disabled.`);
-                    } else {
-                      currentEmoteGroup.forEach(t => {
-                        if (lowerWord === 'wide' && t.isNativelyWide) {
-                          // Prevent applying 'wide' to emotes that are already naturally wide
-                        } else if (!t.modifiers.includes(lowerWord)) {
-                          t.modifiers.push(lowerWord);
+                    commandCooldowns.set(`GLOBAL_${commandName}`, now);
+                  }
+
+                  userCooldowns.set(chatterName, now);
+                  lastChatWideCommandTime = now;
+
+                  const alias = customAliasesMap.get(commandName);
+                  if (alias.cost > 0) {
+                    const user = await db.get(
+                      "SELECT points FROM users WHERE username = ?",
+                      chatterName,
+                    );
+                    if (!user || user.points < alias.cost) {
+                      console.log(
+                        `[COMMAND] ${chatterName} tried to use alias ${commandName} but lacks points.`,
+                      );
+                      return;
+                    }
+                    await db.run(
+                      "UPDATE users SET points = points - ? WHERE username = ?",
+                      [alias.cost, chatterName],
+                    );
+                  }
+
+                  if (alias.action.startsWith("!")) {
+                    chatText = alias.action;
+                    args = chatText.split(" ");
+                    commandName = args.shift().toLowerCase();
+
+                    event = {
+                      ...event,
+                      message: {
+                        ...event.message,
+                        text: chatText,
+                        fragments: chatText
+                          .split(" ")
+                          .map((word) => ({ type: "text", text: word + " " })),
+                      },
+                    };
+
+                    // Re-check disable for the new resolved command
+                    const newDisabledUntilRaw =
+                      globalConfig[`cmd_${commandName}_disabled_until`];
+                    if (newDisabledUntilRaw) {
+                      if (
+                        newDisabledUntilRaw === "forever" ||
+                        Date.now() < parseInt(newDisabledUntilRaw, 10)
+                      ) {
+                        return;
+                      }
+                    }
+
+                    console.log(
+                      `[DEBUG] Executing alias command: ${commandName} for ${chatterName}`,
+                    );
+
+                    // Re-check sub-only for the new resolved command
+                    const newIsSubOnly =
+                      globalConfig[`cmd_${commandName}_sub_only`] === "true";
+                    if (newIsSubOnly) {
+                      const isSubOrMod =
+                        (event.badges &&
+                          event.badges.some((b) =>
+                            [
+                              "broadcaster",
+                              "moderator",
+                              "subscriber",
+                              "founder",
+                            ].includes(b.set_id),
+                          )) ||
+                        chatterName === TARGET_CHANNEL;
+                      if (!isSubOrMod) {
+                        return;
+                      }
+                    }
+
+                    // Re-check offline-only for the new resolved command
+                    const newIsOfflineOnly =
+                      globalConfig[`cmd_${commandName}_offline_only`] ===
+                      "true";
+                    if (newIsOfflineOnly) {
+                      const isLive = await isStreamerLive();
+                      if (isLive) {
+                        return;
+                      }
+                    }
+                  } else {
+                    await sendChatMessage(alias.action);
+                    return;
+                  }
+                }
+
+                if (customCommands[commandName]) {
+                  const command = customCommands[commandName];
+
+                  const dynamicCostRaw =
+                    globalConfig[`cmd_${commandName}_cost`];
+                  const activeCost =
+                    dynamicCostRaw !== undefined
+                      ? parseInt(dynamicCostRaw, 10)
+                      : command.cost;
+
+                  const isBroadcaster =
+                    (event.badges &&
+                      event.badges.some((b) => b.set_id === "broadcaster")) ||
+                    chatterName === TARGET_CHANNEL;
+
+                  if (activeCost > 0 && !command.manualCost && !isBroadcaster) {
+                    const user = await db.get(
+                      "SELECT points FROM users WHERE username = ?",
+                      chatterName,
+                    );
+                    if (!user || user.points < activeCost) {
+                      console.log(
+                        `[COMMAND] ${chatterName} tried to use ${commandName} but lacks points.`,
+                      );
+                      return;
+                    }
+                    await db.run(
+                      "UPDATE users SET points = points - ? WHERE username = ?",
+                      [activeCost, chatterName],
+                    );
+                  }
+
+                  const hasPermission =
+                    event.badges &&
+                    event.badges.some((b) =>
+                      ["broadcaster", "moderator"].includes(b.set_id),
+                    );
+                  const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+
+                  const now = Date.now();
+
+                  const chatWideCdRaw = globalConfig["chat_wide_cooldown"];
+                  const chatWideCd =
+                    chatWideCdRaw !== undefined
+                      ? parseInt(chatWideCdRaw, 10)
+                      : 1500;
+
+                  if (!isMod && now - lastChatWideCommandTime < chatWideCd) {
+                    console.log(
+                      `[RATE LIMIT] Chat-wide cooldown active. Ignoring command from ${chatterName}.`,
+                    );
+                    return;
+                  }
+
+                  const globalCdRaw = globalConfig["cmd_!global_cooldown"];
+                  const globalCd =
+                    globalCdRaw !== undefined
+                      ? parseInt(globalCdRaw, 10)
+                      : COMMAND_COOLDOWN;
+                  const lastGlobalTime = userCooldowns.get(chatterName) || 0;
+
+                  if (!isMod && now - lastGlobalTime < globalCd) {
+                    console.log(
+                      `[COOLDOWN] ${chatterName} is on global cooldown.`,
+                    );
+                    return;
+                  }
+
+                  const cmdCdOnlineRaw =
+                    globalConfig[`cmd_${commandName}_cooldown`];
+                  const cmdCdOfflineRaw =
+                    globalConfig[`cmd_${commandName}_offline_cooldown`];
+                  const cmdCdRaw =
+                    isOffline &&
+                    cmdCdOfflineRaw !== undefined &&
+                    cmdCdOfflineRaw !== ""
+                      ? cmdCdOfflineRaw
+                      : cmdCdOnlineRaw;
+                  const cmdCd =
+                    cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
+
+                  if (cmdCd > 0) {
+                    const lastCmdTime =
+                      commandCooldowns.get(`${chatterName}_${commandName}`) ||
+                      0;
+                    if (!isMod && now - lastCmdTime < cmdCd) {
+                      console.log(
+                        `[COOLDOWN] ${chatterName} is on command cooldown for ${commandName}.`,
+                      );
+                      return;
+                    }
+                  }
+
+                  const globalCmdCdOnlineRaw =
+                    globalConfig[`cmd_${commandName}_global_chat_cooldown`];
+                  const globalCmdCdOfflineRaw =
+                    globalConfig[
+                      `cmd_${commandName}_offline_global_chat_cooldown`
+                    ];
+                  const globalCmdCdRaw =
+                    isOffline &&
+                    globalCmdCdOfflineRaw !== undefined &&
+                    globalCmdCdOfflineRaw !== ""
+                      ? globalCmdCdOfflineRaw
+                      : globalCmdCdOnlineRaw;
+                  const globalCmdCd =
+                    globalCmdCdRaw !== undefined
+                      ? parseInt(globalCmdCdRaw, 10)
+                      : 0;
+
+                  if (globalCmdCd > 0) {
+                    const lastGlobalCmdTime =
+                      commandCooldowns.get(`GLOBAL_${commandName}`) || 0;
+                    if (now - lastGlobalCmdTime < globalCmdCd) {
+                      console.log(
+                        `[RATE LIMIT] ${commandName} is on global chat cooldown.`,
+                      );
+                      return;
+                    }
+                  }
+
+                  const success = await command.execute(
+                    args,
+                    chatterName,
+                    event,
+                    hasPermission,
+                  );
+
+                  if (success !== false) {
+                    if (cmdCd > 0)
+                      commandCooldowns.set(
+                        `${chatterName}_${commandName}`,
+                        now,
+                      );
+                    if (globalCmdCd > 0)
+                      commandCooldowns.set(`GLOBAL_${commandName}`, now);
+                    userCooldowns.set(chatterName, now);
+                    lastChatWideCommandTime = now;
+                  }
+
+                  return;
+                }
+
+                if (chatText.toLowerCase() === "!showemote") {
+                  const dynamicShowEmoteCost =
+                    parseInt(globalConfig["cmd_!showemote_cost"], 10) || 0;
+                  await sendChatMessage(
+                    `Usage: !showemote <emote>  cost: ${dynamicShowEmoteCost} points (Modifiers cost extra)`,
+                  );
+                  return;
+                } else if (chatText.toLowerCase().startsWith("!showemote ")) {
+                  // if (!await isStreamerLive()) return;
+
+                  const hasPermission =
+                    event.badges &&
+                    event.badges.some((b) =>
+                      ["broadcaster", "moderator"].includes(b.set_id),
+                    );
+                  const isMod = hasPermission || chatterName === TARGET_CHANNEL;
+
+                  if (!isMod) {
+                    const now = Date.now();
+
+                    const chatWideCdRaw = globalConfig["chat_wide_cooldown"];
+                    const chatWideCd =
+                      chatWideCdRaw !== undefined
+                        ? parseInt(chatWideCdRaw, 10)
+                        : 1500;
+
+                    if (now - lastChatWideCommandTime < chatWideCd) {
+                      console.log(
+                        `[RATE LIMIT] Chat-wide cooldown active. Ignoring !showemote from ${chatterName}.`,
+                      );
+                      return;
+                    }
+
+                    const globalCdRaw = globalConfig["cmd_!global_cooldown"];
+                    const globalCd =
+                      globalCdRaw !== undefined
+                        ? parseInt(globalCdRaw, 10)
+                        : COMMAND_COOLDOWN;
+                    const lastGlobalTime = userCooldowns.get(chatterName) || 0;
+
+                    if (now - lastGlobalTime < globalCd) {
+                      console.log(
+                        `[COOLDOWN] ${chatterName} is on global cooldown.`,
+                      );
+                      return;
+                    }
+
+                    const cmdCdOnlineRaw =
+                      globalConfig[`cmd_!showemote_cooldown`];
+                    const cmdCdOfflineRaw =
+                      globalConfig[`cmd_!showemote_offline_cooldown`];
+                    const cmdCdRaw =
+                      isOffline &&
+                      cmdCdOfflineRaw !== undefined &&
+                      cmdCdOfflineRaw !== ""
+                        ? cmdCdOfflineRaw
+                        : cmdCdOnlineRaw;
+                    const cmdCd =
+                      cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
+
+                    if (cmdCd > 0) {
+                      const lastCmdTime =
+                        commandCooldowns.get(`${chatterName}_!showemote`) || 0;
+                      if (now - lastCmdTime < cmdCd) {
+                        console.log(
+                          `[COOLDOWN] ${chatterName} is on command cooldown for !showemote.`,
+                        );
+                        return;
+                      }
+                    }
+
+                    const globalCmdCdOnlineRaw =
+                      globalConfig[`cmd_!showemote_global_chat_cooldown`];
+                    const globalCmdCdOfflineRaw =
+                      globalConfig[
+                        `cmd_!showemote_offline_global_chat_cooldown`
+                      ];
+                    const globalCmdCdRaw =
+                      isOffline &&
+                      globalCmdCdOfflineRaw !== undefined &&
+                      globalCmdCdOfflineRaw !== ""
+                        ? globalCmdCdOfflineRaw
+                        : globalCmdCdOnlineRaw;
+                    const globalCmdCd =
+                      globalCmdCdRaw !== undefined
+                        ? parseInt(globalCmdCdRaw, 10)
+                        : 0;
+
+                    if (globalCmdCd > 0) {
+                      const lastGlobalCmdTime =
+                        commandCooldowns.get(`GLOBAL_!showemote`) || 0;
+                      if (now - lastGlobalCmdTime < globalCmdCd) {
+                        console.log(
+                          `[RATE LIMIT] !showemote is on global chat cooldown.`,
+                        );
+                        return;
+                      }
+                    }
+                  }
+
+                  const tokens = [];
+                  let currentEmoteGroup = [];
+                  const validModifiers = [
+                    "wide",
+                    "cursed",
+                    "flipx",
+                    "flipy",
+                    "bounce",
+                    "leave",
+                    "arrive",
+                    "jam",
+                    "rainbow",
+                    "hyper",
+                  ];
+
+                  event.message.fragments.forEach((fragment) => {
+                    if (fragment.type === "emote") {
+                      const disabledRaw =
+                        globalConfig[`disabled_emote_${fragment.text}`];
+                      if (
+                        disabledRaw === "true" ||
+                        (!isNaN(parseInt(disabledRaw)) &&
+                          Date.now() < parseInt(disabledRaw))
+                      ) {
+                        console.log(
+                          `[SHOWEMOTE] Emote ${fragment.text} is disabled.`,
+                        );
+                        return;
+                      }
+                      const twitchEmoteUrl = `https://static-cdn.jtvnw.net/emoticons/v2/${fragment.emote.id}/default/dark/3.0`;
+                      const token = {
+                        type: "emote",
+                        url: twitchEmoteUrl,
+                        isZeroWidth: false,
+                        modifiers: [],
+                        original: `Twitch Emote: ${twitchEmoteUrl}`,
+                      };
+                      tokens.push(token);
+                      currentEmoteGroup = [token];
+                    } else if (fragment.type === "text") {
+                      const words = fragment.text.split(" ");
+                      words.forEach((word) => {
+                        const lowerWord = word.toLowerCase();
+                        if (thirdPartyEmotes.has(word)) {
+                          const disabledRaw =
+                            globalConfig[`disabled_emote_${word}`];
+                          if (
+                            disabledRaw === "true" ||
+                            (!isNaN(parseInt(disabledRaw)) &&
+                              Date.now() < parseInt(disabledRaw))
+                          ) {
+                            console.log(
+                              `[SHOWEMOTE] Emote ${word} is disabled.`,
+                            );
+                            return;
+                          }
+                          const emoteData = thirdPartyEmotes.get(word);
+                          const token = {
+                            type: "emote",
+                            url: emoteData.url,
+                            isZeroWidth: emoteData.isZeroWidth,
+                            isNativelyWide: emoteData.isNativelyWide || false,
+                            modifiers: [],
+                            original: `3rd-Party Emote: ${emoteData.url}`,
+                          };
+                          tokens.push(token);
+                          if (emoteData.isZeroWidth) {
+                            currentEmoteGroup.push(token);
+                          } else {
+                            currentEmoteGroup = [token];
+                          }
+                        } else if (
+                          validModifiers.includes(lowerWord) &&
+                          currentEmoteGroup.length > 0
+                        ) {
+                          const disabledRaw =
+                            globalConfig[`disabled_mod_${lowerWord}`];
+                          if (
+                            disabledRaw === "true" ||
+                            (!isNaN(parseInt(disabledRaw)) &&
+                              Date.now() < parseInt(disabledRaw))
+                          ) {
+                            console.log(
+                              `[SHOWEMOTE] Modifier ${lowerWord} is disabled.`,
+                            );
+                          } else {
+                            currentEmoteGroup.forEach((t) => {
+                              if (lowerWord === "wide" && t.isNativelyWide) {
+                                // Prevent applying 'wide' to emotes that are already naturally wide
+                              } else if (!t.modifiers.includes(lowerWord)) {
+                                t.modifiers.push(lowerWord);
+                              }
+                            });
+                          }
+                        } else if (word.trim() !== "") {
+                          tokens.push({
+                            type: "text",
+                            text: word,
+                            original: word,
+                          });
+                          currentEmoteGroup = [];
                         }
                       });
+                    } else if (fragment.type === "mention") {
+                      tokens.push({
+                        type: "text",
+                        text: `${fragment.mention.user_name}`,
+                        original: `@${fragment.mention.user_name}`,
+                      });
+                      currentEmoteGroup = [];
                     }
-                  } else if (word.trim() !== '') {
-                    tokens.push({ type: 'text', text: word, original: word });
-                    currentEmoteGroup = [];
+                  });
+
+                  const hasAnyEmote = tokens.some((t) => t.type === "emote");
+                  if (!hasAnyEmote) {
+                    return;
                   }
-                });
-              } else if (fragment.type === 'mention') {
-                tokens.push({ type: 'text', text: `${fragment.mention.user_name}` , original: `@${fragment.mention.user_name}` });
-                currentEmoteGroup = [];
-              }
-            });
 
-            const hasAnyEmote = tokens.some(t => t.type === 'emote');
-            if (!hasAnyEmote) {
-              return;
-            }
+                  const dynamicShowEmoteCost =
+                    parseInt(globalConfig["cmd_!showemote_cost"], 10) || 0;
 
-            const dynamicShowEmoteCost = parseInt(globalConfig['cmd_!showemote_cost'], 10) || 0;
-            
-            let hasBaseEmote = false;
-            let broadcastTokens = [];
+                  let hasBaseEmote = false;
+                  let broadcastTokens = [];
 
-            for (let i = 0; i < tokens.length; i++) {
-              const current = tokens[i];
-              if (current.type === 'emote') {
-                let shouldBroadcast = true;
-                if (!current.isZeroWidth) {
-                  if (hasBaseEmote) {
-                    shouldBroadcast = false;
-                  } else {
-                    hasBaseEmote = true;
+                  for (let i = 0; i < tokens.length; i++) {
+                    const current = tokens[i];
+                    if (current.type === "emote") {
+                      let shouldBroadcast = true;
+                      if (!current.isZeroWidth) {
+                        if (hasBaseEmote) {
+                          shouldBroadcast = false;
+                        } else {
+                          hasBaseEmote = true;
+                        }
+                      }
+                      if (shouldBroadcast) {
+                        broadcastTokens.push({
+                          token: current,
+                          originalIndex: i,
+                        });
+                      }
+                    }
+                  }
+
+                  let uniqueModifiers = new Set();
+                  broadcastTokens.forEach((b) => {
+                    if (b.token.modifiers) {
+                      b.token.modifiers.forEach((mod) =>
+                        uniqueModifiers.add(mod),
+                      );
+                    }
+                  });
+
+                  let modifierCost = 0;
+                  uniqueModifiers.forEach((mod) => {
+                    modifierCost +=
+                      parseInt(globalConfig[`mod_${mod}_cost`], 10) || 0;
+                  });
+
+                  const totalCost = dynamicShowEmoteCost + modifierCost;
+
+                  const isBroadcaster =
+                    (event.badges &&
+                      event.badges.some((b) => b.set_id === "broadcaster")) ||
+                    chatterName === TARGET_CHANNEL;
+                  if (
+                    !isBroadcaster &&
+                    (dynamicShowEmoteCost > 0 || modifierCost > 0)
+                  ) {
+                    const user = await db.get(
+                      "SELECT points FROM users WHERE username = ?",
+                      chatterName,
+                    );
+                    const userPoints = user ? user.points : 0;
+
+                    if (userPoints < dynamicShowEmoteCost) {
+                      console.log(
+                        `[COMMAND] ${chatterName} tried to use !showemote but lacks base points.`,
+                      );
+                      return;
+                    }
+
+                    let finalCost = dynamicShowEmoteCost;
+                    if (userPoints >= totalCost) {
+                      finalCost = totalCost;
+                    } else {
+                      console.log(
+                        `[COMMAND] ${chatterName} cannot afford modifiers. Dropping modifiers.`,
+                      );
+                      broadcastTokens.forEach((b) => {
+                        b.token.modifiers = [];
+                      });
+                    }
+
+                    if (finalCost > 0) {
+                      await db.run(
+                        "UPDATE users SET points = points - ? WHERE username = ?",
+                        [finalCost, chatterName],
+                      );
+                    }
+                  }
+
+                  if (!isMod) {
+                    const now = Date.now();
+                    const cmdCdOnlineRaw =
+                      globalConfig[`cmd_!showemote_cooldown`];
+                    const cmdCdOfflineRaw =
+                      globalConfig[`cmd_!showemote_offline_cooldown`];
+                    const cmdCdRaw =
+                      isOffline &&
+                      cmdCdOfflineRaw !== undefined &&
+                      cmdCdOfflineRaw !== ""
+                        ? cmdCdOfflineRaw
+                        : cmdCdOnlineRaw;
+                    const cmdCd =
+                      cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
+                    if (cmdCd > 0)
+                      commandCooldowns.set(`${chatterName}_!showemote`, now);
+
+                    const globalCmdCdOnlineRaw =
+                      globalConfig[`cmd_!showemote_global_chat_cooldown`];
+                    const globalCmdCdOfflineRaw =
+                      globalConfig[
+                        `cmd_!showemote_offline_global_chat_cooldown`
+                      ];
+                    const globalCmdCdRaw =
+                      isOffline &&
+                      globalCmdCdOfflineRaw !== undefined &&
+                      globalCmdCdOfflineRaw !== ""
+                        ? globalCmdCdOfflineRaw
+                        : globalCmdCdOnlineRaw;
+                    const globalCmdCd =
+                      globalCmdCdRaw !== undefined
+                        ? parseInt(globalCmdCdRaw, 10)
+                        : 0;
+                    if (globalCmdCd > 0)
+                      commandCooldowns.set(`GLOBAL_!showemote`, now);
+
+                    userCooldowns.set(chatterName, now);
+                    lastChatWideCommandTime = now;
+                  }
+
+                  for (let b of broadcastTokens) {
+                    const current = b.token;
+                    const i = b.originalIndex;
+                    let customX = null;
+                    let customY = null;
+
+                    if (
+                      i + 1 < tokens.length &&
+                      tokens[i + 1].type === "text"
+                    ) {
+                      const match = tokens[i + 1].text.match(/^(\d+),(\d+)$/);
+                      if (match) {
+                        customX = parseInt(match[1], 10);
+                        customY = parseInt(match[2], 10);
+                      }
+                    }
+
+                    broadcastEmote(
+                      current.url,
+                      current.isZeroWidth,
+                      event.message_id,
+                      customX,
+                      customY,
+                      current.modifiers || [],
+                    );
+                  }
+
+                  // --- COMMAND LOGIC END ---
+                }
+              } else if (command === "USERNOTICE") {
+                const chatterName = tags["display-name"]
+                  ? tags["display-name"].toLowerCase()
+                  : (tags["login"] || "").toLowerCase();
+                const msgId = tags["msg-id"];
+
+                console.log(
+                  `[USERNOTICE DETECTED] MsgId: ${msgId}, Chatter: ${chatterName}, Raw Tags:`,
+                  JSON.stringify(tags),
+                );
+
+                if (
+                  msgId === "sub" ||
+                  msgId === "resub" ||
+                  msgId === "giftpaidupgrade"
+                ) {
+                  if (db && chatterName) {
+                    if (isSupportPointRewardEnabled("reward_sub_enabled")) {
+                      const subReward = parseInt(
+                        globalConfig["reward_sub"] || "5000",
+                        10,
+                      );
+                      const finalAwarded = await addPointsWithBonus(
+                        chatterName,
+                        subReward,
+                        false,
+                        "engagement",
+                      );
+                      console.log(
+                        `* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for subscribing!`,
+                      );
+                      await sendChatMessage(
+                        `🎉 ${chatterName} subscribed! You received ${finalAwarded} points! 🎉`,
+                      );
+                    }
+                    setTimeout(async () => {
+                      await triggerRandomRaffle("subscription");
+                    }, 3000);
+                  }
+                } else if (msgId === "submysterygift") {
+                  if (db && chatterName) {
+                    recentMassGifters.add(chatterName);
+                    setTimeout(
+                      () => recentMassGifters.delete(chatterName),
+                      10000,
+                    );
+                    if (isSupportPointRewardEnabled("reward_giftsub_enabled")) {
+                      const baseReward = parseInt(
+                        globalConfig["reward_giftsub"] || "5000",
+                        10,
+                      );
+                      const scalingBonus = parseInt(
+                        globalConfig["reward_giftsub_scaling"] || "10",
+                        10,
+                      );
+                      const maxCap = parseInt(
+                        globalConfig["reward_giftsub_cap"] || "100000",
+                        10,
+                      );
+                      const totalGifts =
+                        parseInt(tags["msg-param-mass-gift-count"], 10) || 1;
+                      const giftReward = Math.min(
+                        maxCap,
+                        baseReward * totalGifts +
+                          Math.round(totalGifts * totalGifts * scalingBonus),
+                      );
+                      const finalAwarded = await addPointsWithBonus(
+                        chatterName,
+                        giftReward,
+                        false,
+                        "engagement",
+                      );
+                      console.log(
+                        `* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting ${totalGifts} sub(s)!`,
+                      );
+                      await sendChatMessage(
+                        `🎉 ${chatterName} gifted ${totalGifts} sub(s)! You were awarded ${finalAwarded} points! 🎉`,
+                      );
+                    }
+                    setTimeout(async () => {
+                      await triggerRandomRaffle("gift sub");
+                    }, 3000);
+                  }
+                } else if (msgId === "subgift") {
+                  if (
+                    db &&
+                    chatterName &&
+                    !tags["msg-param-communitygift-id"] &&
+                    !recentMassGifters.has(chatterName)
+                  ) {
+                    if (isSupportPointRewardEnabled("reward_giftsub_enabled")) {
+                      const baseReward = parseInt(
+                        globalConfig["reward_giftsub"] || "5000",
+                        10,
+                      );
+                      const scalingBonus = parseInt(
+                        globalConfig["reward_giftsub_scaling"] || "10",
+                        10,
+                      );
+                      const maxCap = parseInt(
+                        globalConfig["reward_giftsub_cap"] || "100000",
+                        10,
+                      );
+                      const totalGifts = 1;
+                      const giftReward = Math.min(
+                        maxCap,
+                        baseReward * totalGifts +
+                          Math.round(
+                            ((totalGifts * totalGifts) / 3) * scalingBonus,
+                          ),
+                      );
+                      const finalAwarded = await addPointsWithBonus(
+                        chatterName,
+                        giftReward,
+                        false,
+                        "engagement",
+                      );
+                      console.log(
+                        `* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting a direct sub!`,
+                      );
+                      await sendChatMessage(
+                        `🎉 ${chatterName} gifted a sub! You were awarded ${finalAwarded} points! 🎉`,
+                      );
+                    }
+                    setTimeout(async () => {
+                      await triggerRandomRaffle("gift sub");
+                    }, 3000);
+                  }
+                } else if (msgId === "viewermilestone") {
+                  if (tags["msg-param-category"] === "watch-streak") {
+                    const streak = parseInt(tags["msg-param-value"], 10) || 0;
+                    if (
+                      streak > 0 &&
+                      db &&
+                      chatterName &&
+                      isSupportPointRewardEnabled("reward_watchstreak_enabled")
+                    ) {
+                      const baseRate = parseInt(
+                        globalConfig["reward_watchstreak"] || "1000",
+                        10,
+                      );
+                      const scalingBonus = parseInt(
+                        globalConfig["reward_watchstreak_scaling"] || "20",
+                        10,
+                      );
+                      const maxCap = parseInt(
+                        globalConfig["reward_watchstreak_cap"] || "100000",
+                        10,
+                      );
+                      const reward = Math.min(
+                        maxCap,
+                        baseRate +
+                          Math.round(((streak * streak) / 3) * scalingBonus),
+                      );
+
+                      const finalAwarded = await addPointsWithBonus(
+                        chatterName,
+                        reward,
+                        false,
+                        "engagement",
+                      );
+                      console.log(
+                        `* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for a ${streak} watch streak!`,
+                      );
+                      await sendChatMessage(
+                        `🔥 ${chatterName} is on a ${streak} stream watch streak! They were awarded ${finalAwarded} points! 🔥`,
+                      );
+                    }
                   }
                 }
-                if (shouldBroadcast) {
-                  broadcastTokens.push({ token: current, originalIndex: i });
-                }
-              }
-            }
-
-            let uniqueModifiers = new Set();
-            broadcastTokens.forEach(b => {
-              if (b.token.modifiers) {
-                b.token.modifiers.forEach(mod => uniqueModifiers.add(mod));
+              } else if (command === "CAP") {
+                console.log(`[CAPABILITY RESPONSE] ${line}`);
+              } else if (
+                command !== "PONG" &&
+                command !== "353" &&
+                command !== "366" &&
+                command !== "001" &&
+                command !== "002" &&
+                command !== "003" &&
+                command !== "004" &&
+                command !== "375" &&
+                command !== "372" &&
+                command !== "376" &&
+                command !== "JOIN" &&
+                command !== "PART" &&
+                command !== "ROOMSTATE" &&
+                command !== "USERSTATE" &&
+                command !== "GLOBALUSERSTATE"
+              ) {
+                console.log(
+                  `[UNHANDLED IRC COMMAND] Command: ${command}, Line: ${line}`,
+                );
               }
             });
-
-            let modifierCost = 0;
-            uniqueModifiers.forEach(mod => {
-              modifierCost += parseInt(globalConfig[`mod_${mod}_cost`], 10) || 0;
-            });
-
-            const totalCost = dynamicShowEmoteCost + modifierCost;
-
-            const isBroadcaster = (event.badges && event.badges.some(b => b.set_id === 'broadcaster')) || chatterName === TARGET_CHANNEL;
-            if (!isBroadcaster && (dynamicShowEmoteCost > 0 || modifierCost > 0)) {
-              const user = await db.get('SELECT points FROM users WHERE username = ?', chatterName);
-              const userPoints = user ? user.points : 0;
-
-              if (userPoints < dynamicShowEmoteCost) {
-                console.log(`[COMMAND] ${chatterName} tried to use !showemote but lacks base points.`);
-                return;
-              }
-
-              let finalCost = dynamicShowEmoteCost;
-              if (userPoints >= totalCost) {
-                finalCost = totalCost;
-              } else {
-                console.log(`[COMMAND] ${chatterName} cannot afford modifiers. Dropping modifiers.`);
-                broadcastTokens.forEach(b => {
-                  b.token.modifiers = [];
-                });
-              }
-
-              if (finalCost > 0) {
-                await db.run('UPDATE users SET points = points - ? WHERE username = ?', [finalCost, chatterName]);
-              }
-            }
-            
-            if (!isMod) {
-              const now = Date.now();
-              const cmdCdOnlineRaw = globalConfig[`cmd_!showemote_cooldown`];
-              const cmdCdOfflineRaw = globalConfig[`cmd_!showemote_offline_cooldown`];
-              const cmdCdRaw = (isOffline && cmdCdOfflineRaw !== undefined && cmdCdOfflineRaw !== '') ? cmdCdOfflineRaw : cmdCdOnlineRaw;
-              const cmdCd = cmdCdRaw !== undefined ? parseInt(cmdCdRaw, 10) : 0;
-              if (cmdCd > 0) commandCooldowns.set(`${chatterName}_!showemote`, now);
-
-              const globalCmdCdOnlineRaw = globalConfig[`cmd_!showemote_global_chat_cooldown`];
-              const globalCmdCdOfflineRaw = globalConfig[`cmd_!showemote_offline_global_chat_cooldown`];
-              const globalCmdCdRaw = (isOffline && globalCmdCdOfflineRaw !== undefined && globalCmdCdOfflineRaw !== '') ? globalCmdCdOfflineRaw : globalCmdCdOnlineRaw;
-              const globalCmdCd = globalCmdCdRaw !== undefined ? parseInt(globalCmdCdRaw, 10) : 0;
-              if (globalCmdCd > 0) commandCooldowns.set(`GLOBAL_!showemote`, now);
-
-              userCooldowns.set(chatterName, now);
-              lastChatWideCommandTime = now;
-            }
-  
-            for (let b of broadcastTokens) {
-              const current = b.token;
-              const i = b.originalIndex;
-              let customX = null;
-              let customY = null;
-
-              if (i + 1 < tokens.length && tokens[i + 1].type === 'text') {
-                const match = tokens[i + 1].text.match(/^(\d+),(\d+)$/);
-                if (match) {
-                  customX = parseInt(match[1], 10);
-                  customY = parseInt(match[2], 10);
-                }
-              }
-
-              broadcastEmote(current.url, current.isZeroWidth, event.message_id, customX, customY, current.modifiers || []);
-            }
-          
-            // --- COMMAND LOGIC END ---
           }
-
-
-          
-        } else if (command === 'USERNOTICE') {
-            const chatterName = tags['display-name'] ? tags['display-name'].toLowerCase() : (tags['login'] || '').toLowerCase();
-            const msgId = tags['msg-id'];
-            
-            console.log(`[USERNOTICE DETECTED] MsgId: ${msgId}, Chatter: ${chatterName}, Raw Tags:`, JSON.stringify(tags));
-          
-            if (msgId === 'sub' || msgId === 'resub' || msgId === 'giftpaidupgrade') {
-              if (db && chatterName) {
-                if (isSupportPointRewardEnabled('reward_sub_enabled')) {
-                  const subReward = parseInt(globalConfig['reward_sub'] || '5000', 10);
-                  const finalAwarded = await addPointsWithBonus(chatterName, subReward, false, 'engagement');
-                  console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for subscribing!`);
-                  await sendChatMessage(`🎉 ${chatterName} subscribed! You received ${finalAwarded} points! 🎉`);
-                }
-                setTimeout(async () => {
-                  await triggerRandomRaffle('subscription');
-                }, 3000);
-              }
-            } else if (msgId === 'submysterygift') {
-              if (db && chatterName) {
-                recentMassGifters.add(chatterName);
-                setTimeout(() => recentMassGifters.delete(chatterName), 10000);
-                if (isSupportPointRewardEnabled('reward_giftsub_enabled')) {
-                  const baseReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
-                  const scalingBonus = parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10);
-                  const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
-                  const totalGifts = parseInt(tags['msg-param-mass-gift-count'], 10) || 1;
-                  const giftReward = Math.min(maxCap, (baseReward * totalGifts) + Math.round((totalGifts * totalGifts) * scalingBonus));
-                  const finalAwarded = await addPointsWithBonus(chatterName, giftReward, false, 'engagement');
-                  console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting ${totalGifts} sub(s)!`);
-                  await sendChatMessage(`🎉 ${chatterName} gifted ${totalGifts} sub(s)! You were awarded ${finalAwarded} points! 🎉`);
-                }
-                setTimeout(async () => {
-                  await triggerRandomRaffle('gift sub');
-                }, 3000);
-              }
-            } else if (msgId === 'subgift') {
-
-              if (db && chatterName && !tags['msg-param-communitygift-id'] && !recentMassGifters.has(chatterName)) {
-                if (isSupportPointRewardEnabled('reward_giftsub_enabled')) {
-                  const baseReward = parseInt(globalConfig['reward_giftsub'] || '5000', 10);
-                  const scalingBonus = parseInt(globalConfig['reward_giftsub_scaling'] || '10', 10);
-                  const maxCap = parseInt(globalConfig['reward_giftsub_cap'] || '100000', 10);
-                  const totalGifts = 1;
-                  const giftReward = Math.min(maxCap, (baseReward * totalGifts) + Math.round((totalGifts * totalGifts / 3) * scalingBonus));
-                  const finalAwarded = await addPointsWithBonus(chatterName, giftReward, false, 'engagement');
-                  console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for gifting a direct sub!`);
-                  await sendChatMessage(`🎉 ${chatterName} gifted a sub! You were awarded ${finalAwarded} points! 🎉`);
-                }
-                setTimeout(async () => {
-                  await triggerRandomRaffle('gift sub');
-                }, 3000);
-              }
-            } else if (msgId === 'viewermilestone') {
-              if (tags['msg-param-category'] === 'watch-streak') {
-                const streak = parseInt(tags['msg-param-value'], 10) || 0;
-                if (streak > 0 && db && chatterName && isSupportPointRewardEnabled('reward_watchstreak_enabled')) {
-                  const baseRate = parseInt(globalConfig['reward_watchstreak'] || '1000', 10);
-                  const scalingBonus = parseInt(globalConfig['reward_watchstreak_scaling'] || '20', 10);
-                  const maxCap = parseInt(globalConfig['reward_watchstreak_cap'] || '100000', 10);
-                  const reward = Math.min(maxCap, baseRate + Math.round((streak * streak / 3) * scalingBonus));
-                  
-                  const finalAwarded = await addPointsWithBonus(chatterName, reward, false, 'engagement');
-                  console.log(`* [POINTS] Awarded ${finalAwarded} points to ${chatterName} for a ${streak} watch streak!`);
-                  await sendChatMessage(`🔥 ${chatterName} is on a ${streak} stream watch streak! They were awarded ${finalAwarded} points! 🔥`);
-                }
-              }
-            }
-          } else if (command === 'CAP') {
-            console.log(`[CAPABILITY RESPONSE] ${line}`);
-          } else if (command !== 'PONG' && command !== '353' && command !== '366' && command !== '001' && command !== '002' && command !== '003' && command !== '004' && command !== '375' && command !== '372' && command !== '376' && command !== 'JOIN' && command !== 'PART' && command !== 'ROOMSTATE' && command !== 'USERSTATE' && command !== 'GLOBALUSERSTATE') {
-            console.log(`[UNHANDLED IRC COMMAND] Command: ${command}, Line: ${line}`);
-          }
+        })
+        .catch((error) => {
+          console.error("! IRC message processing error:", error);
         });
-      }
-      }).catch(error => {
-        console.error('! IRC message processing error:', error);
-      });
     });
 
-    ws.on('close', () => {
+    ws.on("close", () => {
       if (watchdogTimer) clearTimeout(watchdogTimer);
-      console.log('* Disconnected from Twitch IRC WebSocket');
+      console.log("* Disconnected from Twitch IRC WebSocket");
       if (ws === activeWs && !isReconnecting) {
-        console.log('! Connection dropped unexpectedly! Reconnecting in 5 seconds...');
+        console.log(
+          "! Connection dropped unexpectedly! Reconnecting in 5 seconds...",
+        );
         setTimeout(() => connectTwitch(), 5000);
       }
     });
@@ -6286,9 +8817,9 @@ for (const [user, data] of Object.entries(war.userVotes)) {
   connectEventSub();
 }
 
-if (process.env.NODE_ENV !== 'test') {
-  start().catch(error => {
-    console.error('! Fatal startup error:', error);
+if (process.env.NODE_ENV !== "test") {
+  start().catch((error) => {
+    console.error("! Fatal startup error:", error);
   });
 }
 
@@ -6307,5 +8838,5 @@ export const testInternals = {
   getPassiveRewardSettings,
   hasSubscriberChatBadge,
   areRandomSupportRafflesEnabled,
-  isSupportPointRewardEnabled
+  isSupportPointRewardEnabled,
 };
