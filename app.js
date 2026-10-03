@@ -5743,13 +5743,7 @@ async function start() {
           return false;
         }
 
-        if (bet.userBets[chatterName]) {
-          await sendChatMessage(
-            `${chatterName} you have already bet ${bet.userBets[chatterName].amount} on [${bet.userBets[chatterName].choice}]!`,
-            chatterName,
-          );
-          return false;
-        }
+        const previousBet = bet.userBets[chatterName];
 
         if (args.length < 2) {
           await sendChatMessage(
@@ -5772,7 +5766,8 @@ async function start() {
           "SELECT points FROM users WHERE username = ?",
           chatterName,
         );
-        if (!user || user.points <= 0) {
+        const availablePoints = (user?.points ?? 0) + (previousBet?.amount ?? 0);
+        if (!user || availablePoints <= 0) {
           await sendChatMessage(
             `${chatterName} you don't have enough points!`,
             chatterName,
@@ -5784,11 +5779,11 @@ async function start() {
         let betAmount = 0;
 
         if (amountInput === "all") {
-          betAmount = user.points;
+          betAmount = availablePoints;
         } else if (amountInput.endsWith("%")) {
           const percent = parseFloat(amountInput.replace("%", ""));
           if (!isNaN(percent) && percent > 0 && percent <= 100) {
-            betAmount = Math.floor(user.points * (percent / 100));
+            betAmount = Math.floor(availablePoints * (percent / 100));
           }
         } else {
           betAmount = parseAmount(amountInput);
@@ -5798,7 +5793,13 @@ async function start() {
           await sendChatMessage(`${chatterName} invalid amount!`, chatterName);
           return false;
         }
-        if (betAmount > user.points) {
+        if (
+          previousBet?.choice === choice &&
+          previousBet.amount === betAmount
+        ) {
+          return false;
+        }
+        if (betAmount > availablePoints) {
           await sendChatMessage(
             `${chatterName} you don't have enough points for that!`,
             chatterName,
@@ -5808,9 +5809,13 @@ async function start() {
 
         await db.run(
           "UPDATE users SET points = points - ? WHERE username = ?",
-          [betAmount, chatterName],
+          [betAmount - (previousBet?.amount ?? 0), chatterName],
         );
 
+        if (previousBet) {
+          bet.pools[previousBet.choice] -= previousBet.amount;
+          bet.totalPool -= previousBet.amount;
+        }
         bet.userBets[chatterName] = { choice, amount: betAmount };
         bet.pools[choice] += betAmount;
         bet.totalPool += betAmount;
