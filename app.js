@@ -451,6 +451,8 @@ const commandConfigSchema = {
   "!removepoints": ["cooldown"],
   "!betcancel": ["cooldown"],
   "!bet": ["cooldown"],
+  "!mybet": ["cooldown"],
+  "!removebet": ["cooldown"],
 };
 
 const activeDuels = createChannelMapProxy("activeDuels");
@@ -5869,6 +5871,71 @@ async function start() {
 
         await sendChatMessage(
           `ACTIVE BET: "${bet.description}" | ${ratioTexts.join(" | ")} | Total: ${bet.totalPool.toLocaleString()} pts`,
+        );
+      },
+    },
+    "!mybet": {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const bet = activeBets.get("default");
+        if (!bet) return false;
+
+        const userBet = bet.userBets[chatterName];
+        if (!userBet) {
+          await sendChatMessage(
+            `${chatterName} you haven't placed a bet on the current bet!`,
+            chatterName,
+          );
+          return false;
+        }
+
+        const pool = bet.pools[userBet.choice];
+        const odds = pool > 0 ? (bet.totalPool / pool).toFixed(2) : 0;
+        const payout =
+          pool > 0 ? Math.floor((userBet.amount / pool) * bet.totalPool) : 0;
+
+        await sendChatMessage(
+          `${chatterName} you bet ${userBet.amount.toLocaleString()} pts on ${userBet.choice} (${odds}x) | Potential payout: ${payout.toLocaleString()} pts`,
+          chatterName,
+        );
+      },
+    },
+    "!removebet": {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        const bet = activeBets.get("default");
+        if (!bet) return false;
+
+        if (!bet.isOpen) {
+          await sendChatMessage(
+            `${chatterName} betting is closed, you can't remove your bet anymore!`,
+            chatterName,
+          );
+          return false;
+        }
+
+        const userBet = bet.userBets[chatterName];
+        if (!userBet) {
+          await sendChatMessage(
+            `${chatterName} you haven't placed a bet on the current bet!`,
+            chatterName,
+          );
+          return false;
+        }
+
+        await db.run(
+          "UPDATE users SET points = points + ? WHERE username = ?",
+          [userBet.amount, chatterName],
+        );
+
+        bet.pools[userBet.choice] -= userBet.amount;
+        bet.totalPool -= userBet.amount;
+        delete bet.userBets[chatterName];
+
+        broadcastBetState(bet);
+        await sendChatMessage(
+          `${chatterName} your bet of ${userBet.amount.toLocaleString()} pts on ${userBet.choice} was removed and refunded!`,
+          chatterName,
         );
       },
     },
