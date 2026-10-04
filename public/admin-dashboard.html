@@ -800,6 +800,21 @@
     </div>
 
     <div class="card" style="margin-bottom: 20px;">
+      <h3>Playsound Playback Speed Limits <span class="tooltip-icon" data-tooltip="Set the minimum and maximum playback speed allowed for playsounds via chat commands (0.0625 to 16).">?</span></h3>
+      <div style="display: flex; gap: 10px; align-items: flex-end;">
+        <div class="form-group" style="flex: 1; margin: 0;">
+          <label>Min Speed</label>
+          <input type="number" id="minPlaysoundSpeedInput" value="0.1" min="0.0625" max="16" step="any" style="width: 100%; box-sizing: border-box;">
+        </div>
+        <div class="form-group" style="flex: 1; margin: 0;">
+          <label>Max Speed</label>
+          <input type="number" id="maxPlaysoundSpeedInput" value="16" min="0.0625" max="16" step="any" style="width: 100%; box-sizing: border-box;">
+        </div>
+        <button class="save-btn" style="background-color: #8b5cf6;" id="savePlaysoundSpeedBtn">Save Limits</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 20px;">
       <h3>Test Playsound <span class="tooltip-icon" data-tooltip="Listen to a playsound.">ⓘ</span></h3>
       <div style="display: flex; gap: 10px; align-items: flex-end;">
         <div class="form-group" style="flex: 1; margin: 0;">
@@ -1448,6 +1463,15 @@
         slider.value = pct;
         document.getElementById('masterVolumeDisplay').innerText = pct;
       }
+    }
+
+    const minSpeed = configData.globalConfig['min_playsound_speed'];
+    if (minSpeed !== undefined && minSpeed !== '') {
+      document.getElementById('minPlaysoundSpeedInput').value = minSpeed;
+    }
+    const maxSpeed = configData.globalConfig['max_playsound_speed'];
+    if (maxSpeed !== undefined && maxSpeed !== '') {
+      document.getElementById('maxPlaysoundSpeedInput').value = maxSpeed;
     }
     
     // Render Active Custom Playsound Costs
@@ -2198,6 +2222,45 @@
       }
     } catch (e) {
       showToast('Error updating master volume.', 'error');
+      console.error(e);
+    }
+  });
+
+  document.getElementById('savePlaysoundSpeedBtn').addEventListener('click', async () => {
+    const minRaw = document.getElementById('minPlaysoundSpeedInput').value.trim();
+    const maxRaw = document.getElementById('maxPlaysoundSpeedInput').value.trim();
+    const minS = Number(minRaw);
+    const maxS = Number(maxRaw);
+    if (minRaw === '' || maxRaw === '' || !Number.isFinite(minS) || !Number.isFinite(maxS)) {
+      showToast('Speed limits must be numbers.', 'error');
+      return;
+    }
+    if (minS < 0.0625 || maxS > 16) {
+      showToast('Speed limits must be between 0.0625 and 16.', 'error');
+      return;
+    }
+    if (minS > maxS) {
+      showToast('Min speed cannot be greater than max speed.', 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/api/admin/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: [
+          { key: 'min_playsound_speed', value: minS.toString() },
+          { key: 'max_playsound_speed', value: maxS.toString() }
+        ]})
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Playsound speed limits updated!', 'success');
+        loadConfig();
+      } else {
+        showToast('Failed to update limits: ' + data.error, 'error');
+      }
+    } catch (e) {
+      showToast('Error saving playsound speed limits.', 'error');
       console.error(e);
     }
   });
