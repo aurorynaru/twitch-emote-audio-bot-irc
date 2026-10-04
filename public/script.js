@@ -34,6 +34,68 @@ function getAudioContext() {
   return audioCtx;
 }
 
+// Plays the sounds of one !playsound combo back-to-back. Separate combos still overlap.
+function playAudioSequence(sounds, index = 0) {
+  if (index >= sounds.length) return;
+  const sound = sounds[index];
+  let advanced = false;
+  const playNext = () => {
+    if (advanced) return;
+    advanced = true;
+    setTimeout(() => playAudioSequence(sounds, index + 1), 50);
+  };
+
+  const audioBasePath = overlayChannelId
+    ? `/playsounds/${encodeURIComponent(overlayChannelId)}/`
+    : '/playsounds/';
+  const audio = new Audio(audioBasePath + encodeURIComponent(sound.file));
+  audio.crossOrigin = "anonymous";
+  // Speed also shifts pitch (faster = higher, slower = lower)
+  audio.preservesPitch = false;
+  audio.playbackRate = parseFloat(sound.speed) || 1.0;
+  audio.onended = playNext;
+  audio.onerror = () => {
+    console.error("Error with audio file, skipping.");
+    playNext();
+  };
+
+  let shouldPlayDirectly = true;
+  const actx = getAudioContext();
+
+  if (actx) {
+    shouldPlayDirectly = false;
+    const source = actx.createMediaElementSource(audio);
+
+    if (sound.volume !== undefined) {
+      const vol = parseFloat(sound.volume);
+      const gainNode = actx.createGain();
+      gainNode.gain.value = Math.max(0, vol);
+      source.connect(gainNode);
+      gainNode.connect(globalCompressor);
+    } else {
+      source.connect(globalCompressor);
+    }
+
+    audio.play().catch(err => {
+      console.error("Error playing compressed audio:", err);
+      playNext();
+    });
+  } else {
+    // Fallback if AudioContext isn't supported
+    if (sound.volume !== undefined) {
+      const vol = parseFloat(sound.volume);
+      audio.volume = Math.min(1.0, Math.max(0, vol));
+    }
+  }
+
+  if (shouldPlayDirectly) {
+    audio.play().catch(err => {
+      console.error("Error playing audio:", err);
+      playNext();
+    });
+  }
+}
+
 fetch(`/api/config${overlayChannelQuery}`)
   .then(res => res.json())
   .then(data => {
@@ -58,41 +120,8 @@ fetch(`/api/config${overlayChannelQuery}`)
       eventSource.onmessage = function(event) {
         const parsedData = JSON.parse(event.data);
         if (parsedData.type === 'audio') {
-          const audioBasePath = overlayChannelId
-            ? `/playsounds/${encodeURIComponent(overlayChannelId)}/`
-            : '/playsounds/';
-          const audio = new Audio(audioBasePath + encodeURIComponent(parsedData.file));
-          audio.crossOrigin = "anonymous";
-          
-          let shouldPlayDirectly = true;
-          const actx = getAudioContext();
-          
-          if (actx) {
-            shouldPlayDirectly = false;
-            const source = actx.createMediaElementSource(audio);
-            
-            if (parsedData.volume !== undefined) {
-              const vol = parseFloat(parsedData.volume);
-              const gainNode = actx.createGain();
-              gainNode.gain.value = Math.max(0, vol);
-              source.connect(gainNode);
-              gainNode.connect(globalCompressor);
-            } else {
-              source.connect(globalCompressor);
-            }
-            
-            audio.play().catch(err => console.error("Error playing compressed audio:", err));
-          } else {
-            // Fallback if AudioContext isn't supported
-            if (parsedData.volume !== undefined) {
-              const vol = parseFloat(parsedData.volume);
-              audio.volume = Math.min(1.0, Math.max(0, vol));
-            }
-          }
-          
-          if (shouldPlayDirectly) {
-            audio.play().catch(err => console.error("Error playing audio:", err));
-          }
+          const sounds = Array.isArray(parsedData.sounds) ? parsedData.sounds : [parsedData];
+          playAudioSequence(sounds);
         } else if (parsedData.type === 'bet_update') {
           updateBetUI(parsedData.bet);
         } else if (parsedData.type === 'bet_clear') {

@@ -1492,8 +1492,13 @@ export function broadcastEmote(url, isZeroWidth = false, messageId = null, custo
   broadcastToCurrentChannel(`data: ${data}\n\n`);
 }
 
-export function broadcastAudio(filename, volume = 1.0) {
-  const payload = `data: ${JSON.stringify({ type: 'audio', file: filename, volume: volume })}\n\n`;
+export function broadcastAudio(filename, volume = 1.0, speed = 1.0) {
+  broadcastAudioSequence([{ file: filename, volume, speed }]);
+}
+
+// Sounds in one sequence play back-to-back on the overlay (used for !playsound combos)
+export function broadcastAudioSequence(sounds) {
+  const payload = `data: ${JSON.stringify({ type: 'audio', sounds })}\n\n`;
   broadcastToCurrentChannel(payload);
 }
 
