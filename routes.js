@@ -378,23 +378,23 @@ export function setupRoutes(app, {
             return res.status(400).json({ success: false, error: `${update.key} must be a whole number of at least ${minimum}.` });
           }
         }
-        if (['min_playsound_speed', 'max_playsound_speed'].includes(update.key)) {
+        if (['min_playsound_pitch', 'max_playsound_pitch'].includes(update.key)) {
           const parsedValue = Number(val);
-          if (val.trim() === '' || !Number.isFinite(parsedValue) || parsedValue < 0.0625 || parsedValue > 16) {
-            return res.status(400).json({ success: false, error: `${update.key} must be a number between 0.0625 and 16.` });
+          if (val.trim() === '' || !Number.isFinite(parsedValue) || parsedValue < 0.25 || parsedValue > 4) {
+            return res.status(400).json({ success: false, error: `${update.key} must be a number between 0.25 and 4.` });
           }
         }
       }
 
-      const speedUpdate = (key) => {
+      const pitchUpdate = (key) => {
         const update = updates.find(u => u.key === key);
         const raw = update ? update.value : globalConfig[key];
         return raw == null || String(raw).trim() === '' ? NaN : Number(raw);
       };
-      const newMinSpeed = speedUpdate('min_playsound_speed');
-      const newMaxSpeed = speedUpdate('max_playsound_speed');
-      if (Number.isFinite(newMinSpeed) && Number.isFinite(newMaxSpeed) && newMinSpeed > newMaxSpeed) {
-        return res.status(400).json({ success: false, error: 'min_playsound_speed cannot be greater than max_playsound_speed.' });
+      const newMinPitch = pitchUpdate('min_playsound_pitch');
+      const newMaxPitch = pitchUpdate('max_playsound_pitch');
+      if (Number.isFinite(newMinPitch) && Number.isFinite(newMaxPitch) && newMinPitch > newMaxPitch) {
+        return res.status(400).json({ success: false, error: 'min_playsound_pitch cannot be greater than max_playsound_pitch.' });
       }
 
       const db = getDb();
@@ -1509,8 +1509,8 @@ export function broadcastEmote(url, isZeroWidth = false, messageId = null, custo
   broadcastToCurrentChannel(`data: ${data}\n\n`);
 }
 
-export function broadcastAudio(filename, volume = 1.0, speed = 1.0) {
-  broadcastAudioSequence([{ file: filename, volume, speed }]);
+export function broadcastAudio(filename, volume = 1.0, pitch = 1.0) {
+  broadcastAudioSequence([{ file: filename, volume, pitch }]);
 }
 
 // Sounds in one sequence play back-to-back on the overlay (used for !playsound combos)

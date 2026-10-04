@@ -3504,27 +3504,27 @@ async function start() {
           return dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
         };
 
-        // Parse "!playsound a 1.5 b c 0.5": a number after a sound sets that sound's speed (and pitch)
-        let minSpeed = parseFloat(globalConfig["min_playsound_speed"]);
-        if (isNaN(minSpeed)) minSpeed = 0.1;
-        let maxSpeed = parseFloat(globalConfig["max_playsound_speed"]);
-        if (isNaN(maxSpeed)) maxSpeed = 16.0;
+        // Parse "!playsound a 1.5 b c 0.5": a number after a sound sets that sound's pitch (length stays the same)
+        let minPitch = parseFloat(globalConfig["min_playsound_pitch"]);
+        if (isNaN(minPitch)) minPitch = 0.5;
+        let maxPitch = parseFloat(globalConfig["max_playsound_pitch"]);
+        if (isNaN(maxPitch)) maxPitch = 2.0;
 
         const requested = [];
         for (const arg of args) {
           const isNumber = arg.trim() !== "" && !isNaN(arg) && !isNaN(parseFloat(arg));
           if (isNumber && requested.length > 0) {
-            const speed = Math.min(Math.max(parseFloat(arg), minSpeed), maxSpeed);
-            requested[requested.length - 1].speed = speed;
+            const pitch = Math.min(Math.max(parseFloat(arg), minPitch), maxPitch);
+            requested[requested.length - 1].pitch = pitch;
           } else {
             const filename = arg.replace(/[^a-zA-Z0-9_-]/g, "").toLowerCase();
-            if (filename) requested.push({ filename, speed: 1.0 });
+            if (filename) requested.push({ filename, pitch: 1.0 });
           }
         }
 
         if (requested.length === 0) {
           await sendChatMessage(
-            `Usage: !playsound <soundname> [speed] <soundname> [speed] ...  cost: ${getDefaultCost()} points per sound`,
+            `Usage: !playsound <soundname> [pitch] <soundname> [pitch] ...  cost: ${getDefaultCost()} points per sound`,
           );
           return false;
         }
@@ -3629,7 +3629,7 @@ async function start() {
           return {
             file: item.filename + item.extension,
             volume: individualVolume * masterVolume,
-            speed: item.speed,
+            pitch: item.pitch,
           };
         });
 
@@ -3640,7 +3640,7 @@ async function start() {
           const filename = item.filename;
           playsoundCooldowns.set(filename, Date.now());
           console.log(
-            `[PLAYSOUND] ${chatterName} played audio: ${sequence[i].file} (-${isBroadcaster ? 0 : item.cost} point(s)) at ${sequence[i].volume}x volume, ${item.speed}x speed`,
+            `[PLAYSOUND] ${chatterName} played audio: ${sequence[i].file} (-${isBroadcaster ? 0 : item.cost} point(s)) at ${sequence[i].volume}x volume, ${item.pitch}x pitch`,
           );
 
           try {

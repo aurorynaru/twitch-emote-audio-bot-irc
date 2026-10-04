@@ -34,6 +34,71 @@ function getAudioContext() {
   return audioCtx;
 }
 
+let soundTouchModule = null;
+function loadSoundTouch() {
+  if (!soundTouchModule) soundTouchModule = import('/vendor/soundtouchjs/soundtouch.js');
+  return soundTouchModule;
+}
+
+// Changes pitch without changing length by running the whole clip through SoundTouch up front
+function pitchShiftBuffer(actx, SoundTouch, buffer, pitch) {
+  const frames = buffer.length;
+  const left = buffer.getChannelData(0);
+  const right = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : left;
+  // Extra silence at the end flushes the last part of the clip out of SoundTouch
+  const padFrames = Math.ceil(buffer.sampleRate * 0.5);
+  const input = new Float32Array((frames + padFrames) * 2);
+  for (let i = 0; i < frames; i++) {
+    input[i * 2] = left[i];
+    input[i * 2 + 1] = right[i];
+  }
+
+  const soundTouch = new SoundTouch();
+  soundTouch.pitch = pitch;
+  soundTouch.inputBuffer.putSamples(input, 0, frames + padFrames);
+  soundTouch.process();
+
+  const outFrames = Math.min(frames, soundTouch.outputBuffer.frameCount);
+  const output = new Float32Array(outFrames * 2);
+  soundTouch.outputBuffer.receiveSamples(output, outFrames);
+
+  const result = actx.createBuffer(2, frames, buffer.sampleRate);
+  const outLeft = result.getChannelData(0);
+  const outRight = result.getChannelData(1);
+  for (let i = 0; i < outFrames; i++) {
+    outLeft[i] = output[i * 2];
+    outRight[i] = output[i * 2 + 1];
+  }
+  return result;
+}
+
+function connectWithVolume(actx, source, volume) {
+  if (volume !== undefined) {
+    const gainNode = actx.createGain();
+    gainNode.gain.value = Math.max(0, parseFloat(volume));
+    source.connect(gainNode);
+    gainNode.connect(globalCompressor);
+  } else {
+    source.connect(globalCompressor);
+  }
+}
+
+async function playPitchedSound(actx, url, sound, pitch, playNext) {
+  try {
+    const [{ SoundTouch }, response] = await Promise.all([loadSoundTouch(), fetch(url)]);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const decoded = await actx.decodeAudioData(await response.arrayBuffer());
+    const source = actx.createBufferSource();
+    source.buffer = pitchShiftBuffer(actx, SoundTouch, decoded, pitch);
+    source.onended = playNext;
+    connectWithVolume(actx, source, sound.volume);
+    source.start();
+  } catch (err) {
+    console.error("Error playing pitched audio, skipping:", err);
+    playNext();
+  }
+}
+
 // Plays the sounds of one !playsound combo back-to-back. Separate combos still overlap.
 function playAudioSequence(sounds, index = 0) {
   if (index >= sounds.length) return;
@@ -48,11 +113,18 @@ function playAudioSequence(sounds, index = 0) {
   const audioBasePath = overlayChannelId
     ? `/playsounds/${encodeURIComponent(overlayChannelId)}/`
     : '/playsounds/';
-  const audio = new Audio(audioBasePath + encodeURIComponent(sound.file));
+  const url = audioBasePath + encodeURIComponent(sound.file);
+  const pitch = parseFloat(sound.pitch) || 1.0;
+  const actx = getAudioContext();
+
+  // Pitch changes need Web Audio; without it the sound plays at normal pitch
+  if (actx && pitch !== 1) {
+    playPitchedSound(actx, url, sound, pitch, playNext);
+    return;
+  }
+
+  const audio = new Audio(url);
   audio.crossOrigin = "anonymous";
-  // Speed also shifts pitch (faster = higher, slower = lower)
-  audio.preservesPitch = false;
-  audio.playbackRate = parseFloat(sound.speed) || 1.0;
   audio.onended = playNext;
   audio.onerror = () => {
     console.error("Error with audio file, skipping.");
@@ -60,21 +132,11 @@ function playAudioSequence(sounds, index = 0) {
   };
 
   let shouldPlayDirectly = true;
-  const actx = getAudioContext();
 
   if (actx) {
     shouldPlayDirectly = false;
     const source = actx.createMediaElementSource(audio);
-
-    if (sound.volume !== undefined) {
-      const vol = parseFloat(sound.volume);
-      const gainNode = actx.createGain();
-      gainNode.gain.value = Math.max(0, vol);
-      source.connect(gainNode);
-      gainNode.connect(globalCompressor);
-    } else {
-      source.connect(globalCompressor);
-    }
+    connectWithVolume(actx, source, sound.volume);
 
     audio.play().catch(err => {
       console.error("Error playing compressed audio:", err);
