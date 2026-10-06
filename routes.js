@@ -1349,6 +1349,11 @@ export function setupRoutes(app, {
           command: commandCooldowns ? Object.fromEntries(commandCooldowns) : {},
           playsound: playsoundCooldowns ? Object.fromEntries(playsoundCooldowns) : {}
         },
+        // Same defaults as !playsound in app.js
+        playsoundPitch: {
+          min: Number.isFinite(parseFloat(globalConfig['min_playsound_pitch'])) ? parseFloat(globalConfig['min_playsound_pitch']) : 0.5,
+          max: Number.isFinite(parseFloat(globalConfig['max_playsound_pitch'])) ? parseFloat(globalConfig['max_playsound_pitch']) : 2.0
+        },
         emoteModifiers: ['wide', 'cursed', 'flipx', 'flipy', 'bounce', 'leave', 'arrive', 'jam', 'rainbow', 'hyper'].reduce((acc, mod) => {
           const disabledRaw = globalConfig[`disabled_mod_${mod}`];
           acc[mod] = {

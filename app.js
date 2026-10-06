@@ -3503,7 +3503,9 @@ async function start() {
         // }
         const getDefaultCost = () => {
           const dynamicCostRaw = globalConfig["cmd_!playsound_cost"];
-          return dynamicCostRaw !== undefined ? parseInt(dynamicCostRaw, 10) : 1;
+          return dynamicCostRaw !== undefined
+            ? parseInt(dynamicCostRaw, 10)
+            : 1;
         };
 
         // Parse "!playsound a 1.5 b c 0.5": a number after a sound sets that sound's pitch (length stays the same)
@@ -3514,9 +3516,13 @@ async function start() {
 
         const requested = [];
         for (const arg of args) {
-          const isNumber = arg.trim() !== "" && !isNaN(arg) && !isNaN(parseFloat(arg));
+          const isNumber =
+            arg.trim() !== "" && !isNaN(arg) && !isNaN(parseFloat(arg));
           if (isNumber && requested.length > 0) {
-            const pitch = Math.min(Math.max(parseFloat(arg), minPitch), maxPitch);
+            const pitch = Math.min(
+              Math.max(parseFloat(arg), minPitch),
+              maxPitch,
+            );
             requested[requested.length - 1].pitch = pitch;
           } else {
             const filename = arg.replace(/[^a-zA-Z0-9_-]/g, "").toLowerCase();
@@ -5554,7 +5560,7 @@ async function start() {
               b.isOpen = false;
               clearBetState();
               await sendChatMessage(
-                `Betting is now CLOSED for: "${b.description}"! Waiting for results...`,
+                `Betting is now CLOSED for: "${b.description}"!`,
               );
             }
           }, durationMs);
@@ -5793,7 +5799,8 @@ async function start() {
           "SELECT points FROM users WHERE username = ?",
           chatterName,
         );
-        const availablePoints = (user?.points ?? 0) + (previousBet?.amount ?? 0);
+        const availablePoints =
+          (user?.points ?? 0) + (previousBet?.amount ?? 0);
         if (!user || availablePoints <= 0) {
           await sendChatMessage(
             `${chatterName} you don't have enough points!`,
