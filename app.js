@@ -8699,7 +8699,7 @@ async function start() {
                         const x = parseInt(match[1], 10);
                         const y = parseInt(match[2], 10);
 
-                        const CENTER_DEADZONE = 15;
+                        const CENTER_DEADZONE = 10;
                         const nearCenter =
                           Math.abs(x - 50) <= CENTER_DEADZONE &&
                           Math.abs(y - 50) <= CENTER_DEADZONE;
