@@ -8696,8 +8696,17 @@ async function start() {
                     ) {
                       const match = tokens[i + 1].text.match(/^(\d+),(\d+)$/);
                       if (match) {
-                        customX = parseInt(match[1], 10);
-                        customY = parseInt(match[2], 10);
+                        const x = parseInt(match[1], 10);
+                        const y = parseInt(match[2], 10);
+
+                        const CENTER_DEADZONE = 10;
+                        const nearCenter =
+                          Math.abs(x - 50) <= CENTER_DEADZONE &&
+                          Math.abs(y - 50) <= CENTER_DEADZONE;
+                        if (!nearCenter) {
+                          customX = x;
+                          customY = y;
+                        }
                       }
                     }
 
