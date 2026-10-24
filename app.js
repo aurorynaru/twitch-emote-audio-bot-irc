@@ -12,6 +12,13 @@ dotenv.config();
 
 import { parseFlexibleTime, parseAmount, parseTime } from "./utils.js";
 import {
+  ensureIdentitySchema,
+  ircLogin,
+  refreshIdentities,
+  TwitchIdentityDirectory,
+  unescapeIrcTag,
+} from "./twitch-identities.js";
+import {
   setupRoutes,
   broadcastEmote,
   broadcastAudioSequence,
@@ -136,6 +143,10 @@ const channelList = orderedChannelLogins.map((login) =>
   channelRuntimes.get(login),
 );
 const mainChannelRuntime = channelRuntimes.get(MAIN_CHANNEL_LOGIN);
+const identityDirectory = new TwitchIdentityDirectory(
+  () => mainChannelRuntime.db,
+);
+let refreshIdentityMappings = async () => {};
 const SHARED_CONFIG_KEYS = new Set(["level_base_cost"]);
 const getChannelRuntime = () => channelStorage.getStore() || mainChannelRuntime;
 const getCurrentChannelLogin = () => getChannelRuntime().login;
@@ -719,6 +730,8 @@ async function initDb(runtime = getChannelRuntime()) {
     "PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;",
   );
 
+  if (runtime.isMain) await ensureIdentitySchema(runtime.db);
+
   if (!runtime.isMain) {
     await runtime.db.run("ATTACH DATABASE ? AS shared", [DB_PATH]);
   }
@@ -1074,6 +1087,7 @@ async function swapDatabase() {
     await runInChannel(runtime, () => initDb(runtime));
   }
   await runInChannel(mainChannelRuntime, loadItemsConfig);
+  await refreshIdentityMappings();
 }
 
 async function updateUserStat(username, field, amount) {
@@ -1483,6 +1497,42 @@ async function start() {
     return response;
   }
 
+  refreshIdentityMappings = async () => {
+    try {
+      await refreshIdentities(
+        identityDirectory,
+        channelList.map((runtime) => runtime.db),
+        async (ids) => {
+          const query = new URLSearchParams();
+          ids.forEach((id) => query.append("id", id));
+          const response = await botHelixGet(
+            `https://api.twitch.tv/helix/users?${query}`,
+          );
+          if (!response.ok)
+            throw new Error(`Twitch returned ${response.status}`);
+          return (await response.json()).data || [];
+        },
+      );
+    } catch (error) {
+      console.error(
+        "! Could not refresh saved Twitch identities:",
+        error.message,
+      );
+    }
+  };
+  await refreshIdentityMappings();
+
+  async function resolveCommandTarget(value, chatterName) {
+    const login = await identityDirectory.resolve(value);
+    if (!login) {
+      await sendChatMessage(
+        `${chatterName}, user not recognized. Use their Twitch login, or ask them to chat once so I can learn their display name.`,
+        chatterName,
+      );
+    }
+    return login;
+  }
+
   async function fetchAllChatters(runtime) {
     const chatters = [];
     let cursor = null;
@@ -1531,6 +1581,11 @@ async function start() {
     for (const chatter of chatters) {
       const username = String(chatter.user_login || "").toLowerCase();
       if (!username || excludedUsers.has(username)) continue;
+      await identityDirectory.observe({
+        id: chatter.user_id,
+        login: username,
+        display_name: chatter.user_name,
+      });
       eligibleChatters.set(chatter.user_id, username);
     }
     if (eligibleChatters.size === 0) return 0;
@@ -1848,19 +1903,16 @@ async function start() {
   const userIdCache = new Map();
 
   async function getUserIdByUsername(username) {
+    username = await identityDirectory.resolve(username);
+    if (!username) return null;
     if (userIdCache.has(username)) return userIdCache.get(username);
-    const res = await fetch(
-      `https://api.twitch.tv/helix/users?login=${username}`,
-      {
-        headers: {
-          Authorization: `Bearer ${USER_ACCESS_TOKEN}`,
-          "Client-Id": CLIENT_ID,
-        },
-      },
+    const res = await botHelixGet(
+      `https://api.twitch.tv/helix/users?login=${encodeURIComponent(username)}`,
     );
     if (res.ok) {
       const data = await res.json();
       if (data.data && data.data.length > 0) {
+        await identityDirectory.observe(data.data[0]);
         const id = data.data[0].id;
         userIdCache.set(username, id);
         return id;
@@ -2570,7 +2622,7 @@ async function start() {
         let filteredArgs = [];
         for (const arg of args) {
           if (arg.startsWith("@")) {
-            useTarget = arg.replace("@", "").toLowerCase();
+            useTarget = arg;
           } else {
             filteredArgs.push(arg);
           }
@@ -2637,6 +2689,11 @@ async function start() {
             chatterName,
           );
           return false;
+        }
+
+        if (useTarget) {
+          useTarget = await resolveCommandTarget(useTarget, chatterName);
+          if (!useTarget) return false;
         }
 
         if (useTarget && ignoredBots.includes(useTarget)) {
@@ -3335,10 +3392,8 @@ async function start() {
       execute: async (args, chatterName, event, hasPermission) => {
         let targetUser = chatterName;
         if (args.length > 0) {
-          const rawTarget = args[0].replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
-          if (rawTarget.length > 0) {
-            targetUser = rawTarget;
-          }
+          targetUser = await resolveCommandTarget(args[0], chatterName);
+          if (!targetUser) return false;
         }
 
         let user = await db.get(
@@ -3409,7 +3464,8 @@ async function start() {
           return;
         }
 
-        const targetUser = args[0].replace("@", "").toLowerCase();
+        const targetUser = await resolveCommandTarget(args[0], chatterName);
+        if (!targetUser) return false;
         const amount = parseAmount(args[1]);
 
         if (isNaN(amount) || amount < 0) {
@@ -3791,10 +3847,12 @@ async function start() {
         }
 
         const amountInput = args[0].toLowerCase();
-        const targetUsers = args
-          .slice(1)
-          .map((u) => u.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase())
-          .filter((u) => u.length > 0);
+        const targetUsers = [];
+        for (const mention of args.slice(1)) {
+          const target = await resolveCommandTarget(mention, chatterName);
+          if (!target) return false;
+          if (!targetUsers.includes(target)) targetUsers.push(target);
+        }
 
         for (const target of targetUsers) {
           const tUser = await db.get(
@@ -3943,10 +4001,12 @@ async function start() {
         }
 
         const amountInput = args[0].toLowerCase();
-        const targetUsers = args
-          .slice(1)
-          .map((u) => u.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase())
-          .filter((u) => u.length > 0);
+        const targetUsers = [];
+        for (const mention of args.slice(1)) {
+          const target = await resolveCommandTarget(mention, chatterName);
+          if (!target) return false;
+          if (!targetUsers.includes(target)) targetUsers.push(target);
+        }
 
         const amountToDeduct = parseAmount(amountInput);
         if (isNaN(amountToDeduct) || amountToDeduct <= 0) {
@@ -4180,14 +4240,8 @@ async function start() {
           return false;
         }
 
-        const target = args[0].replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
-        if (!target) {
-          await sendChatMessage(
-            `${chatterName} invalid user provided!`,
-            chatterName,
-          );
-          return false;
-        }
+        const target = await resolveCommandTarget(args[0], chatterName);
+        if (!target) return false;
 
         if (target === chatterName) {
           await sendChatMessage(
@@ -5009,7 +5063,8 @@ async function start() {
           return false;
         }
 
-        const target = args[0].replace("@", "").toLowerCase();
+        const target = await resolveCommandTarget(args[0], chatterName);
+        if (!target) return false;
 
         if (target === chatterName.toLowerCase()) {
           // await sendChatMessage(`${chatterName} you cannot shoot yourself!`);
@@ -6567,7 +6622,8 @@ async function start() {
           return;
         }
 
-        const targetUser = args[0].replace(/@/g, "").toLowerCase();
+        const targetUser = await resolveCommandTarget(args[0], chatterName);
+        if (!targetUser) return false;
 
         let amount = 1;
         let lastArg = args[args.length - 1];
@@ -7518,9 +7574,15 @@ async function start() {
             await runInChannel(messageRuntime, async () => {
               if (command === "PRIVMSG") {
                 const messageText = parts.slice(3).join(" ").substring(1);
-                const chatterName = tags["display-name"]
-                  ? tags["display-name"].toLowerCase()
-                  : source.split("!")[0].substring(1).toLowerCase();
+                const chatterName = ircLogin(source, tags);
+                if (!chatterName) return;
+                await identityDirectory.observe({
+                  id: tags["user-id"],
+                  login: chatterName,
+                  display_name: unescapeIrcTag(
+                    tags["display-name"] || chatterName,
+                  ),
+                });
                 const isSub = hasSubscriberChatBadge(tags);
                 const twitchUserId = tags["user-id"] || null;
 
@@ -8723,9 +8785,15 @@ async function start() {
                   // --- COMMAND LOGIC END ---
                 }
               } else if (command === "USERNOTICE") {
-                const chatterName = tags["display-name"]
-                  ? tags["display-name"].toLowerCase()
-                  : (tags["login"] || "").toLowerCase();
+                const chatterName = ircLogin(source, tags);
+                if (!chatterName) return;
+                await identityDirectory.observe({
+                  id: tags["user-id"],
+                  login: chatterName,
+                  display_name: unescapeIrcTag(
+                    tags["display-name"] || chatterName,
+                  ),
+                });
                 const msgId = tags["msg-id"];
 
                 console.log(
