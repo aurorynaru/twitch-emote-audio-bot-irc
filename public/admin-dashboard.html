@@ -708,8 +708,8 @@
         <ul id="commandsSuggestions" class="autocomplete-list"></ul>
       </div>
       <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Duration (ms)</label>
-        <input type="number" id="disableDuration" placeholder="e.g. 60000 for 1 min">
+        <label>Duration (seconds)</label>
+        <input type="number" id="disableDuration" min="0" step="any" placeholder="e.g. 60 for 1 min (empty = forever)">
       </div>
       <button class="save-btn" style="background-color: #ffaa00; color: black;" id="disableCmdBtn">Disable Command</button>
     </div>
@@ -735,8 +735,8 @@
         <ul id="blacklistPlaysoundSuggestions" class="autocomplete-list"></ul>
       </div>
       <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Duration (ms)</label>
-        <input type="number" id="blacklistPlaysoundDuration" placeholder="Leave empty for forever">
+        <label>Duration (seconds)</label>
+        <input type="number" min="0" step="any" id="blacklistPlaysoundDuration" placeholder="Leave empty for forever">
       </div>
       <button class="save-btn" style="background-color: #ffaa00; color: black;" id="blacklistPlaysoundBtn">Disable Playsound</button>
     </div>
@@ -747,8 +747,8 @@
         <input type="text" id="blacklistEmoteInput" placeholder="e.g. Kappa" autocomplete="off">
       </div>
       <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Duration (ms)</label>
-        <input type="number" id="blacklistEmoteDuration" placeholder="Leave empty for forever">
+        <label>Duration (seconds)</label>
+        <input type="number" min="0" step="any" id="blacklistEmoteDuration" placeholder="Leave empty for forever">
       </div>
       <button class="save-btn" style="background-color: #ffaa00; color: black;" id="blacklistEmoteBtn">Disable Emote</button>
     </div>
@@ -770,8 +770,8 @@
         </select>
       </div>
       <div class="form-group" style="flex: 1; margin: 0;">
-        <label>Duration (ms)</label>
-        <input type="number" id="blacklistModifierDuration" placeholder="Leave empty for forever">
+        <label>Duration (seconds)</label>
+        <input type="number" min="0" step="any" id="blacklistModifierDuration" placeholder="Leave empty for forever">
       </div>
       <button class="save-btn" style="background-color: #ffaa00; color: black;" id="blacklistModifierBtn">Disable Modifier</button>
     </div>
@@ -1620,6 +1620,17 @@
         </div>
       `;
 
+      // Allowed Users (per-command whitelist)
+      const allowedUsersKey = `cmd_${cmdName}_allowed_users`;
+      const allowedUsersVal = String(configData.globalConfig[allowedUsersKey] || '')
+        .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      html += `
+        <div class="form-group">
+          <label>Allowed Users <span class="tooltip-icon" data-tooltip="Comma-separated usernames that can use this command even without mod/broadcaster. Cooldowns, cost and other restrictions still apply.">ⓘ</span></label>
+          <input type="text" data-key="${allowedUsersKey}" value="${allowedUsersVal}" placeholder="user1, user2">
+        </div>
+      `;
+
       // Schema fields (cost, cooldown, duration, size)
       schema.forEach(field => {
         const configKey = `cmd_${cmdName}_${field}`;
@@ -2184,8 +2195,8 @@
     if (!item) return alert('Playsound name required.');
     
     let disableValue = 'true';
-    if (duration && parseInt(duration) > 0) {
-      disableValue = (Date.now() + parseInt(duration)).toString();
+    if (duration && parseFloat(duration) > 0) {
+      disableValue = (Date.now() + Math.round(parseFloat(duration) * 1000)).toString();
     }
 
     try {
@@ -2357,8 +2368,8 @@
     if (!item) return alert('Emote name required.');
 
     let disableValue = 'true';
-    if (duration && parseInt(duration) > 0) {
-      disableValue = (Date.now() + parseInt(duration)).toString();
+    if (duration && parseFloat(duration) > 0) {
+      disableValue = (Date.now() + Math.round(parseFloat(duration) * 1000)).toString();
     }
 
     try {
@@ -2382,8 +2393,8 @@
     if (!item) return alert('Modifier name required.');
 
     let disableValue = 'true';
-    if (duration && parseInt(duration) > 0) {
-      disableValue = (Date.now() + parseInt(duration)).toString();
+    if (duration && parseFloat(duration) > 0) {
+      disableValue = (Date.now() + Math.round(parseFloat(duration) * 1000)).toString();
     }
 
     try {
@@ -2447,7 +2458,7 @@
       const res = await fetch('/api/admin/commands/disable', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command, durationMs: parseInt(duration, 10) || 0 })
+        body: JSON.stringify({ command, durationMs: Math.round((parseFloat(duration) || 0) * 1000) })
       });
       const data = await res.json();
       if (data.success) {

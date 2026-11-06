@@ -1159,9 +1159,12 @@ export function setupRoutes(app, {
 
     const client = { res, channelId };
     sseClients.push(client);
+    const countForChannel = () => sseClients.filter(entry => entry.channelId === channelId).length;
+    console.log(`[OVERLAY] Connected (${channelId}) from ${req.ip} via ${req.originalUrl} [${req.get('user-agent') || 'unknown'}] - ${countForChannel()} open`);
     res.write(overlayVersionPayload());
     req.on('close', () => {
       sseClients = sseClients.filter(entry => entry !== client);
+      console.log(`[OVERLAY] Disconnected (${channelId}) from ${req.ip} - ${countForChannel()} open`);
     });
   };
 

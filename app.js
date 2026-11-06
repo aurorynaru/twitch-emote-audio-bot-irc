@@ -43,8 +43,6 @@ const TOKEN_FILE = path.join(__dirname, "data", "tokens.json");
 let COMMAND_COOLDOWN = process.env.COMMAND_COOLDOWN || 1000;
 const getDuelTax = () => parseFloat(globalConfig["duel_tax"] || "0.05");
 
-const lidl_mods = ["aurory_naru", "sandbed"];
-
 const DB_PATH = path.join(__dirname, "data", "database.sqlite");
 if (!fs.existsSync(path.join(__dirname, "data"))) {
   fs.mkdirSync(path.join(__dirname, "data"));
@@ -293,6 +291,18 @@ function hasSubscriberChatBadge(tags = {}) {
         return badgeName === "subscriber" || badgeName === "founder";
       })
   );
+}
+
+// Per-command username whitelist (cmd_<command>_allowed_users, comma-separated).
+// Grants command permission only; does not bypass cooldowns, cost, sub-only, etc.
+function isAllowedUser(commandName, chatterName) {
+  const raw = globalConfig[`cmd_${commandName}_allowed_users`];
+  if (!raw || !chatterName) return false;
+  const target = String(chatterName).trim().toLowerCase();
+  return String(raw)
+    .split(",")
+    .map((u) => u.trim().toLowerCase().replace(/^@/, ""))
+    .some((u) => u && u === target);
 }
 
 function areRandomSupportRafflesEnabled(runtime = getChannelRuntime()) {
@@ -5504,10 +5514,7 @@ async function start() {
     "!betstart": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod =
-          hasPermission ||
-          chatterName === TARGET_CHANNEL ||
-          lidl_mods.includes(chatterName.toLowerCase());
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
           // await sendChatMessage(`${chatterName} you do not have permission to start bets!`, chatterName);
           return;
@@ -5650,10 +5657,7 @@ async function start() {
     "!betstop": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod =
-          hasPermission ||
-          chatterName === TARGET_CHANNEL ||
-          lidl_mods.includes(chatterName.toLowerCase());
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
           //  await sendChatMessage(`${chatterName} you do not have permission to stop bets!`, chatterName);
           return;
@@ -5780,10 +5784,7 @@ async function start() {
     "!betcancel": {
       cost: 0,
       execute: async (args, chatterName, event, hasPermission) => {
-        const isMod =
-          hasPermission ||
-          chatterName === TARGET_CHANNEL ||
-          lidl_mods.includes(chatterName.toLowerCase());
+        const isMod = hasPermission || chatterName === TARGET_CHANNEL;
         if (!isMod) {
           //  await sendChatMessage(`${chatterName} you do not have permission to cancel bets!`, chatterName);
           return;
@@ -8382,11 +8383,13 @@ async function start() {
                     }
                   }
 
+                  // Whitelisted users get command permission only; isMod above
+                  // (cooldown bypass) stays badge/broadcaster based.
                   const success = await command.execute(
                     args,
                     chatterName,
                     event,
-                    hasPermission,
+                    hasPermission || isAllowedUser(commandName, chatterName),
                   );
 
                   if (success !== false) {

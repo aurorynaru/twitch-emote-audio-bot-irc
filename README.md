@@ -151,6 +151,36 @@ Automatic support-event raffles are also configured per stream with **Automatic 
 
 Support-event point rewards are controlled separately per stream with **Subscription Point Rewards**, **Bits Point Rewards**, **Gift-Sub Point Rewards**, and **Watch-Streak Point Rewards**. These controls default to enabled for the main stream and disabled for secondary streams. Turning one off prevents that event from adding points or announcing a point award, without changing automatic or manually started raffles.
 
+### Twitch Logins and Display Names
+
+Accounts use the lowercase Twitch login for points, inventory, game stats, rewards, and commands. The bot saves the relationship between Twitch user IDs, logins, and display names. Both `!duel @leafcee 100` and `!duel @リーフシー 100` target `leafcee` once that mapping is known. Points queries, transfers, item targeting, item grants, and shooting use the same resolver.
+
+Saved mappings survive restarts. Startup refreshes known IDs through Twitch, and incoming chat messages and passive chatter snapshots teach the bot new mappings. An unknown or ambiguous display name produces a clear error; use the Twitch login or ask the person to chat once. The resolver preserves Unicode characters and never deletes them to guess a login.
+
+Older databases may contain separate display-name accounts. **The bot now merges confirmed duplicate accounts automatically on startup**, including after a Railway restart. This finishes before chat/reward timers start, and account API requests wait until initialization completes. No manual upload is required for the live database.
+
+Before changing account data, startup saves a standalone SQLite backup of each affected database under `data/identity-migration-backups/`. The backup includes committed WAL contents. Merges and archives commit transactionally per database; unresolved accounts are preserved. Every restart rebuilds the plan from remaining legacy records, so completed balances/items/stats are never awarded twice and unnecessary backups are not created. Leave the startup code in place: a future restart can also merge a previously unidentified account after the bot learns its identity from chat.
+
+Look for `[IDENTITY MIGRATION]` in the server logs to see backup paths, accounts merged, and unresolved names preserved. A failed lookup, backup, or merge stops startup before the bot processes chat. Changes in a failing database roll back; successfully completed databases remain safe to rerun on the next restart. Conflicting pending fishing catches or unsupported account columns require resolving the reported conflict before startup can finish.
+
+The standalone script is still available for optional offline previews and merged export copies. Preview with your database filename:
+
+```powershell
+node scripts/migrate-twitch-identities.js --db data/database_backup_admiralbulldog_1786796080104.sqlite
+```
+
+To create a merged copy, specify a new output filename:
+
+```powershell
+node scripts/migrate-twitch-identities.js --db data/database_backup_admiralbulldog_1786796080104.sqlite --output data/database_admiralbulldog_identities_merged.sqlite
+```
+
+The script reads `CLIENT_ID` and `CLIENT_SECRET` from `.env` to verify saved user IDs with Twitch. It never modifies the input database or saved bot tokens, and refuses to overwrite an existing output file. Confirmed accounts have their points, XP, numeric game stats, item quantities, and modifier charges combined. Activity/timeout timestamps use the later value; effects and contribution references move to the login. Original source and destination records are archived inside `identity_merge_history` in the output copy. Unidentified accounts remain unchanged.
+
+If both names have a pending fishing catch, the migration rolls back rather than dropping a catch. Let one finish before making a fresh export. Unsupported account columns also stop the merge rather than silently losing data.
+
+If you use the optional offline copy, review and upload it through the existing database upload flow, then restart the updated bot. Automatic startup migration handles every configured channel database, preserving main-database shared balances/inventory and each channel's local stats/activity. Accounts without an identifiable user ID remain preserved until a later restart can identify them.
+
 **If running on Railway:**
 
 1. Ensure your Railway project has successfully deployed.
