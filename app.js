@@ -2395,6 +2395,68 @@ async function start() {
     return { expanded, guaranteed };
   }
 
+  // ---- Blacklist helpers (shared with the admin dashboard's disabled_* keys) ----
+  const BLACKLIST_MODIFIERS = [
+    "wide",
+    "cursed",
+    "flipx",
+    "flipy",
+    "bounce",
+    "leave",
+    "arrive",
+    "jam",
+    "rainbow",
+    "hyper",
+  ];
+  const BLACKLIST_PREFIXES = {
+    playsound: "disabled_playsound_",
+    emote: "disabled_emote_",
+    modifier: "disabled_mod_",
+  };
+
+  function isBlacklistValueActive(raw) {
+    return (
+      raw === "true" ||
+      (!isNaN(parseInt(raw)) && Date.now() < parseInt(raw))
+    );
+  }
+
+  // Returns { ok: true, value, label } or { ok: false } for an invalid duration arg
+  function parseBlacklistDuration(arg) {
+    if (arg === undefined || arg === "") {
+      return { ok: true, value: "true", label: "permanently" };
+    }
+    const seconds = parseFloat(arg);
+    if (isNaN(seconds) || seconds <= 0) return { ok: false };
+    return {
+      ok: true,
+      value: (Date.now() + Math.round(seconds * 1000)).toString(),
+      label: `for ${seconds}s`,
+    };
+  }
+
+  async function setBlacklistKey(key, value) {
+    await db.run(
+      "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+      [key, value, value],
+    );
+    globalConfig[key] = value;
+  }
+
+  async function removeBlacklistKey(key) {
+    const wasActive = isBlacklistValueActive(globalConfig[key]);
+    await db.run("DELETE FROM app_config WHERE key = ?", [key]);
+    delete globalConfig[key];
+    return wasActive;
+  }
+
+  function playsoundExists(filename) {
+    return (
+      fs.existsSync(path.join(getSoundsDir(), filename + ".ogg")) ||
+      fs.existsSync(path.join(getSoundsDir(), filename + ".mp3"))
+    );
+  }
+
   const customCommands = {
     "!triviastart": {
       cost: 0,
@@ -4162,38 +4224,30 @@ async function start() {
         if (!hasPermission) return;
         if (args.length === 0) {
           await sendChatMessage(
-            `Usage: !disablemodifier <modifier>. Available: wide, cursed, flipx, flipy, bounce, leave, arrive, jam, rainbow, hyper`,
+            `Usage: !disablemodifier <modifier> [seconds]. Available: ${BLACKLIST_MODIFIERS.join(", ")}`,
             chatterName,
           );
           return;
         }
         const mod = args[0].toLowerCase();
-        const validModifiers = [
-          "wide",
-          "cursed",
-          "flipx",
-          "flipy",
-          "bounce",
-          "leave",
-          "arrive",
-          "jam",
-          "rainbow",
-          "hyper",
-        ];
-        if (!validModifiers.includes(mod)) {
+        if (!BLACKLIST_MODIFIERS.includes(mod)) {
           await sendChatMessage(
-            `Invalid modifier! Valid modifiers: ${validModifiers.join(", ")}`,
+            `Invalid modifier! Valid modifiers: ${BLACKLIST_MODIFIERS.join(", ")}`,
             chatterName,
           );
           return;
         }
-        await db.run(
-          "INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
-          [`disabled_mod_${mod}`, "true", "true"],
-        );
-        globalConfig[`disabled_mod_${mod}`] = "true";
+        const duration = parseBlacklistDuration(args[1]);
+        if (!duration.ok) {
+          await sendChatMessage(
+            `Invalid duration. Ex: !disablemodifier ${mod} 60`,
+            chatterName,
+          );
+          return;
+        }
+        await setBlacklistKey(BLACKLIST_PREFIXES.modifier + mod, duration.value);
         await sendChatMessage(
-          `Modifier '${mod}' has been disabled!`,
+          `Modifier '${mod}' has been disabled ${duration.label}!`,
           chatterName,
         );
       },
@@ -4204,39 +4258,182 @@ async function start() {
         if (!hasPermission) return;
         if (args.length === 0) {
           await sendChatMessage(
-            `Usage: !enablemodifier <modifier>. Available: wide, cursed, flipx, flipy, bounce, leave, arrive, jam, rainbow, hyper`,
+            `Usage: !enablemodifier <modifier>. Available: ${BLACKLIST_MODIFIERS.join(", ")}`,
             chatterName,
           );
           return;
         }
         const mod = args[0].toLowerCase();
-        const validModifiers = [
-          "wide",
-          "cursed",
-          "flipx",
-          "flipy",
-          "bounce",
-          "leave",
-          "arrive",
-          "jam",
-          "rainbow",
-          "hyper",
-        ];
-        if (!validModifiers.includes(mod)) {
+        if (!BLACKLIST_MODIFIERS.includes(mod)) {
           await sendChatMessage(
-            `Invalid modifier! Valid modifiers: ${validModifiers.join(", ")}`,
+            `Invalid modifier! Valid modifiers: ${BLACKLIST_MODIFIERS.join(", ")}`,
             chatterName,
           );
           return;
         }
-        await db.run("DELETE FROM app_config WHERE key = ?", [
-          `disabled_mod_${mod}`,
-        ]);
-        delete globalConfig[`disabled_mod_${mod}`];
+        const wasActive = await removeBlacklistKey(
+          BLACKLIST_PREFIXES.modifier + mod,
+        );
         await sendChatMessage(
-          `Modifier '${mod}' has been enabled!`,
+          wasActive
+            ? `Modifier '${mod}' has been enabled!`
+            : `Modifier '${mod}' was not disabled.`,
           chatterName,
         );
+      },
+    },
+    "!disableplaysound": {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        if (!hasPermission) return;
+        if (args.length === 0) {
+          await sendChatMessage(
+            `Usage: !disableplaysound <soundname> [seconds]`,
+            chatterName,
+          );
+          return;
+        }
+        // Same normalization !playsound uses, so the key matches what it checks
+        const filename = args[0].replace(/[^a-zA-Z0-9_-]/g, "").toLowerCase();
+        if (!filename || !playsoundExists(filename)) {
+          await sendChatMessage(
+            `Playsound '${args[0]}' does not exist.`,
+            chatterName,
+          );
+          return;
+        }
+        const duration = parseBlacklistDuration(args[1]);
+        if (!duration.ok) {
+          await sendChatMessage(
+            `Invalid duration. Ex: !disableplaysound ${filename} 60`,
+            chatterName,
+          );
+          return;
+        }
+        await setBlacklistKey(
+          BLACKLIST_PREFIXES.playsound + filename,
+          duration.value,
+        );
+        await sendChatMessage(
+          `Playsound '${filename}' has been disabled ${duration.label}!`,
+          chatterName,
+        );
+      },
+    },
+    "!enableplaysound": {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        if (!hasPermission) return;
+        if (args.length === 0) {
+          await sendChatMessage(
+            `Usage: !enableplaysound <soundname>`,
+            chatterName,
+          );
+          return;
+        }
+        const filename = args[0].replace(/[^a-zA-Z0-9_-]/g, "").toLowerCase();
+        if (!filename) {
+          await sendChatMessage(
+            `Usage: !enableplaysound <soundname>`,
+            chatterName,
+          );
+          return;
+        }
+        const wasActive = await removeBlacklistKey(
+          BLACKLIST_PREFIXES.playsound + filename,
+        );
+        await sendChatMessage(
+          wasActive
+            ? `Playsound '${filename}' has been enabled!`
+            : `Playsound '${filename}' was not disabled.`,
+          chatterName,
+        );
+      },
+    },
+    "!disableemote": {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        if (!hasPermission) return;
+        if (args.length === 0) {
+          await sendChatMessage(
+            `Usage: !disableemote <emote> [seconds] (case-sensitive)`,
+            chatterName,
+          );
+          return;
+        }
+        // Emote names are case-sensitive (Kappa != kappa), keep as typed
+        const emote = args[0];
+        const duration = parseBlacklistDuration(args[1]);
+        if (!duration.ok) {
+          await sendChatMessage(
+            `Invalid duration. Ex: !disableemote ${emote} 60`,
+            chatterName,
+          );
+          return;
+        }
+        await setBlacklistKey(BLACKLIST_PREFIXES.emote + emote, duration.value);
+        await sendChatMessage(
+          `Emote '${emote}' has been disabled ${duration.label}!`,
+          chatterName,
+        );
+      },
+    },
+    "!enableemote": {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        if (!hasPermission) return;
+        if (args.length === 0) {
+          await sendChatMessage(
+            `Usage: !enableemote <emote> (case-sensitive)`,
+            chatterName,
+          );
+          return;
+        }
+        const emote = args[0];
+        const wasActive = await removeBlacklistKey(
+          BLACKLIST_PREFIXES.emote + emote,
+        );
+        await sendChatMessage(
+          wasActive
+            ? `Emote '${emote}' has been enabled!`
+            : `Emote '${emote}' was not disabled (names are case-sensitive).`,
+          chatterName,
+        );
+      },
+    },
+    "!blacklisted": {
+      cost: 0,
+      execute: async (args, chatterName, event, hasPermission) => {
+        if (!hasPermission) return;
+        const groups = { playsound: [], emote: [], modifier: [] };
+        const now = Date.now();
+        for (const [key, raw] of Object.entries(globalConfig)) {
+          if (!isBlacklistValueActive(raw)) continue;
+          for (const [type, prefix] of Object.entries(BLACKLIST_PREFIXES)) {
+            if (!key.startsWith(prefix)) continue;
+            let name = key.slice(prefix.length);
+            if (raw !== "true") {
+              const secsLeft = Math.ceil((parseInt(raw) - now) / 1000);
+              name +=
+                secsLeft >= 60
+                  ? ` (${Math.ceil(secsLeft / 60)}m)`
+                  : ` (${secsLeft}s)`;
+            }
+            groups[type].push(name);
+          }
+        }
+        const parts = [];
+        if (groups.playsound.length)
+          parts.push(`Playsounds: ${groups.playsound.join(", ")}`);
+        if (groups.emote.length)
+          parts.push(`Emotes: ${groups.emote.join(", ")}`);
+        if (groups.modifier.length)
+          parts.push(`Modifiers: ${groups.modifier.join(", ")}`);
+        let msg = parts.length
+          ? `Blacklisted -> ${parts.join(" | ")}`
+          : "Nothing is blacklisted.";
+        if (msg.length > 480) msg = msg.slice(0, 477) + "...";
+        await sendChatMessage(msg, chatterName);
       },
     },
     "!duel": {
